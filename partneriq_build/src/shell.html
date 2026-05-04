@@ -1,0 +1,146 @@
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <button class="logo-button" id="homeBtn" type="button" title="Go to home page"><span class="logo-mark">PartnerIQ</span></button>
+        <span class="logo-divider"></span>
+        <span class="logo-text">Brand Performance Intelligence</span>
+      </div>
+      <div class="header-controls">
+        <button class="btn" id="homeNavBtn" title="Home" style="padding:8px 12px;flex-shrink:0;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/><path d="M21 22H3"/>
+          </svg>
+        </button>
+        <div class="brand-selector-wrapper">
+          <svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input type="text" class="brand-selector" id="brandSearch" placeholder="Search partner..." autocomplete="off" />
+          <div class="brand-dropdown" id="brandDropdown"></div>
+        </div>
+        <button class="btn" id="dataBtn" style="display:none;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Import / Export
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main"></main>
+
+  <button class="back-to-top" id="backToTop" title="Back to top">↑</button>
+<footer id="app-footer">PartnerIQ · v0.26 · May 1 2026 · Confidential · Contact Anders for issues or additions </footer>
+
+<!-- Partner Report Export modal -->
+<div class="modal-backdrop" id="reportModalBackdrop">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h2 class="modal-title">Export Partner Report</h2>
+      <button class="modal-close" id="reportModalClose">✕</button>
+    </div>
+    <div id="reportModalBody" style="padding:8px 0 4px;"></div>
+  </div>
+</div>
+
+</div>
+
+<!-- Tooltip portal -->
+<div class="tooltip" id="tooltip"></div>
+
+<!-- Data upload modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title">Import / export data</h2>
+      <button class="modal-close" id="modalClose">✕</button>
+    </div>
+    <div class="upload-instructions">
+      <strong>File naming conventions</strong>
+      <span style="display:block; margin-bottom:6px; color: var(--positive);">Offline build: no internet/CDN/font calls. CSV upload and preloaded sharing work fully locally.</span>
+      TV Signage: any filename containing "TV", "signage", or "visible" (one file, all brands in Brand column)<br>
+      Organic Social: filenames starting with <code>BrandedPartnerPerformance</code>, <code>BrandedContentSeries</code>, or <code>BrandOnAsset</code> — add a <code>ReportDate</code> column (YYYY-MM-DD)<br>
+      Survey (brand recall): filename starting with <code>Survey_</code> (one file, all brands + all waves stacked)<br>
+      <strong>Fan Insights (general survey questions):</strong> filename starting with <code>GeneralSurvey_</code> — columns: Question, Answer Count, Frequency, Percentage, Rank, Survey, Season, Sheet, Date, Responses<br>
+      <strong>Partner survey questions (Moda Health / Delta Dental):</strong> filename starting with <code>ModaDeltaDental_</code> — columns: Question, Q_, Response, Frequency, Percentage, Survey, Date, Responses<br>
+      <strong>Programs &amp; community:</strong> filename starting with <code>Program_</code> — columns: Brand (program name), Frequency, Q, Question, Survey, Date, Responses, Answer Percentage<br>
+      Partner roster: filename starting with <code>Partners_</code> — columns: Account, Category<br>
+      Paid Social: any filename containing "paid", "meta", "facebook", or "admanager". Campaign names are parsed locally; unclear partner assignments can be reviewed manually.<br>
+      Brand aliases: use Manage brand aliases to merge naming variants like Daimler Trucks North America into one canonical partner.<br>
+      Organic Social: <code>BrandName_DateRange.csv</code> — one file per brand<br>
+      Drop multiple CSV files at once. All processing happens locally in your browser. Offline mode makes no external calls; XLSX files should be saved/exported as CSV first.
+    </div>
+    <div class="dropzone" id="dropzone">
+      <div class="dropzone-icon">⬇</div>
+      <div class="dropzone-text">
+        <strong>Drop files here</strong> or click to browse<br>
+        <span style="font-size: 11px; color: var(--text-muted);">CSV supported offline · XLSX: save as CSV first</span>
+      </div>
+      <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none;" />
+    </div>
+    <div class="file-list" id="fileList"></div>
+    <div style="display: flex; justify-content: space-between; margin-top: 18px; gap: 12px; flex-wrap: wrap;">
+      <button class="btn" id="loadMockBtn">Load demo data</button>
+      <button class="btn" id="clearDataBtn">Clear all data</button>
+      <button class="btn" id="reviewPaidAssignmentsBtn" title="Review and fix paid social campaign-to-partner assignments">Review paid assignments</button>
+      <button class="btn" id="reviewGeneralSurveyBtn" title="Review and assign partner links for General Survey answer options">Review survey assignments</button>
+      <button class="btn" id="manageBrandAliasesBtn" title="Merge source names like Daimler Trucks into a canonical partner name">Manage brand aliases</button>
+      <button class="btn btn-primary" id="exportPreloadedBtn" title="Download a self-contained copy with the currently loaded data embedded">Export preloaded dashboard</button>
+    </div>
+    <label id="exportViewerModeWrap" style="display:flex; align-items:center; gap:8px; margin-top:12px; color: var(--text-dim); font-size:12px;">
+      <input type="checkbox" id="exportViewerMode" checked />
+      Export in viewer mode — hide upload controls for teammates
+    </label>
+  </div>
+</div>
+
+<!-- Paid Social assignment review modal -->
+<div class="modal-backdrop" id="paidAssignmentBackdrop">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Review paid campaign assignments</h2>
+        <div class="leaderboard-note" style="margin: 8px 0 0;">Campaigns with medium or low confidence can be assigned to an existing partner or a new partner. Assignments are saved as reusable rules and included when you export a preloaded dashboard.</div>
+      </div>
+      <button class="modal-close" id="paidAssignmentClose">✕</button>
+    </div>
+    <div id="paidAssignmentContent"></div>
+  </div>
+</div>
+
+<!-- General Survey assignment review modal -->
+<div class="modal-backdrop" id="generalSurveyReviewBackdrop">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Review General Survey assignments</h2>
+        <div class="leaderboard-note" style="margin: 8px 0 0;">
+          Each answer option from <code>GeneralSurvey_</code> files is shown with its auto-detected partner link.
+          Override any assignment or explicitly mark options as "not a partner mention."
+          Rules are saved and included when you export a preloaded dashboard.
+        </div>
+      </div>
+      <button class="modal-close" id="generalSurveyReviewClose">✕</button>
+    </div>
+    <div id="generalSurveyReviewContent" style="padding:8px 0 4px;max-height:70vh;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- Brand alias / merge manager modal -->
+<div class="modal-backdrop" id="brandAliasBackdrop">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Manage brand aliases</h2>
+        <div class="leaderboard-note" style="margin: 8px 0 0;">Merge source names that should roll up into one partner across TV, paid, organic, and future channels. Example: Daimler Trucks North America → Daimler. Alias rules are included when you export a preloaded dashboard.</div>
+      </div>
+      <button class="modal-close" id="brandAliasClose">✕</button>
+    </div>
+    <div id="brandAliasContent"></div>
+  </div>
+</div>
