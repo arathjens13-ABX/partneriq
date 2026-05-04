@@ -1,5 +1,21 @@
 const CHANGELOG = [
   {
+    version: 'v0.28',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'On-Court Virtual Signage — exposure & rollup fixes',
+    changes: [
+      {
+        category: 'On-Court Virtual Signage',
+        items: [
+          `Fixed home-game metric attribution: instead of matching TV rows by brand name (which was incorrect because the TV export uses a single canonical brand "Toyota" for all virtual branding rows), home actuals are now looked up by matching the game date (normalised from schedule M/D/YY vs TV Matchdate M/D/YYYY) against the TV data's Matchdate column plus position (Center / 3 Point Line). Each schedule entry now receives the correct actuals for that specific game.`,
+          `Away-game estimates (and home-game fallbacks where no TV row matches) now use the simple per-position mean — exactly the same value shown in the "Season averages by position" table. The previous floor(min(mean, median)) conservative estimate is retired, eliminating the discrepancy between the displayed averages and the per-partner exposure numbers.`,
+          `Partner pages now show the full brand-family rollup in the On-Court Virtual Signage section: navigating to Toyota displays combined KPIs and a single schedule table covering all sub-brands (Toyota Dealers, Toyota Generic, Vancouver Toyota, etc.) with a Brand column added to identify each entry. Previously only the exact canonical-name games were shown.`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.27',
     date: 'May 2026',
     source: 'Claude',
