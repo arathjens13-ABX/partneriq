@@ -686,6 +686,10 @@ function detectFileType(filename, rows = []) {
   if (base.startsWith('sponsor_average_') || lower.startsWith('sponsor_average_')) return 'ancLED';
   if (cols.includes('sponsor name') && cols.includes('pre-game avg') && cols.includes('time total')) return 'ancLED';
 
+  // Virtual Signage Schedule: filename starts with 'virtualsignage', or detected by column shape
+  if (base.startsWith('virtualsignage') || lower.startsWith('virtualsignage')) return 'virtualSignage';
+  if (cols.includes('home/away') && cols.includes('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
+
   // New survey subtypes — checked before the generic Survey_ catch-all
   // GeneralSurvey_: fan segment questions (beverages, game nights, bar spaces, TV segments)
   if (base.startsWith('generalsurvey_') || lower.startsWith('generalsurvey_')) return 'generalSurvey';
@@ -833,6 +837,14 @@ async function ingestFile(file) {
     const ingested = ingestANCLEDFile(rows, file.name);
     return { success: true, type: 'ancLED', arena: meta.arena, asset: meta.asset, rows: ingested.length, filename: file.name };
 
+  } else if (type === 'virtualSignage') {
+    const ingested = ingestVirtualSignageSchedule(rows);
+    const homeGames = ingested.filter(g => g.IsHome).length;
+    const awayGames = ingested.filter(g => !g.IsHome).length;
+    const brands = new Set();
+    ingested.forEach(g => { if (g.BrandA) brands.add(g.BrandA); if (g.BrandB) brands.add(g.BrandB); });
+    return { success: true, type: 'virtualSignage', rows: ingested.length, homeGames, awayGames, brands: brands.size, filename: file.name };
+
   } else if (type === 'roster') {
     const rosterRows = rows
       .filter(r => r.Account || r.account)
@@ -904,6 +916,8 @@ function renderFileLog() {
           ? `${r.channel} Affidavit · ${r.rows} rows`
         : r.type === 'ancLED'
           ? `ANC LED Report · ${r.arena} / ${r.asset} · ${r.rows} rows`
+        : r.type === 'virtualSignage'
+          ? `Virtual Signage Schedule · ${r.rows} games (${r.homeGames} home · ${r.awayGames} away) · ${r.brands} brands`
         : `Organic Social · ${r.brand} · ${r.rows} posts`;
       return `<div class="file-item success">
         <span class="file-item-name">${r.filename}</span>

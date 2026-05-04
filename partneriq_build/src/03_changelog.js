@@ -1,5 +1,24 @@
 const CHANGELOG = [
   {
+    version: 'v0.27',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'On-Court Virtual Signage — 6 enhancements',
+    changes: [
+      {
+        category: 'On-Court Virtual Signage',
+        items: [
+          `Partner pages now include a collapsible "On-Court Virtual Signage" dropdown section showing KPIs (Exposures, QIMV, QI Impressions, Duration) and a per-game schedule filtered to that brand's appearances`,
+          `TV Visible Signage section on partner pages now shows a callout note when virtual branding rows exist, clarifying that Center + 3-Point Line metrics have been moved to the On-Court Virtual Signage tab`,
+          `Exposures now use the "Source Exposures" (or "Total Exposures") column from TV visible signage data rather than a simple game count — home-game actuals are summed from TV rows; away-game exposures use the same conservative estimate as QIMV / QI Impressions`,
+          `Added "Season averages by position" table at the bottom of the virtual signage portfolio page — shows simple per-game mean for Exposures, QI Impressions, Duration, and QIMV at each position (Center, 3-Point Line) based on all measured home-game appearances`,
+          `Estimation methodology changed from per-brand × per-position to per-position only — away-game estimates are now pooled across all brands at a position so every partner at Center uses the same base rate, regardless of individual home-game sample size`,
+          `Partner breakdown table now groups brands sharing a common name prefix (e.g. "Toyota", "Toyota Generic", "Toyota Dealers") into a bold parent row showing the combined game total and metrics, with indented sub-brand rows below — single-brand entries are unchanged`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.26',
     date: 'May 2026',
     source: 'Claude',

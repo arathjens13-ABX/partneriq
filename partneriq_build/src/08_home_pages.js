@@ -175,6 +175,11 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">📺 TV Visible Signage</div>
           <div class="home-action-copy">Portfolio snapshot, top partners and locations, season trends, and per-asset leaderboards.</div>
         </div>
+        <div class="home-action" onclick="openVirtualSignagePage();">
+          <div class="home-action-kicker">Virtual Signage</div>
+          <div class="home-action-title">🏀 On-Court Virtual Signage</div>
+          <div class="home-action-copy">Center and 3-point line virtual branding — full schedule, partner breakdown, and home/away metrics with away-game estimates.</div>
+        </div>
         <div class="home-action" onclick="currentBrand=null; currentPage='paid'; renderApp();">
           <div class="home-action-kicker">Paid Social</div>
           <div class="home-action-title">💰 Paid Social Portfolio</div>

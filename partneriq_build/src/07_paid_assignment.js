@@ -45,13 +45,21 @@ function destroyCharts() {
 
 
 
+// Returns only non-virtual-branding TV rows for portfolio-level aggregations.
+// Virtual Branding (Center / 3 Point Line) is handled by the Virtual Signage page.
+function _isVBRow(r) {
+  return String(r.Tool || '').trim().toLowerCase() === 'virtual branding' &&
+    ['center', '3 point line'].includes(String(r.Location || '').trim().toLowerCase());
+}
+
 function getTVRowsForPeriod(period = 'all') {
-  if (!period || period === 'all') return DataStore.tvSignage;
-  return DataStore.tvSignage.filter(r => r.Season === period);
+  const rows = DataStore.tvSignage.filter(r => !_isVBRow(r));
+  if (!period || period === 'all') return rows;
+  return rows.filter(r => r.Season === period);
 }
 
 function getPortfolioSeasons() {
-  return [...new Set(DataStore.tvSignage.map(r => r.Season).filter(Boolean))].sort();
+  return [...new Set(DataStore.tvSignage.filter(r => !_isVBRow(r)).map(r => r.Season).filter(Boolean))].sort();
 }
 
 function getPortfolioLatestSeason() {

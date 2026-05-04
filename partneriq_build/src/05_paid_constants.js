@@ -282,7 +282,12 @@ function ordinal(n) {
 }
 
 function getBrandTVData(brand, season = 'all') {
-  const rows = DataStore.tvSignage.filter(r => r.Brand === brand);
+  const rows = DataStore.tvSignage.filter(r =>
+    r.Brand === brand &&
+    // Exclude on-court virtual branding — those rows belong to the Virtual Signage page
+    !(String(r.Tool     || '').trim().toLowerCase() === 'virtual branding' &&
+      ['center', '3 point line'].includes(String(r.Location || '').trim().toLowerCase()))
+  );
   if (season === 'all') return rows;
   return rows.filter(r => normalizeSeasonLabel(r.Season) === season);
 }

@@ -52,6 +52,17 @@ function renderTVSection(brand) {
       <div class="section-body">
         ${basisLine ? `<div class="comparison-basis block" style="margin-bottom: 16px;">YoY basis: ${basisLine}</div>` : ''}
 
+        ${(function() {
+          const vsRowsForBrand = getVirtualBrandingTVRows(brand);
+          return vsRowsForBrand.length ? `
+            <div class="comparison-basis block" style="margin-bottom: 16px; line-height: 1.6;">
+              <strong>Note:</strong> On-Court Virtual Signage rows (Center + 3-Point Line) have been
+              excluded from these TV figures and are reported separately in the
+              <strong>On-Court Virtual Signage</strong> tab above.
+            </div>
+          ` : '';
+        })()}
+
         <div class="kpi-grid">
           <div class="kpi">
             <span class="kpi-label">Sponsorship Impressions ${makeInfoIcon('Sponsorship Impressions')}</span>

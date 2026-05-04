@@ -155,6 +155,7 @@ function renderApp() {
 
   if (!currentBrand) {
     if (currentPage === 'tv') renderTVPortfolioPage(main);
+    else if (currentPage === 'virtual-signage') renderVirtualSignagePage(main);
     else if (currentPage === 'survey') renderSurveyPortfolioPage(main);
     else if (currentPage === 'paid') renderPaidPortfolioPage(main);
     else if (currentPage === 'organic') renderOrganicSocialPortfolioPage(main);
@@ -179,17 +180,19 @@ function renderApp() {
   }
 
   const channelTags = [
-    { key: 'tv',        label: 'TV Signage',          slot: 'tv-slot' },
-    { key: 'organic',   label: 'Organic Social',      slot: 'social-slot' },
-    { key: 'survey',    label: 'Survey Research',     slot: 'survey-slot' },
-    { key: 'paid',      label: 'Paid Social',         slot: 'paid-slot' },
-    { key: 'ancLED',    label: 'ANC LED',             slot: 'anc-led-slot' },
-    { key: 'affidavit', label: 'TV/Radio Affidavits', slot: 'affidavits-slot' },
+    { key: 'tv',             label: 'TV Signage',                 slot: 'tv-slot' },
+    { key: 'virtualSignage', label: 'On-Court Virtual Signage',   slot: 'virtual-signage-slot' },
+    { key: 'organic',        label: 'Organic Social',             slot: 'social-slot' },
+    { key: 'survey',         label: 'Survey Research',            slot: 'survey-slot' },
+    { key: 'paid',           label: 'Paid Social',                slot: 'paid-slot' },
+    { key: 'ancLED',         label: 'ANC LED',                    slot: 'anc-led-slot' },
+    { key: 'affidavit',      label: 'TV/Radio Affidavits',        slot: 'affidavits-slot' },
   ].map(c => {
     // Survey Research now consolidates Brand Awareness, Fan Insights, Programs & Community,
     // and Moda/Delta-specific survey questions into one partner-page dropdown.
     let active = false;
     if (c.key === 'tv')             active = !!channels.tv;
+    else if (c.key === 'virtualSignage') active = typeof hasVirtualSignageDataForBrand === 'function' ? hasVirtualSignageDataForBrand(currentBrand) : false;
     else if (c.key === 'organic')   active = !!channels.organic;
     else if (c.key === 'paid')      active = !!channels.paid;
     else if (c.key === 'survey')    active = typeof hasSurveyResearchDataForBrand === 'function' ? hasSurveyResearchDataForBrand(currentBrand) : !!channels.survey;
@@ -236,6 +239,7 @@ function renderApp() {
 
     <div id="takeaways-slot"></div>
     <div id="tv-slot"></div>
+    <div id="virtual-signage-slot"></div>
     <div id="social-slot"></div>
     <div id="survey-slot"></div>
     <div id="paid-slot"></div>
@@ -266,6 +270,9 @@ function renderApp() {
 
   renderTakeaways(currentBrand, latestSeason, prevSeason);
   if (channels.tv) renderTVSection(currentBrand);
+  if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(currentBrand)) {
+    renderVirtualSignageSection(currentBrand);
+  }
   // Only render organic/survey sections when the brand has actual data — avoids
   // empty placeholder sections cluttering the page for partners not in those channels
   if (channels.organic) renderOrganicSocialSection(currentBrand);

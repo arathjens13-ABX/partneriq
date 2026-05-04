@@ -173,6 +173,7 @@ const DataStore = {
   partnerRoster: [],
   affidavits: [],                   // TV & Radio Affidavit spot delivery counts
   ancLED: [],                       // ANC LED Report — per-asset in-arena exposure time
+  virtualSignageSchedule: [],       // On-court virtual signage schedule (center + 3-point line)
   brands: new Set(),
   channelsByBrand: {},
 
@@ -195,6 +196,7 @@ const DataStore = {
     this.partnerRoster = [];
     this.affidavits = [];
     this.ancLED = [];
+    this.virtualSignageSchedule = [];
     this.brands = new Set();
     this.channelsByBrand = {};
   },
@@ -205,7 +207,7 @@ const DataStore = {
     if (!clean) return;
     this.brands.add(clean);
     if (!this.channelsByBrand[clean]) {
-      this.channelsByBrand[clean] = { tv: false, organic: false, paid: false, survey: false, affidavit: false, ancLED: false };
+      this.channelsByBrand[clean] = { tv: false, organic: false, paid: false, survey: false, affidavit: false, ancLED: false, virtualSignage: false };
     }
     this.channelsByBrand[clean][channel] = true;
   },
@@ -220,7 +222,8 @@ const DataStore = {
     const surveyGeneral  = Array.isArray(this.surveyGeneral)  ? this.surveyGeneral.length  : 0;
     const surveyPartner  = Array.isArray(this.surveyPartner)  ? this.surveyPartner.length  : 0;
     const surveyPrograms = Array.isArray(this.surveyPrograms) ? this.surveyPrograms.length : 0;
-    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph > 0;
+    const vsSchedule     = Array.isArray(this.virtualSignageSchedule) ? this.virtualSignageSchedule.length : 0;
+    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule > 0;
   }
 };
 
@@ -441,6 +444,12 @@ function rebuildBrandRegistryFromData() {
   (DataStore.ancLED || []).forEach(r => {
     if (r.Brand) DataStore.registerBrand(r.Brand, 'ancLED');
   });
+
+  // Virtual Signage Schedule — register brands from each game slot
+  (DataStore.virtualSignageSchedule || []).forEach(g => {
+    if (g.BrandA) DataStore.registerBrand(g.BrandA, 'virtualSignage');
+    if (g.BrandB) DataStore.registerBrand(g.BrandB, 'virtualSignage');
+  });
 }
 
 function loadPreloadedData() {
@@ -462,6 +471,7 @@ function loadPreloadedData() {
   DataStore.partnerRoster = Array.isArray(PRELOADED_DATA.partnerRoster) ? PRELOADED_DATA.partnerRoster : [];
   DataStore.affidavits = Array.isArray(PRELOADED_DATA.affidavits) ? PRELOADED_DATA.affidavits : [];
   DataStore.ancLED = Array.isArray(PRELOADED_DATA.ancLED) ? PRELOADED_DATA.ancLED : [];
+  DataStore.virtualSignageSchedule = Array.isArray(PRELOADED_DATA.virtualSignageSchedule) ? PRELOADED_DATA.virtualSignageSchedule : [];
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
   normalizeLoadedRows();
   canonicalizeAllBrandData();
@@ -571,6 +581,7 @@ function getSerializableDataStore() {
     partnerRoster: DataStore.partnerRoster || [],
     affidavits: DataStore.affidavits || [],
     ancLED: DataStore.ancLED || [],
+    virtualSignageSchedule: DataStore.virtualSignageSchedule || [],
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
     userPresets: getCurrentUserPresets()
   };
