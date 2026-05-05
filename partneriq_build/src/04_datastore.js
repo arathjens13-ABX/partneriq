@@ -95,7 +95,9 @@ function getBrandMergeRules() {
 // Shorter name wins as canonical.  Names in blockedSet are excluded.
 function detectWordPrefixGroups(brandNames, blockedSet) {
   const blocks = blockedSet instanceof Set ? blockedSet : new Set(Array.isArray(blockedSet) ? blockedSet : []);
-  const toWords = n => n.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
+  // Strip apostrophes and hyphens before splitting so "Hempler's" → "hemplers"
+  // (not ["hempler","s"]) and "Coca-Cola" → "cocacola" (not ["coca","cola"]).
+  const toWords = n => n.toLowerCase().replace(/['\-]/g, '').replace(/[^a-z0-9\s]/g, ' ').trim().split(/\s+/).filter(Boolean);
   const names = [...new Set(brandNames)].filter(n => n && !blocks.has(n));
   names.sort((a, b) => toWords(a).length - toWords(b).length || a.localeCompare(b));
   const result = {};
@@ -163,8 +165,9 @@ const DataStore = {
   paidSocial: {},
   paidAssignmentRules: {},
   brandMergeRules: { ...BRAND_ALIAS_DEFAULTS },
-  autoDetectedAliases: {},   // computed post-load; variant → canonical (word-prefix groupings)
+  autoDetectedAliases: {},   // computed post-load; variant → canonical (word-prefix + case-normalization groupings)
   autoAliasBlocks: new Set(), // user-flagged names that should NOT be auto-merged; persisted in exports
+  brandNameChanges: new Set(), // alias keys that represent "formerly known as" renames (vs pure shorthand aliases)
   surveys: [],
   surveyGeneral: [],             // File 1 — GeneralSurvey_ — fan segment questions (beverages, game nights, bar spaces, TV segments)
   surveyPartner: [],             // File 2 — ModaDeltaDental_ — partner-specific question battery (Moda Health + Delta Dental)
@@ -191,6 +194,7 @@ const DataStore = {
     this.brandMergeRules = { ...BRAND_ALIAS_DEFAULTS };
     this.autoDetectedAliases = {};
     this.autoAliasBlocks = new Set();
+    this.brandNameChanges = new Set();
     this.surveys = [];
     this.surveyGeneral = [];
     this.surveyPartner = [];
@@ -422,6 +426,30 @@ function applyAutoDetectedAliases() {
   });
 
   const detected = detectWordPrefixGroups([...manualResolved], blocks);
+
+  // ── Case / punctuation normalization ────────────────────────────────────────
+  // Group names that share the same compact token (e.g. "COLUMBIA BANK" and
+  // "Columbia Bank" both compact to "columbiabank"). Among each group pick a
+  // canonical: prefer mixed-case (has both upper and lower) → shorter → alpha.
+  const byCompact = {};
+  manualResolved.forEach(n => {
+    const key = compactBrandToken(n);
+    if (!byCompact[key]) byCompact[key] = [];
+    byCompact[key].push(n);
+  });
+  const caseScore = n => (/[a-z]/.test(n) && /[A-Z]/.test(n)) ? 0 : (/[a-z]/.test(n) ? 1 : 2);
+  Object.values(byCompact).forEach(group => {
+    if (group.length < 2) return;
+    const canonical = group.slice().sort((a, b) => {
+      const sd = caseScore(a) - caseScore(b);
+      if (sd !== 0) return sd;
+      const ld = a.length - b.length;
+      if (ld !== 0) return ld;
+      return a.localeCompare(b);
+    })[0];
+    group.forEach(n => { if (n !== canonical && !detected[n]) detected[n] = canonical; });
+  });
+
   DataStore.autoDetectedAliases = detected;
   // Always re-canonicalize so row data picks up the (possibly different) auto-detection
   // result — even when detected is empty, this clears stale merges from row data.
@@ -521,6 +549,7 @@ function loadPreloadedData() {
   DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
   DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
+  DataStore.brandNameChanges = new Set(Array.isArray(PRELOADED_DATA.brandNameChanges) ? PRELOADED_DATA.brandNameChanges : []);
   normalizeLoadedRows();
   canonicalizeAllBrandData();
   // Restore user filter / toggle / sort presets last, so they apply to the freshly
@@ -634,6 +663,7 @@ function getSerializableDataStore() {
     webRQBanners: DataStore.webRQBanners || [],
     webPreRoll: DataStore.webPreRoll || [],
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
+    brandNameChanges: [...(DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : [])],
     userPresets: getCurrentUserPresets()
   };
 }

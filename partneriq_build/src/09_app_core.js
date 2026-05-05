@@ -7,13 +7,13 @@ function renderTVPortfolioPage(main) {
   const tvRows = getTVRowsForPeriod(period);
   const socialRows = getSocialRowsForPeriod(period);
   const totalQimv = sum(tvRows, 'QI Media Value ($)');
-  const totalImpressions = sum(tvRows, 'Sponsorship Impressions');
+  const totalImpressions = sum(tvRows, 'Sponsorship QI Impressions');
   const totalDuration = sum(tvRows, 'Duration (Minutes)');
   const totalQimvPerMin = totalDuration > 0 ? totalQimv / totalDuration : null;
   const takeaways = getTopTakeaways(period);
   const yoySets = period !== 'all' ? getPortfolioYoYRowSets(period) : null;
   const prevQimv = yoySets ? sum(yoySets.priorRows, 'QI Media Value ($)') : null;
-  const prevImp = yoySets ? sum(yoySets.priorRows, 'Sponsorship Impressions') : null;
+  const prevImp = yoySets ? sum(yoySets.priorRows, 'Sponsorship QI Impressions') : null;
   const prevDuration = yoySets ? sum(yoySets.priorRows, 'Duration (Minutes)') : null;
   const prevQimvPerMin = (prevDuration && prevDuration > 0) ? prevQimv / prevDuration : null;
 
@@ -61,10 +61,10 @@ function renderTVPortfolioPage(main) {
         <div class="home-card-note">${period === 'all' ? 'All seasons' : period} · TV visible signage</div>
       </div>
       <div class="home-card">
-        <div class="home-card-label">Total TV Impressions</div>
+        <div class="home-card-label">Total QI Impressions</div>
         <div class="home-card-value">${formatNum(totalImpressions)}</div>
         ${prevImp !== null ? `<div class="home-card-note">${formatSignedPercent(pctChangeFromValues(totalImpressions, prevImp))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
-        <div class="home-card-note">Sponsorship impressions</div>
+        <div class="home-card-note">QI-adjusted impressions</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">QIMV per Minute</div>
@@ -306,9 +306,9 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
   const paidAll = getBrandPaidData(brand, currentPeriod);
 
   if (tvAll.length) {
-    const totalImp = sum(tvAll, 'Sponsorship Impressions');
+    const totalImp = sum(tvAll, 'Sponsorship QI Impressions');
     const totalMV = sum(tvAll, 'QI Media Value ($)');
-    takeaways.push(`<strong>Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures.`);
+    takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures.`);
     takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value.`);
 
     // Overall ranking context
@@ -318,10 +318,10 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
     }
 
     if (latestSeason && prevSeason) {
-      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship Impressions');
+      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship QI Impressions');
       if (impYoY !== null) {
         const cls = impYoY.change >= 0 ? 'up' : 'down';
-        takeaways.push(`<strong>Impressions YoY —</strong> TV impressions <span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> (${impYoY.basis}), signaling ${impYoY.change >= 0 ? 'strengthened' : 'reduced'} broadcast visibility.`);
+        takeaways.push(`<strong>QI Impressions YoY —</strong> QI sponsorship impressions <span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> (${impYoY.basis}), signaling ${impYoY.change >= 0 ? 'strengthened' : 'reduced'} broadcast visibility.`);
       }
       const qimvYoY = computeYoYForMetric(brand, currentPeriod, 'QI Media Value ($)');
       if (qimvYoY !== null) {

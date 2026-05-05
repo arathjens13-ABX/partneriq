@@ -2,7 +2,6 @@ function renderTVSection(brand) {
   const rows = getBrandTVData(brand, currentPeriod);
   if (!rows.length) return;
 
-  const totalImp = sum(rows, 'Sponsorship Impressions');
   const qiImp = sum(rows, 'Sponsorship QI Impressions');
   const totalMV = sum(rows, '100% Media Value ($)');
   const qiMV = sum(rows, 'QI Media Value ($)');
@@ -12,7 +11,6 @@ function renderTVSection(brand) {
   const qimvPerMin = totalDur > 0 ? qiMV / totalDur : 0;
 
   // YoY via auto-match logic
-  const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship Impressions');
   const mvYoY = computeYoYForMetric(brand, currentPeriod, 'QI Media Value ($)');
   const basisSets = getYoYRowSets(brand, currentPeriod);
   const basisLine = basisSets ? basisSets.basis : null;
@@ -64,11 +62,6 @@ function renderTVSection(brand) {
         })()}
 
         <div class="kpi-grid">
-          <div class="kpi">
-            <span class="kpi-label">Sponsorship Impressions ${makeInfoIcon('Sponsorship Impressions')}</span>
-            <span class="kpi-value">${formatNum(totalImp)}</span>
-            ${impYoY ? `<span class="kpi-change ${impYoY.change >= 0 ? 'up' : 'down'}">${impYoY.change >= 0 ? '▲' : '▼'} ${Math.abs(impYoY.change * 100).toFixed(1)}% YoY</span>` : '<span class="kpi-change neutral">—</span>'}
-          </div>
           <div class="kpi">
             <span class="kpi-label">QI Media Value ${makeInfoIcon('QI Media Value')}</span>
             <span class="kpi-value">${formatCurrency(qiMV)}</span>
@@ -161,7 +154,7 @@ function aggregateAssetRows(rows) {
     if (!byAsset[k]) byAsset[k] = { exposures: 0, duration: 0, impressions: 0, qimv: 0, mv: 0, qiScoreSum: 0, qiCount: 0, sovSum: 0, sovCount: 0, rowCount: 0 };
     byAsset[k].exposures += Number(r['Total Exposures']) || 0;
     byAsset[k].duration += Number(r['Duration (Minutes)']) || 0;
-    byAsset[k].impressions += Number(r['Sponsorship Impressions']) || 0;
+    byAsset[k].impressions += Number(r['Sponsorship QI Impressions']) || 0;
     byAsset[k].qimv += Number(r['QI Media Value ($)']) || 0;
     byAsset[k].mv += Number(r['100% Media Value ($)']) || 0;
     byAsset[k].qiScoreSum += Number(r['QI Score']) || 0;
@@ -293,7 +286,7 @@ function renderAssetBreakdown(brand, period) {
           <th class="sortable-th" data-sort-key="name">Asset ${getAssetSortIndicator('name')}</th>
           ${makeAssetSortHeader('Exposures', 'exposures', makeInfoIcon('Total Exposures'))}
           ${makeAssetSortHeader('On-Screen', 'duration', makeInfoIcon('Duration'))}
-          ${makeAssetSortHeader('Impressions', 'impressions', makeInfoIcon('Sponsorship Impressions'))}
+          ${makeAssetSortHeader('QI Impressions', 'impressions', makeInfoIcon('Sponsorship QI Impressions'))}
           ${makeAssetSortHeader('QIMV', 'qimv', makeInfoIcon('QI Media Value'))}
           ${makeAssetSortHeader('QIMV/Min', 'qimvPerMin', makeInfoIcon('QIMV per Minute'))}
           ${makeAssetSortHeader('YoY QIMV/Min', 'yoyPct', makeInfoIcon('QIMV per Minute'))}
@@ -359,7 +352,7 @@ function renderTopMatchesTable(rows) {
       <thead>
         <tr>
           <th>Game</th><th>Date</th><th>Location</th>
-          <th class="num">Impressions ${makeInfoIcon('Sponsorship Impressions')}</th>
+          <th class="num">QI Impressions ${makeInfoIcon('Sponsorship QI Impressions')}</th>
           <th class="num">QIMV ${makeInfoIcon('QI Media Value')}</th>
           <th class="num">QI Score ${makeInfoIcon('QI Score')}</th>
         </tr>
@@ -370,7 +363,7 @@ function renderTopMatchesTable(rows) {
             <td>${r.Match || '—'}</td>
             <td style="font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);">${r.Matchdate || '—'}</td>
             <td style="color: var(--text-dim);">${r.Location || '—'}</td>
-            <td class="num">${formatNum(r['Sponsorship Impressions'])}</td>
+            <td class="num">${formatNum(r['Sponsorship QI Impressions'])}</td>
             <td class="num" style="font-weight: 500;">${formatCurrency(r['QI Media Value ($)'])}</td>
             <td class="num">${(r['QI Score'] || 0).toFixed(1)}</td>
           </tr>

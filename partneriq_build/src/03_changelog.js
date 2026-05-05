@@ -1,5 +1,50 @@
 const CHANGELOG = [
   {
+    version: 'v0.30',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Consolidate all TV impressions reporting to QI Impressions',
+    changes: [
+      {
+        category: 'TV Visible Signage',
+        items: [
+          `Removed the "Sponsorship Impressions" KPI card from the partner-page TV top box — QI Sponsorship Impressions is the only impressions figure now shown`,
+          `TV quick link page: renamed "Total TV Impressions" home-card to "Total QI Impressions" and switched its computation to Sponsorship QI Impressions (YoY delta also now compares QI figures)`,
+          `Partner-page topline takeaway updated from "Delivered X sponsorship impressions" to "Delivered X QI sponsorship impressions"; heading relabelled from "Impressions —" to "QI Impressions —"`,
+          `Partner-page YoY impressions takeaway relabelled from "Impressions YoY" to "QI Impressions YoY" and now tracks the QI column for the trend`,
+          `Asset breakdown table "Impressions" column header relabelled to "QI Impressions" and accumulates Sponsorship QI Impressions instead of raw Sponsorship Impressions`,
+          `Top Matches table "Impressions" column relabelled to "QI Impressions" and displays Sponsorship QI Impressions per row`,
+          `PDF report template: tvImpr and per-asset impressions accumulator switched to Sponsorship QI Impressions; top-KPI card label changed from "Sponsored Impressions" to "QI Impressions"`,
+        ]
+      }
+    ]
+  },
+  {
+    version: 'v0.29',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Brand grouping overhaul — case variants, fuzzy prefix, name changes',
+    changes: [
+      {
+        category: 'Brand Alias Engine',
+        items: [
+          `Auto-detection now catches case/punctuation variants: names that compact to the same token (e.g. "COLUMBIA BANK" and "Columbia Bank", "19 ACRES" and "19 Acres") are automatically grouped — mixed-case form wins as canonical, falling back to shorter then alphabetical`,
+          `Fixed word-prefix matching for names containing apostrophes or hyphens: "Hempler's" now normalizes to "hemplers" before splitting, so it correctly prefix-matches "HEMPLERS FOOD GROUP" (previously the apostrophe became a word boundary making ["hempler","s"] which didn't match)`,
+          `Auto-detected groupings table in the alias manager now shows a Type column — "Case variant" or "Word prefix" — so you can see why two names were grouped`,
+        ]
+      },
+      {
+        category: 'Brand Alias Manager UI',
+        items: [
+          `Added dedicated "Name Changes / Formerly Known As" form: enter a former brand name and its current name to merge all historical data onto one partner page. Entries appear with a red "Rename" badge in the aliases table, visually distinct from shorthand aliases`,
+          `"Custom" alias badge renamed to "Alias" for clarity; renamed entries show "Rename" badge in brand-red`,
+          `"Add / update" button split into "Add alias" and "Add rename" with separate forms and appropriate placeholder text`,
+          `DataStore now persists brandNameChanges (the set of alias keys that represent renames) through export/import so rename labels survive dashboard sharing`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.28',
     date: 'May 2026',
     source: 'Claude',

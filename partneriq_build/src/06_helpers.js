@@ -266,8 +266,12 @@ function renderBrandAliasManager() {
 
   const options  = getBrandAliasOptions();
   const rows     = getBrandAliasRows();
+  const renames  = DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : new Set();
   const detected = Object.entries(DataStore.autoDetectedAliases || {}).sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0]));
   const blocks   = [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])].sort();
+
+  // Classify auto-detected entries: same compact token = case variant, otherwise word-prefix
+  const isCase = (variant, canonical) => compactBrandToken(variant) === compactBrandToken(canonical);
 
   // ── Manual alias table ─────────────────────────────────────────────────────
   const manualTable = rows.length
@@ -277,12 +281,20 @@ function renderBrandAliasManager() {
           <th class="text-left sep">Rolls up to</th>
           <th>Type</th><th></th>
         </tr></thead><tbody>
-        ${rows.map(r => `<tr>
-          <td class="text-left">${escapeHTML(r.alias)}</td>
-          <td class="text-left sep">${escapeHTML(r.canonical)}</td>
-          <td>${r.isDefault ? '<span class="confidence-badge medium">Default</span>' : '<span class="confidence-badge high">Custom</span>'}</td>
-          <td class="num">${r.isDefault ? '' : `<button class="btn" type="button" data-remove-brand-alias="${escapeHTML(r.alias)}">Remove</button>`}</td>
-        </tr>`).join('')}
+        ${rows.map(r => {
+          const isRename  = renames.has(r.alias);
+          const badge = r.isDefault
+            ? '<span class="confidence-badge medium">Default</span>'
+            : isRename
+              ? '<span class="confidence-badge high" style="background:var(--brand-red);color:#fff;">Rename</span>'
+              : '<span class="confidence-badge high">Alias</span>';
+          return `<tr>
+            <td class="text-left">${escapeHTML(r.alias)}</td>
+            <td class="text-left sep">${escapeHTML(r.canonical)}</td>
+            <td>${badge}</td>
+            <td class="num">${r.isDefault ? '' : `<button class="btn" type="button" data-remove-brand-alias="${escapeHTML(r.alias)}">Remove</button>`}</td>
+          </tr>`;
+        }).join('')}
         </tbody></table></div>`
     : `<div class="section-unavailable">No manual alias rules yet.</div>`;
 
@@ -292,11 +304,13 @@ function renderBrandAliasManager() {
         <table class="data-table"><thead><tr>
           <th class="text-left">Detected variant</th>
           <th class="text-left sep">Groups with</th>
+          <th>Type</th>
           <th></th>
         </tr></thead><tbody>
         ${detected.map(([variant, canonical]) => `<tr>
           <td class="text-left">${escapeHTML(variant)}</td>
           <td class="text-left sep">${escapeHTML(canonical)}</td>
+          <td><span class="confidence-badge medium">${isCase(variant, canonical) ? 'Case variant' : 'Word prefix'}</span></td>
           <td class="num"><button class="btn" type="button" data-keep-separate="${escapeHTML(variant)}">Keep separate</button></td>
         </tr>`).join('')}
         </tbody></table></div>`
@@ -327,21 +341,32 @@ function renderBrandAliasManager() {
       <div class="assignment-stat"><div class="label">Auto-detected</div><div class="value">${formatNum(detected.length)}</div></div>
     </div>
 
-    <div class="leaderboard-note">Use manual rules for abbreviations or completely different names (e.g. Comcast → Xfinity). Word-prefix variants like "Axiom Eco-Pest Control → Axiom" are grouped automatically — use Keep separate if a grouping is wrong.</div>
+    <div class="leaderboard-note">Auto-grouping handles two cases automatically: <strong>Case variants</strong> (COLUMBIA BANK ↔ Columbia Bank) and <strong>Word-prefix matches</strong> (Hempler's Food Group → Hempler's). Use <strong>manual aliases</strong> for abbreviations or different names (Comcast → Xfinity). Use <strong>name changes</strong> for partners that rebranded (Umpqua Bank → Columbia Bank).</div>
 
-    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">
+    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-top:16px;margin-bottom:8px;">Add alias</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:6px;">
       <label style="display:flex;flex-direction:column;gap:6px;color:var(--text-dim);font-size:12px;">Source name / alias
         <input class="assignment-input" id="brandAliasInput" placeholder="Daimler Trucks North America" /></label>
       <label style="display:flex;flex-direction:column;gap:6px;color:var(--text-dim);font-size:12px;">Canonical partner
         <input class="assignment-input" id="brandCanonicalInput" list="brandCanonicalOptions" placeholder="Daimler" /></label>
-      <button class="btn btn-primary" id="addBrandAliasBtn" type="button">Add / update</button>
+      <button class="btn btn-primary" id="addBrandAliasBtn" type="button">Add alias</button>
     </div>
 
-    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Manual aliases</div>
+    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-top:18px;margin-bottom:8px;">Add name change <span style="font-style:normal;text-transform:none;letter-spacing:0;font-size:10px;color:var(--text-muted);">— formerly known as</span></div>
+    <div class="leaderboard-note" style="margin-bottom:10px;">Use this when a partner rebranded. Historical data under the old name will roll up to the current partner page.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:16px;">
+      <label style="display:flex;flex-direction:column;gap:6px;color:var(--text-dim);font-size:12px;">Former name
+        <input class="assignment-input" id="brandFormerInput" placeholder="Umpqua Bank" /></label>
+      <label style="display:flex;flex-direction:column;gap:6px;color:var(--text-dim);font-size:12px;">Current name
+        <input class="assignment-input" id="brandCurrentInput" list="brandCanonicalOptions" placeholder="Columbia Bank" /></label>
+      <button class="btn btn-primary" id="addBrandRenameBtn" type="button">Add rename</button>
+    </div>
+
+    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">Manual aliases &amp; renames</div>
     ${manualTable}
 
     <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--text-muted);margin-top:18px;margin-bottom:8px;">Auto-detected groupings</div>
-    <div class="leaderboard-note" style="margin-bottom:10px;">Detected automatically from shared name prefixes. These are applied on top of manual rules and saved with the export.</div>
+    <div class="leaderboard-note" style="margin-bottom:10px;">Detected automatically from case variants and shared name prefixes. Applied on top of manual rules and saved with the export.</div>
     ${autoTable}
     ${blockedSection}
 
@@ -351,6 +376,7 @@ function renderBrandAliasManager() {
     </div>`;
 
   document.getElementById('addBrandAliasBtn')?.addEventListener('click', addBrandAliasFromInputs);
+  document.getElementById('addBrandRenameBtn')?.addEventListener('click', addBrandRenameFromInputs);
   document.getElementById('applyBrandAliasesBtn')?.addEventListener('click', () => {
     canonicalizeAllBrandData();
     renderBrandAliasManager();
@@ -381,9 +407,29 @@ function addBrandAliasFromInputs() {
   updateBrandDropdown(document.getElementById('brandSearch').value);
 }
 
+function addBrandRenameFromInputs() {
+  const formerInput  = document.getElementById('brandFormerInput');
+  const currentInput = document.getElementById('brandCurrentInput');
+  const former  = String(formerInput  ? formerInput.value  : '').trim();
+  const currentRaw = String(currentInput ? currentInput.value : '').trim();
+  if (!former || !currentRaw) { alert('Enter both the former name and the current partner name.'); return; }
+  const current = resolveCanonicalBrandName(currentRaw);
+  if (former === current) { alert('The former name and current name are exactly the same.'); return; }
+  DataStore.brandMergeRules[former] = current;
+  if (!(DataStore.brandNameChanges instanceof Set)) DataStore.brandNameChanges = new Set();
+  DataStore.brandNameChanges.add(former);
+  if (formerInput)  formerInput.value  = '';
+  if (currentInput) currentInput.value = '';
+  canonicalizeAllBrandData();
+  renderBrandAliasManager();
+  renderApp();
+  updateBrandDropdown(document.getElementById('brandSearch').value);
+}
+
 function removeBrandAlias(alias) {
   if (!alias || BRAND_ALIAS_DEFAULTS[alias] !== undefined) return;
   delete DataStore.brandMergeRules[alias];
+  if (DataStore.brandNameChanges instanceof Set) DataStore.brandNameChanges.delete(alias);
   canonicalizeAllBrandData();
   renderBrandAliasManager();
   renderApp();

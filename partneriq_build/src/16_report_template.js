@@ -91,7 +91,7 @@ function gatherReportData(brand) {
   const tvYoY  = latestTVSeason ? getYoYRowSets(brand, latestTVSeason) : null;
 
   const tvQimv    = sum(tvRows, 'QI Media Value ($)');
-  const tvImpr    = sum(tvRows, 'Sponsorship Impressions');
+  const tvImpr    = sum(tvRows, 'Sponsorship QI Impressions');
   const tvQimvPrior = tvYoY ? sum(tvYoY.priorRows, 'QI Media Value ($)') : null;
   const tvYoyPct  = (tvQimvPrior && tvQimvPrior > 0) ? pctChange(tvQimv, tvQimvPrior) : null;
   const tvSoV     = tvRows.length ? (sum(tvRows,'Share of Voice (%)') / tvRows.length).toFixed(1) : null;
@@ -102,7 +102,7 @@ function gatherReportData(brand) {
   tvRows.forEach(r => {
     const loc = r.Location || r.Tool || 'Unknown';
     if (!assetMap[loc]) assetMap[loc] = { name: loc, impressions: 0, qimv: 0, duration: 0 };
-    assetMap[loc].impressions += Number(r['Sponsorship Impressions']) || 0;
+    assetMap[loc].impressions += Number(r['Sponsorship QI Impressions']) || 0;
     assetMap[loc].qimv        += Number(r['QI Media Value ($)'])      || 0;
     assetMap[loc].duration    += Number(r['Duration (Minutes)'])      || 0;
   });
@@ -181,7 +181,7 @@ function generatePartnerReport(brand) {
     sub:   d.tv.season || '',
   });
   if (d.tv.impressions > 0) topKpis.push({
-    label: 'Sponsored Impressions',
+    label: 'QI Impressions',
     value: formatNum(d.tv.impressions),
     delta: '',
     sub:   `${d.tv.matches} games`,
