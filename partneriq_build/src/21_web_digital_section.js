@@ -15,8 +15,21 @@
 // -- Numeric / percent parsers --
 function parseWebNum(v) {
   if (v === null || v === undefined || v === '') return null;
-  const n = parseFloat(String(v).replace(/[,$\s]/g, '').trim());
-  return isNaN(n) ? null : n;
+  const raw = String(v).trim();
+  if (!raw || raw === '—' || raw === '-') return null;
+  // Supports plain numbers (1,234), currency-style wrappers, and compact export
+  // values such as 1.29M / 456.1K that sometimes appear in ad-server CSVs.
+  const cleaned = raw.replace(/[,$\s]/g, '').replace(/^\((.*)\)$/, '-$1');
+  const match = cleaned.match(/^(-?\d+(?:\.\d+)?)([kmb])?$/i);
+  if (!match) {
+    const fallback = parseFloat(cleaned.replace(/[^0-9.\-]/g, ''));
+    return isNaN(fallback) ? null : fallback;
+  }
+  const base = parseFloat(match[1]);
+  if (isNaN(base)) return null;
+  const suffix = (match[2] || '').toLowerCase();
+  const mult = suffix === 'k' ? 1e3 : suffix === 'm' ? 1e6 : suffix === 'b' ? 1e9 : 1;
+  return base * mult;
 }
 
 function parseWebPct(v) {
@@ -697,25 +710,25 @@ function renderBlazersBannersSubsection(brand, rows) {
 function renderRQBannersSubsection(brand, rows) {
   // RoseQuarter data is usually advertiser-level, but aggregate defensively
   // in case a report splits one advertiser across multiple rows.
-  const partnerRow = aggregateWebBannerRows(rows);
-  const tbiRow     = getTBIRQBanner();
-  const hasTBI     = !!tbiRow;
+  const partnerAgg = aggregateWebBannerRows(rows);
+  const tbiAgg     = getTBIRQBanner();
+  const hasTBI     = !!tbiAgg;
 
   const kpiHTML = `
     <div class="kpi-grid" style="margin-bottom:18px;">
       <div class="kpi">
         <span class="kpi-label">Ad server impressions</span>
-        <span class="kpi-value">${_fmtWebImpr(partnerRow.Impressions)}</span>
+        <span class="kpi-value">${_fmtWebImpr(partnerAgg.impressions)}</span>
         <span class="kpi-change neutral">RoseQuarter.com</span>
       </div>
       <div class="kpi">
         <span class="kpi-label">Ad server clicks</span>
-        <span class="kpi-value">${_fmtWebImpr(partnerRow.Clicks)}</span>
+        <span class="kpi-value">${_fmtWebImpr(partnerAgg.clicks)}</span>
         <span class="kpi-change neutral">RoseQuarter.com</span>
       </div>
       <div class="kpi">
         <span class="kpi-label">Click-through rate</span>
-        <span class="kpi-value">${_fmtWebCTR(partnerRow.CTR)}</span>
+        <span class="kpi-value">${_fmtWebCTR(partnerAgg.ctr)}</span>
         <span class="kpi-change neutral">Clicks ÷ impressions</span>
       </div>
     </div>
@@ -740,15 +753,15 @@ function renderRQBannersSubsection(brand, rows) {
           <tbody>
             <tr style="font-weight:600;background:var(--bg-card);">
               <td class="col-left">${escapeHTML(brand)}</td>
-              <td class="num">${_fmtWebImpr(partnerRow.Impressions)}${_vsRatioLabel(partnerRow.Impressions, tbiRow.Impressions)}</td>
-              <td class="num">${_fmtWebImpr(partnerRow.Clicks)}</td>
-              <td class="num">${_fmtWebCTR(partnerRow.CTR)}</td>
+              <td class="num">${_fmtWebImpr(partnerAgg.impressions)}${_vsRatioLabel(partnerAgg.impressions, tbiAgg.impressions)}</td>
+              <td class="num">${_fmtWebImpr(partnerAgg.clicks)}</td>
+              <td class="num">${_fmtWebCTR(partnerAgg.ctr)}</td>
             </tr>
             <tr style="color:var(--text-muted);">
               <td class="col-left">TBI (benchmark)</td>
-              <td class="num">${_fmtWebImpr(tbiRow.Impressions)}</td>
-              <td class="num">${_fmtWebImpr(tbiRow.Clicks)}</td>
-              <td class="num">${_fmtWebCTR(tbiRow.CTR)}</td>
+              <td class="num">${_fmtWebImpr(tbiAgg.impressions)}</td>
+              <td class="num">${_fmtWebImpr(tbiAgg.clicks)}</td>
+              <td class="num">${_fmtWebCTR(tbiAgg.ctr)}</td>
             </tr>
           </tbody>
         </table>
