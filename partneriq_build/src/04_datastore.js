@@ -174,6 +174,9 @@ const DataStore = {
   affidavits: [],                   // TV & Radio Affidavit spot delivery counts
   ancLED: [],                       // ANC LED Report — per-asset in-arena exposure time
   virtualSignageSchedule: [],       // On-court virtual signage schedule (center + 3-point line)
+  webBlazersBanners: [],            // Blazers.com display banner delivery rows
+  webRQBanners: [],                 // RoseQuarter.com display banner delivery rows
+  webPreRoll: [],                   // Pre-Roll video delivery rows
   brands: new Set(),
   channelsByBrand: {},
 
@@ -197,6 +200,9 @@ const DataStore = {
     this.affidavits = [];
     this.ancLED = [];
     this.virtualSignageSchedule = [];
+    this.webBlazersBanners = [];
+    this.webRQBanners = [];
+    this.webPreRoll = [];
     this.brands = new Set();
     this.channelsByBrand = {};
   },
@@ -207,7 +213,7 @@ const DataStore = {
     if (!clean) return;
     this.brands.add(clean);
     if (!this.channelsByBrand[clean]) {
-      this.channelsByBrand[clean] = { tv: false, organic: false, paid: false, survey: false, affidavit: false, ancLED: false, virtualSignage: false };
+      this.channelsByBrand[clean] = { tv: false, organic: false, paid: false, survey: false, affidavit: false, ancLED: false, virtualSignage: false, webDisplay: false };
     }
     this.channelsByBrand[clean][channel] = true;
   },
@@ -223,7 +229,8 @@ const DataStore = {
     const surveyPartner  = Array.isArray(this.surveyPartner)  ? this.surveyPartner.length  : 0;
     const surveyPrograms = Array.isArray(this.surveyPrograms) ? this.surveyPrograms.length : 0;
     const vsSchedule     = Array.isArray(this.virtualSignageSchedule) ? this.virtualSignageSchedule.length : 0;
-    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule > 0;
+    const webDisplay     = (this.webBlazersBanners||[]).length + (this.webRQBanners||[]).length + (this.webPreRoll||[]).length;
+    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay > 0;
   }
 };
 
@@ -238,7 +245,11 @@ function hasPreloadedData() {
     : 0;
   const paid = PRELOADED_DATA.paidSocial && typeof PRELOADED_DATA.paidSocial === 'object' ? Object.keys(PRELOADED_DATA.paidSocial).length : 0;
   const surveys = Array.isArray(PRELOADED_DATA.surveys) ? PRELOADED_DATA.surveys.length : 0;
-  return tv + organic + paid + surveys > 0;
+  const webDisplay =
+    (Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners.length : 0) +
+    (Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners.length : 0) +
+    (Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll.length : 0);
+  return tv + organic + paid + surveys + webDisplay > 0;
 }
 
 function normalizeLoadedRows() {
@@ -267,6 +278,19 @@ function normalizeLoadedRows() {
   if (Array.isArray(DataStore.surveys)) {
     DataStore.surveys.forEach(r => resolveAndTrackRaw(r, 'Brand', '_rawBrand'));
   }
+
+  (DataStore.webBlazersBanners || []).forEach(r => {
+    if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+  });
+  (DataStore.webRQBanners || []).forEach(r => {
+    if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand);
+  });
+  (DataStore.webPreRoll || []).forEach(r => {
+    if (r) {
+      r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+      if (r.EventDate && typeof r.EventDate === 'string') r.EventDate = new Date(r.EventDate);
+    }
+  });
 }
 
 
@@ -332,6 +356,16 @@ function canonicalizeAllBrandData(skipAutoDetect = false) {
   (DataStore.ancLED || []).forEach(r => {
     if (r) r.Brand = resolveCanonicalBrandName(r._rawSponsor || r.Brand);
   });
+  // Web & Digital — re-resolve from source partner / advertiser names.
+  (DataStore.webBlazersBanners || []).forEach(r => {
+    if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+  });
+  (DataStore.webRQBanners || []).forEach(r => {
+    if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand);
+  });
+  (DataStore.webPreRoll || []).forEach(r => {
+    if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+  });
   if (currentBrand) currentBrand = resolveCanonicalBrandName(currentBrand);
   rebuildBrandRegistryFromData();
   if (!skipAutoDetect) applyAutoDetectedAliases();
@@ -375,6 +409,9 @@ function applyAutoDetectedAliases() {
   });
   (DataStore.affidavits || []).forEach(r => addFirstAvailable(r, '_rawPartner', 'Brand'));
   (DataStore.ancLED || []).forEach(r => addFirstAvailable(r, '_rawSponsor', 'Brand'));
+  (DataStore.webBlazersBanners || []).forEach(r => addFirstAvailable(r, '_rawPartner', 'Brand'));
+  (DataStore.webRQBanners || []).forEach(r => addFirstAvailable(r, '_rawAdvertiser', 'Brand'));
+  (DataStore.webPreRoll || []).forEach(r => addFirstAvailable(r, '_rawPartner', 'Brand'));
 
   // Resolve through manual aliases only (skip step 4 to avoid feedback loops)
   // so detection sees the post-manual but pre-auto-detect canonical set.
@@ -450,6 +487,14 @@ function rebuildBrandRegistryFromData() {
     if (g.BrandA) DataStore.registerBrand(g.BrandA, 'virtualSignage');
     if (g.BrandB) DataStore.registerBrand(g.BrandB, 'virtualSignage');
   });
+
+  // Web & Digital — register all display / pre-roll brands so channel chips,
+  // partner browse, exports, and preloaded dashboards stay in sync.
+  [...(DataStore.webBlazersBanners || []),
+   ...(DataStore.webRQBanners || []),
+   ...(DataStore.webPreRoll || [])].forEach(r => {
+    if (r.Brand) DataStore.registerBrand(r.Brand, 'webDisplay');
+  });
 }
 
 function loadPreloadedData() {
@@ -472,6 +517,9 @@ function loadPreloadedData() {
   DataStore.affidavits = Array.isArray(PRELOADED_DATA.affidavits) ? PRELOADED_DATA.affidavits : [];
   DataStore.ancLED = Array.isArray(PRELOADED_DATA.ancLED) ? PRELOADED_DATA.ancLED : [];
   DataStore.virtualSignageSchedule = Array.isArray(PRELOADED_DATA.virtualSignageSchedule) ? PRELOADED_DATA.virtualSignageSchedule : [];
+  DataStore.webBlazersBanners = Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners : [];
+  DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
+  DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
   normalizeLoadedRows();
   canonicalizeAllBrandData();
@@ -582,6 +630,9 @@ function getSerializableDataStore() {
     affidavits: DataStore.affidavits || [],
     ancLED: DataStore.ancLED || [],
     virtualSignageSchedule: DataStore.virtualSignageSchedule || [],
+    webBlazersBanners: DataStore.webBlazersBanners || [],
+    webRQBanners: DataStore.webRQBanners || [],
+    webPreRoll: DataStore.webPreRoll || [],
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
     userPresets: getCurrentUserPresets()
   };

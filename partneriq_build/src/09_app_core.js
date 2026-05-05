@@ -187,6 +187,7 @@ function renderApp() {
     { key: 'paid',           label: 'Paid Social',                slot: 'paid-slot' },
     { key: 'ancLED',         label: 'ANC LED',                    slot: 'anc-led-slot' },
     { key: 'affidavit',      label: 'TV/Radio Affidavits',        slot: 'affidavits-slot' },
+    { key: 'webDisplay',     label: 'Web & Digital',              slot: 'web-digital-slot' },
   ].map(c => {
     // Survey Research now consolidates Brand Awareness, Fan Insights, Programs & Community,
     // and Moda/Delta-specific survey questions into one partner-page dropdown.
@@ -198,6 +199,7 @@ function renderApp() {
     else if (c.key === 'survey')    active = typeof hasSurveyResearchDataForBrand === 'function' ? hasSurveyResearchDataForBrand(currentBrand) : !!channels.survey;
     else if (c.key === 'ancLED')    active = typeof hasANCLEDDataForBrand === 'function' ? hasANCLEDDataForBrand(currentBrand) : !!channels.ancLED;
     else if (c.key === 'affidavit') active = typeof hasAffidavitDataForBrand === 'function' ? hasAffidavitDataForBrand(currentBrand) : !!channels.affidavit;
+    else if (c.key === 'webDisplay') active = typeof hasWebDisplayDataForBrand === 'function' ? hasWebDisplayDataForBrand(currentBrand) : !!channels.webDisplay;
     return `<button type="button" class="channel-tag channel-tag-button ${active ? 'active' : ''}" data-channel-jump="${c.slot}" ${active ? '' : 'disabled'}>${c.label}</button>`;
   }).join('');
 
@@ -245,6 +247,7 @@ function renderApp() {
     <div id="paid-slot"></div>
     <div id="anc-led-slot"></div>
     <div id="affidavits-slot"></div>
+    <div id="web-digital-slot"></div>
   `;
 
   document.querySelectorAll('[data-channel-jump]').forEach(btn => {
@@ -285,6 +288,9 @@ function renderApp() {
   }
   if (typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(currentBrand)) {
     renderAffidavitsSection(currentBrand);
+  }
+  if (typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(currentBrand)) {
+    renderWebDigitalSection(currentBrand);
   }
 
   wireInfoIcons();

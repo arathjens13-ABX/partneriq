@@ -702,6 +702,12 @@ function detectFileType(filename, rows = []) {
   if (base.startsWith('survey_') || lower.startsWith('survey_')) return 'survey';
   if (cols.includes('unaided recall') && cols.includes('aided recall') && cols.includes('survey')) return 'survey';
 
+  // Web & Digital delivery reports — must be checked before generic tv/paid/organic fallbacks
+  // Match both space-separated ("Delivery Report Blazers") and underscore ("Delivery_Report_Blazers")
+  if (lower.includes('delivery report blazers') || lower.includes('delivery_report_blazers'))           return 'blazersWebDisplay';
+  if (lower.includes('delivery report rosequarter') || lower.includes('delivery_report_rosequarter'))   return 'rqWebDisplay';
+  if (lower.includes('pre-roll') || lower.includes('pre_roll')) return 'webPreRoll';
+
   // Zoomph organic social — three file types detected by filename prefix
   if (lower.includes('brandedpartnerperformance') || base.startsWith('brandedpartnerperformance')) return 'zoomphBrand';
   if (lower.includes('brandedcontentseries') || base.startsWith('brandedcontentseries')) return 'zoomphSeries';
@@ -826,6 +832,15 @@ async function ingestFile(file) {
     const sponsored = normalized.filter(r => r.Sponsor).length;
     return { success: true, type: 'programSurvey', rows: normalized.length, programs: programs.length, waves: waves.length, sponsored, filename: file.name };
 
+  } else if (type === 'blazersWebDisplay') {
+    return ingestBlazersBannersFile(file, ext);
+
+  } else if (type === 'rqWebDisplay') {
+    return ingestRQBannersFile(file, ext);
+
+  } else if (type === 'webPreRoll') {
+    return ingestPreRollFile(file, ext);
+
   } else if (type === 'tvAffidavit' || type === 'radioAffidavit') {
     const channel = type === 'tvAffidavit' ? 'TV' : 'Radio';
     const ingested = ingestAffidavitFile(rows, channel);
@@ -918,6 +933,12 @@ function renderFileLog() {
           ? `ANC LED Report · ${r.arena} / ${r.asset} · ${r.rows} rows`
         : r.type === 'virtualSignage'
           ? `Virtual Signage Schedule · ${r.rows} games (${r.homeGames} home · ${r.awayGames} away) · ${r.brands} brands`
+        : r.type === 'blazersWebDisplay'
+          ? `Web & Digital · Blazers.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`
+        : r.type === 'rqWebDisplay'
+          ? `Web & Digital · RoseQuarter.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`
+        : r.type === 'webPreRoll'
+          ? `Web & Digital · Pre-Roll Video · ${r.brands || 'unknown brands'} · ${r.rows} rows`
         : `Organic Social · ${r.brand} · ${r.rows} posts`;
       return `<div class="file-item success">
         <span class="file-item-name">${r.filename}</span>
