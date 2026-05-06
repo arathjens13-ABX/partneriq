@@ -1,5 +1,30 @@
 const CHANGELOG = [
   {
+    version: 'v0.32',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Revamp Top-line Takeaways — home page and partner pages',
+    changes: [
+      {
+        category: 'Home Page Takeaways',
+        items: [
+          `Removed the "Impressions" bullet (TV sponsorship impressions) — now only QIMV represents the TV channel`,
+          `Removed the "strongest location by QIMV/min" bullet — was purely TV-centric and not a top-line portfolio signal`,
+          `Added a survey leader bullet: finds the brand with the highest aided or unaided recall % across all survey data and calls it out by name`,
+        ]
+      },
+      {
+        category: 'Partner Page Takeaways',
+        items: [
+          `Removed the "QIMV per minute exposure efficiency" ranking bullet (getBrandOverallRank) — not a meaningful top-line takeaway`,
+          `Removed the separate QI Impressions YoY and QIMV YoY bullets; YoY deltas are now shown inline within the main QIMV and QI Impressions bullets`,
+          `Added a survey takeaway: picks whichever of aided or unaided recall has the higher %, shows percentage point change YoY; omitted if no survey data exists for the brand`,
+          `Condensed the two organic social bullets (impressions and brand exposure value) into a single bullet with engagement rate and BEV inline`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.31',
     date: 'May 2026',
     source: 'Claude',

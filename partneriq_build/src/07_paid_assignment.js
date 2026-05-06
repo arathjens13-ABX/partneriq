@@ -372,21 +372,15 @@ function getTopTakeaways(period) {
   const takeaways = [];
   const yoySets = period !== 'all' ? getPortfolioYoYRowSets(period) : null;
   const totalQimv = sum(tvRows, 'QI Media Value ($)');
-  const totalImp = sum(tvRows, 'Sponsorship Impressions');
 
   if (tvRows.length) {
     let qimvGrowthText = '';
-    let impGrowthText = '';
     if (yoySets) {
       const prevQimv = sum(yoySets.priorRows, 'QI Media Value ($)');
-      const prevImp  = sum(yoySets.priorRows, 'Sponsorship Impressions');
       const qimvChg  = pctChangeFromValues(totalQimv, prevQimv);
-      const impChg   = pctChangeFromValues(totalImp,  prevImp);
       if (qimvChg !== null) qimvGrowthText = ` (${formatSignedPercent(qimvChg)} vs ${yoySets.priorSeason})`;
-      if (impChg  !== null) impGrowthText  = ` (${formatSignedPercent(impChg)} vs ${yoySets.priorSeason})`;
     }
     takeaways.push(`<strong>QIMV —</strong> TV visible signage generated <strong>${formatCurrency(totalQimv)}</strong> in QI Media Value${qimvGrowthText}.`);
-    takeaways.push(`<strong>Impressions —</strong> <strong>${formatNum(totalImp)}</strong> sponsorship impressions delivered${impGrowthText}.`);
   }
 
   const partners = addPartnerYoY(aggregateBy(tvRows, 'Brand'), period).sort((a, b) => b.qimv - a.qimv);
@@ -394,9 +388,24 @@ function getTopTakeaways(period) {
     takeaways.push(`<strong>${partners[0].name}</strong> led the portfolio by total TV QI Media Value at <strong>${formatCurrency(partners[0].qimv)}</strong>${partners[0].yoyQimv !== null ? ` (${formatSignedPercent(partners[0].yoyQimv)} YoY)` : ''}.`);
   }
 
-  const locations = addLocationYoY(aggregateBy(tvRows, 'Location'), period).sort((a, b) => b.qimvPerMin - a.qimvPerMin);
-  if (locations[0]) {
-    takeaways.push(`<strong>${locations[0].name}</strong> was the strongest location by QIMV/min at <strong>${formatCurrency(locations[0].qimvPerMin)}</strong>${locations[0].yoyQpm !== null ? ` (${formatSignedPercent(locations[0].yoyQpm)} YoY)` : ''}.`);
+  // Survey leader — brand with the highest aided or unaided recall % across the portfolio
+  const surveyBrands = getSurveyBrandList();
+  if (surveyBrands.length) {
+    let topBrand = null, topPct = -1, topLabel = '';
+    surveyBrands.forEach(b => {
+      const wave = getSurveyLatestWave(b, 'all');
+      if (!wave) return;
+      const ap = wave.AidedPct, up = wave.UnaidedPct;
+      const best = (ap !== null && up !== null) ? Math.max(ap, up) : (ap !== null ? ap : up);
+      if (best !== null && best > topPct) {
+        topPct = best;
+        topBrand = b;
+        topLabel = (up !== null && up > (ap ?? -1)) ? 'unaided' : 'aided';
+      }
+    });
+    if (topBrand) {
+      takeaways.push(`<strong>${topBrand}</strong> led the portfolio in fan awareness at <strong>${(topPct * 100).toFixed(1)}%</strong> ${topLabel} recall.`);
+    }
   }
 
   if (socialRows.length) {
