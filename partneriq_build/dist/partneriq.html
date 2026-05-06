@@ -2952,6 +2952,33 @@ header {
   margin-top: 2px;
 }
 
+/* ── Error toast ─────────────────────────────────────────────── */
+#app-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--bg-elev-3);
+  border: 1px solid var(--negative);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 9999;
+  max-width: 480px;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+#app-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
+
 </style>
 </head>
 </head>
@@ -3180,6 +3207,47 @@ const VIEWER_MODE = false;
 
 
 const CHANGELOG = [
+  {
+    version: 'v0.32',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Revamp Top-line Takeaways — home page and partner pages',
+    changes: [
+      {
+        category: 'Home Page Takeaways',
+        items: [
+          `Removed the "Impressions" bullet (TV sponsorship impressions) — now only QIMV represents the TV channel`,
+          `Removed the "strongest location by QIMV/min" bullet — was purely TV-centric and not a top-line portfolio signal`,
+          `Added a survey leader bullet: finds the brand with the highest aided or unaided recall % across all survey data and calls it out by name`,
+        ]
+      },
+      {
+        category: 'Partner Page Takeaways',
+        items: [
+          `Removed the "QIMV per minute exposure efficiency" ranking bullet (getBrandOverallRank) — not a meaningful top-line takeaway`,
+          `Removed the separate QI Impressions YoY and QIMV YoY bullets; YoY deltas are now shown inline within the main QIMV and QI Impressions bullets`,
+          `Added a survey takeaway: picks whichever of aided or unaided recall has the higher %, shows percentage point change YoY; omitted if no survey data exists for the brand`,
+          `Condensed the two organic social bullets (impressions and brand exposure value) into a single bullet with engagement rate and BEV inline`,
+        ]
+      }
+    ]
+  },
+  {
+    version: 'v0.31',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Codebase cleanup — toast errors, dead code removal, normalization safety',
+    changes: [
+      {
+        category: 'Code Quality',
+        items: [
+          `Replaced all browser alert() calls (06_helpers.js, 04_datastore.js, 16_report_template.js) with a new showErrorToast() helper that displays a styled in-app toast notification`,
+          `Deleted unused formatMeanDiff() function from 07_paid_assignment.js — was defined but never called`,
+          `Added per-row try/catch error handling in normalizeLoadedRows() (04_datastore.js) so a malformed row logs a console warning and is skipped rather than crashing the entire normalization pipeline`,
+        ]
+      }
+    ]
+  },
   {
     version: 'v0.30',
     date: 'May 2026',
@@ -4455,42 +4523,56 @@ function hasPreloadedData() {
 
 function normalizeLoadedRows() {
   (DataStore.tvSignage || []).forEach(r => {
-    if (r && r.Season) r.Season = normalizeSeasonLabel(r.Season);
-    resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+    try {
+      if (r && r.Season) r.Season = normalizeSeasonLabel(r.Season);
+      resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+    } catch(e) { console.warn('normalizeLoadedRows: skipped malformed TV row', e); }
   });
 
   Object.values(DataStore.organicSocial || {}).forEach(rows => {
     if (!Array.isArray(rows)) return;
     rows.forEach(r => {
-      if (r.Season) r.Season = normalizeSeasonLabel(r.Season);
-      resolveAndTrackRaw(r, 'Partner', '_rawPartner');
-      resolveAndTrackRaw(r, 'Brand', '_rawBrand');
-      if (r.PartnerExposureDate && !r._date) r._date = new Date(r.PartnerExposureDate);
-      if (r._date && typeof r._date === 'string') r._date = new Date(r._date);
-      if (!r._year && r._date instanceof Date && !isNaN(r._date)) r._year = r._date.getFullYear();
+      try {
+        if (r.Season) r.Season = normalizeSeasonLabel(r.Season);
+        resolveAndTrackRaw(r, 'Partner', '_rawPartner');
+        resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+        if (r.PartnerExposureDate && !r._date) r._date = new Date(r.PartnerExposureDate);
+        if (r._date && typeof r._date === 'string') r._date = new Date(r._date);
+        if (!r._year && r._date instanceof Date && !isNaN(r._date)) r._year = r._date.getFullYear();
+      } catch(e) { console.warn('normalizeLoadedRows: skipped malformed organic row', e); }
     });
   });
 
   Object.entries(DataStore.paidSocial || {}).forEach(([brand, rows]) => {
     if (!Array.isArray(rows)) return;
-    rows.forEach(r => normalizePaidRow(r, brand === UNASSIGNED_PAID_KEY ? '' : brand));
+    rows.forEach(r => {
+      try { normalizePaidRow(r, brand === UNASSIGNED_PAID_KEY ? '' : brand); }
+      catch(e) { console.warn('normalizeLoadedRows: skipped malformed paid row', e); }
+    });
   });
 
   if (Array.isArray(DataStore.surveys)) {
-    DataStore.surveys.forEach(r => resolveAndTrackRaw(r, 'Brand', '_rawBrand'));
+    DataStore.surveys.forEach(r => {
+      try { resolveAndTrackRaw(r, 'Brand', '_rawBrand'); }
+      catch(e) { console.warn('normalizeLoadedRows: skipped malformed survey row', e); }
+    });
   }
 
   (DataStore.webBlazersBanners || []).forEach(r => {
-    if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+    try { if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand); }
+    catch(e) { console.warn('normalizeLoadedRows: skipped malformed Blazers banner row', e); }
   });
   (DataStore.webRQBanners || []).forEach(r => {
-    if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand);
+    try { if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand); }
+    catch(e) { console.warn('normalizeLoadedRows: skipped malformed RQ banner row', e); }
   });
   (DataStore.webPreRoll || []).forEach(r => {
-    if (r) {
-      r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
-      if (r.EventDate && typeof r.EventDate === 'string') r.EventDate = new Date(r.EventDate);
-    }
+    try {
+      if (r) {
+        r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+        if (r.EventDate && typeof r.EventDate === 'string') r.EventDate = new Date(r.EventDate);
+      }
+    } catch(e) { console.warn('normalizeLoadedRows: skipped malformed pre-roll row', e); }
   });
 }
 
@@ -4889,7 +4971,7 @@ function safeJSONStringify(value, space) {
 
 function exportPreloadedDashboard() {
   if (!DataStore.hasAnyData()) {
-    alert('Load TV, social, or other dashboard data before exporting a preloaded copy.');
+    showErrorToast('Load TV, social, or other dashboard data before exporting a preloaded copy.');
     return;
   }
 
@@ -5576,6 +5658,22 @@ function getAvailableSeasons(brand) {
 
 
 // ============================================================
+// ERROR TOAST
+// ============================================================
+function showErrorToast(msg) {
+  let toast = document.getElementById('app-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'app-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('visible'), 4000);
+}
+
+// ============================================================
 // AUTO-MATCH YoY — "apples to apples" game-count comparison
 // ============================================================
 // Returns the unique matchdates for a brand+season (or all brands if brand is null)
@@ -5812,8 +5910,8 @@ function openPaidAssignmentReview() { renderPaidAssignmentReview(); document.get
 function closePaidAssignmentReview() { document.getElementById('paidAssignmentBackdrop').classList.remove('active'); }
 function renderPaidAssignmentReview() { const content = document.getElementById('paidAssignmentContent'); if (!content) return; const summary = getPaidAssignmentSummary(); paidAssignmentReviewGroups = getPaidCampaignAssignmentGroups(true); const partnerOptions = getPaidPartnerOptions(); const rowsHtml = paidAssignmentReviewGroups.length ? `<datalist id="paidPartnerOptions">${partnerOptions.map(p => `<option value="${escapeHTML(p)}"></option>`).join('')}</datalist><div style="overflow-x:auto; max-height: 56vh; border: 1px solid var(--border-soft); border-radius: 6px;"><table class="data-table"><thead><tr><th class="text-left">Campaign</th><th class="text-left">Suggested / Current Partner</th><th>Confidence</th><th class="text-left">Objective</th><th class="num sep">Spend</th><th class="num">Impressions</th><th class="text-left">Assign To</th><th></th></tr></thead><tbody>${paidAssignmentReviewGroups.map((g, i) => `<tr><td class="text-left" style="max-width: 320px;"><span title="${escapeHTML(g.campaign)}">${escapeHTML(g.campaign)}</span><div class="comparison-basis block">${escapeHTML(g.status || g.notes || 'Needs review')}</div></td><td class="text-left">${escapeHTML(g.displayPartner || '—')}</td><td>${confidenceBadge(g.confidence)}</td><td class="text-left">${escapeHTML(g.objective || '—')}${g.resultMetric ? `<div class="comparison-basis block">${escapeHTML(g.resultMetric)}</div>` : ''}</td><td class="num sep">${formatCurrency(g.spend)}</td><td class="num">${formatNum(g.impressions)}</td><td class="text-left"><input class="assignment-input" list="paidPartnerOptions" id="paidAssignInput-${i}" value="${escapeHTML(g.displayPartner || '')}" placeholder="Choose or type partner" /></td><td class="num"><button class="btn" data-paid-assign-index="${i}" type="button">Assign</button></td></tr>`).join('')}</tbody></table></div><div class="assignment-actions" style="margin-top: 14px;"><button class="btn" id="paidAssignMediumBtn" type="button">Accept all medium suggestions</button><button class="btn btn-primary" id="paidAssignmentDoneBtn" type="button">Done</button></div>` : `<div class="section-unavailable">No paid campaign assignments need review. High-confidence structured campaigns are already assigned.</div><div class="assignment-actions" style="margin-top: 14px;"><button class="btn btn-primary" id="paidAssignmentDoneBtn" type="button">Done</button></div>`; content.innerHTML = `<div class="assignment-summary"><div class="assignment-stat"><div class="label">Campaigns</div><div class="value">${formatNum(summary.total)}</div></div><div class="assignment-stat"><div class="label">High Confidence</div><div class="value">${formatNum(summary.high)}</div></div><div class="assignment-stat"><div class="label">Medium</div><div class="value">${formatNum(summary.medium)}</div></div><div class="assignment-stat"><div class="label">Unassigned / Review</div><div class="value">${formatNum(summary.unassigned || summary.review)}</div></div></div>${rowsHtml}`; content.querySelectorAll('[data-paid-assign-index]').forEach(btn => btn.addEventListener('click', () => { const idx = Number(btn.dataset.paidAssignIndex); const input = document.getElementById(`paidAssignInput-${idx}`); assignPaidCampaignGroup(idx, input ? input.value : ''); })); const mediumBtn = document.getElementById('paidAssignMediumBtn'); if (mediumBtn) mediumBtn.addEventListener('click', acceptMediumPaidSuggestions); const doneBtn = document.getElementById('paidAssignmentDoneBtn'); if (doneBtn) doneBtn.addEventListener('click', closePaidAssignmentReview); }
 function addPaidAssignmentRuleFromCampaign(campaignName, partner) { if (!campaignName || !partner) return; const parsed = parsePaidCampaignName(campaignName, ''); if (parsed.partnerRaw) DataStore.paidAssignmentRules[parsed.partnerRaw] = partner; const freeformTokens = String(campaignName).split(/[_\s-]+/).filter(Boolean); partner.split(/\s+/).forEach(part => { const match = freeformTokens.find(t => compactToken(t) === compactToken(part)); if (match && match.length > 2) DataStore.paidAssignmentRules[match] = partner; }); }
-function assignPaidCampaignGroup(idx, partnerValue) { const group = paidAssignmentReviewGroups[idx]; const partner = normalizePartnerName(partnerValue); if (!group || !partner) { alert('Choose or type a partner name before assigning.'); return; } group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Manually assigned'; r.PartnerParseNotes = `Manually assigned to ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
-function acceptMediumPaidSuggestions() { let count = 0; paidAssignmentReviewGroups.forEach(group => { if (group.confidence === 'medium' && group.displayPartner) { const partner = normalizePartnerName(group.displayPartner); group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Accepted medium suggestion'; r.PartnerParseNotes = `Accepted suggested partner ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); count += 1; } }); if (!count) alert('No medium-confidence suggestions are available to accept.'); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
+function assignPaidCampaignGroup(idx, partnerValue) { const group = paidAssignmentReviewGroups[idx]; const partner = normalizePartnerName(partnerValue); if (!group || !partner) { showErrorToast('Choose or type a partner name before assigning.'); return; } group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Manually assigned'; r.PartnerParseNotes = `Manually assigned to ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
+function acceptMediumPaidSuggestions() { let count = 0; paidAssignmentReviewGroups.forEach(group => { if (group.confidence === 'medium' && group.displayPartner) { const partner = normalizePartnerName(group.displayPartner); group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Accepted medium suggestion'; r.PartnerParseNotes = `Accepted suggested partner ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); count += 1; } }); if (!count) showErrorToast('No medium-confidence suggestions are available to accept.'); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
 
 
 // ============================================================
@@ -5974,9 +6072,9 @@ function addBrandAliasFromInputs() {
   const canonicalInput = document.getElementById('brandCanonicalInput');
   const alias = String(aliasInput ? aliasInput.value : '').trim();
   const canonicalRaw = String(canonicalInput ? canonicalInput.value : '').trim();
-  if (!alias || !canonicalRaw) { alert('Enter both the source name and the canonical partner name.'); return; }
+  if (!alias || !canonicalRaw) { showErrorToast('Enter both the source name and the canonical partner name.'); return; }
   const canonical = resolveCanonicalBrandName(canonicalRaw);
-  if (alias === canonical) { alert('The alias and canonical partner are exactly the same.'); return; }
+  if (alias === canonical) { showErrorToast('The alias and canonical partner are exactly the same.'); return; }
   DataStore.brandMergeRules[alias] = canonical;
   canonicalizeAllBrandData();
   renderBrandAliasManager();
@@ -5989,9 +6087,9 @@ function addBrandRenameFromInputs() {
   const currentInput = document.getElementById('brandCurrentInput');
   const former  = String(formerInput  ? formerInput.value  : '').trim();
   const currentRaw = String(currentInput ? currentInput.value : '').trim();
-  if (!former || !currentRaw) { alert('Enter both the former name and the current partner name.'); return; }
+  if (!former || !currentRaw) { showErrorToast('Enter both the former name and the current partner name.'); return; }
   const current = resolveCanonicalBrandName(currentRaw);
-  if (former === current) { alert('The former name and current name are exactly the same.'); return; }
+  if (former === current) { showErrorToast('The former name and current name are exactly the same.'); return; }
   DataStore.brandMergeRules[former] = current;
   if (!(DataStore.brandNameChanges instanceof Set)) DataStore.brandNameChanges = new Set();
   DataStore.brandNameChanges.add(former);
@@ -6211,15 +6309,6 @@ function formatSignedPercent(change, opts = {}) {
   return `<span class="yoy-change ${cls}">${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%</span>`;
 }
 
-function formatMeanDiff(value, mean, label = '') {
-  if (!mean || !isFinite(mean)) return '<span class="mean-diff neutral">—</span>';
-  const diff = (value - mean) / mean;
-  const cls = diff > 0.005 ? 'up' : diff < -0.005 ? 'down' : 'neutral';
-  const arrow = diff > 0.005 ? '▲' : diff < -0.005 ? '▼' : '•';
-  const sign = diff > 0.005 ? '+' : diff < -0.005 ? '-' : '';
-  return `<span class="mean-diff ${cls}" title="${label}">${arrow} ${sign}${Math.abs(diff * 100).toFixed(1)}%</span>`;
-}
-
 function renderSimpleLeaderboardTable(rows, columns, tableId = null) {
   if (!rows.length) return `<div class="section-unavailable">No TV data available for this view.</div>`;
   const activeSort = tableId ? tableSortStates[tableId] : null;
@@ -6417,21 +6506,15 @@ function getTopTakeaways(period) {
   const takeaways = [];
   const yoySets = period !== 'all' ? getPortfolioYoYRowSets(period) : null;
   const totalQimv = sum(tvRows, 'QI Media Value ($)');
-  const totalImp = sum(tvRows, 'Sponsorship Impressions');
 
   if (tvRows.length) {
     let qimvGrowthText = '';
-    let impGrowthText = '';
     if (yoySets) {
       const prevQimv = sum(yoySets.priorRows, 'QI Media Value ($)');
-      const prevImp  = sum(yoySets.priorRows, 'Sponsorship Impressions');
       const qimvChg  = pctChangeFromValues(totalQimv, prevQimv);
-      const impChg   = pctChangeFromValues(totalImp,  prevImp);
       if (qimvChg !== null) qimvGrowthText = ` (${formatSignedPercent(qimvChg)} vs ${yoySets.priorSeason})`;
-      if (impChg  !== null) impGrowthText  = ` (${formatSignedPercent(impChg)} vs ${yoySets.priorSeason})`;
     }
     takeaways.push(`<strong>QIMV —</strong> TV visible signage generated <strong>${formatCurrency(totalQimv)}</strong> in QI Media Value${qimvGrowthText}.`);
-    takeaways.push(`<strong>Impressions —</strong> <strong>${formatNum(totalImp)}</strong> sponsorship impressions delivered${impGrowthText}.`);
   }
 
   const partners = addPartnerYoY(aggregateBy(tvRows, 'Brand'), period).sort((a, b) => b.qimv - a.qimv);
@@ -6439,9 +6522,24 @@ function getTopTakeaways(period) {
     takeaways.push(`<strong>${partners[0].name}</strong> led the portfolio by total TV QI Media Value at <strong>${formatCurrency(partners[0].qimv)}</strong>${partners[0].yoyQimv !== null ? ` (${formatSignedPercent(partners[0].yoyQimv)} YoY)` : ''}.`);
   }
 
-  const locations = addLocationYoY(aggregateBy(tvRows, 'Location'), period).sort((a, b) => b.qimvPerMin - a.qimvPerMin);
-  if (locations[0]) {
-    takeaways.push(`<strong>${locations[0].name}</strong> was the strongest location by QIMV/min at <strong>${formatCurrency(locations[0].qimvPerMin)}</strong>${locations[0].yoyQpm !== null ? ` (${formatSignedPercent(locations[0].yoyQpm)} YoY)` : ''}.`);
+  // Survey leader — brand with the best (lowest) aided or unaided recall rank across the portfolio
+  const surveyBrands = getSurveyBrandList();
+  if (surveyBrands.length) {
+    let topBrand = null, topRank = Infinity, topLabel = '';
+    surveyBrands.forEach(b => {
+      const wave = getSurveyLatestWave(b, 'all');
+      if (!wave) return;
+      const ar = wave.AidedRecallRank, ur = wave.UnaidedRecallRank;
+      const best = (ar !== null && ur !== null) ? Math.min(ar, ur) : (ar !== null ? ar : ur);
+      if (best !== null && best < topRank) {
+        topRank = best;
+        topBrand = b;
+        topLabel = (ur !== null && ur < (ar ?? Infinity)) ? 'unaided' : 'aided';
+      }
+    });
+    if (topBrand) {
+      takeaways.push(`<strong>${topBrand}</strong> held the top ${topLabel} recall ranking among surveyed partners (ranked <strong>${ordinal(topRank)}</strong>).`);
+    }
   }
 
   if (socialRows.length) {
@@ -7375,26 +7473,50 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
   if (tvAll.length) {
     const totalImp = sum(tvAll, 'Sponsorship QI Impressions');
     const totalMV = sum(tvAll, 'QI Media Value ($)');
-    takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures.`);
-    takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value.`);
 
-    // Overall ranking context
-    const overallRank = getBrandOverallRank(brand, currentPeriod);
-    if (overallRank && overallRank.total > 1) {
-      takeaways.push(`Ranks <strong>${ordinal(overallRank.rank)} of ${overallRank.total}</strong> brands by QIMV per minute in ${currentPeriod === 'all' ? 'the portfolio' : currentPeriod}, signaling ${overallRank.rank <= Math.ceil(overallRank.total / 3) ? 'top-tier' : overallRank.rank > Math.ceil(overallRank.total * 2 / 3) ? 'below-average' : 'middle-of-pack'} exposure efficiency.`);
-    }
-
+    let qimvYoYText = '', impYoYText = '';
     if (latestSeason && prevSeason) {
-      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship QI Impressions');
-      if (impYoY !== null) {
-        const cls = impYoY.change >= 0 ? 'up' : 'down';
-        takeaways.push(`<strong>QI Impressions YoY —</strong> QI sponsorship impressions <span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> (${impYoY.basis}), signaling ${impYoY.change >= 0 ? 'strengthened' : 'reduced'} broadcast visibility.`);
-      }
       const qimvYoY = computeYoYForMetric(brand, currentPeriod, 'QI Media Value ($)');
       if (qimvYoY !== null) {
         const cls = qimvYoY.change >= 0 ? 'up' : 'down';
-        takeaways.push(`<strong>QIMV YoY —</strong> QI Media Value <span class="${cls}">${qimvYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(qimvYoY.change * 100).toFixed(1)}%</span> (${qimvYoY.basis}), reflecting ${qimvYoY.change >= 0 ? 'improved' : 'reduced'} sponsorship quality and exposure.`);
+        qimvYoYText = ` (<span class="${cls}">${qimvYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(qimvYoY.change * 100).toFixed(1)}%</span> YoY, ${qimvYoY.basis})`;
       }
+      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship QI Impressions');
+      if (impYoY !== null) {
+        const cls = impYoY.change >= 0 ? 'up' : 'down';
+        impYoYText = ` (<span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> YoY, ${impYoY.basis})`;
+      }
+    }
+
+    takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${qimvYoYText}.`);
+    takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures${impYoYText}.`);
+  }
+
+  // Survey — pick whichever of aided/unaided recall has the higher %; omit if neither available
+  const latestWave = getSurveyLatestWave(brand, 'all');
+  if (latestWave) {
+    const ap = latestWave.AidedPct, up = latestWave.UnaidedPct;
+    let chosenPct = null, chosenLabel = null, chosenPriorKey = null;
+    if (ap !== null && up !== null) {
+      if (ap >= up) { chosenPct = ap; chosenLabel = 'Aided Recall'; chosenPriorKey = 'AidedPct'; }
+      else           { chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct'; }
+    } else if (ap !== null) {
+      chosenPct = ap; chosenLabel = 'Aided Recall'; chosenPriorKey = 'AidedPct';
+    } else if (up !== null) {
+      chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct';
+    }
+    if (chosenPct !== null) {
+      const priorWave = getSurveyPriorWave(brand, 'all');
+      let yoyText = '';
+      if (priorWave) {
+        const priorPct = priorWave[chosenPriorKey];
+        if (priorPct !== null) {
+          const ppChange = chosenPct - priorPct;
+          const cls = ppChange >= 0 ? 'up' : 'down';
+          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}% YoY</span>)`;
+        }
+      }
+      takeaways.push(`<strong>${chosenLabel} —</strong> <strong>${(chosenPct * 100).toFixed(1)}%</strong> fan awareness${yoyText} (${latestWave.Season}).`);
     }
   }
 
@@ -7402,8 +7524,9 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
     const totalImp = sum(socialAll, 'Impressions');
     const totalVal = sum(socialAll, 'BrandExposureValue');
     const engRate = avg(socialAll, 'EngagementRate');
-    takeaways.push(`Social activity produced <strong>${formatNum(totalImp)}</strong> impressions across <strong>${socialAll.length}</strong> posts with an average engagement rate of <strong>${formatPct(engRate, 2)}</strong>.`);
-    takeaways.push(`Organic brand exposure value reached <strong>${formatCurrency(totalVal)}</strong>, a material contribution alongside paid media.`);
+    const engText = engRate ? ` at <strong>${formatPct(engRate, 2)}</strong> avg engagement` : '';
+    const bevText = totalVal > 0 ? `, valued at <strong>${formatCurrency(totalVal)}</strong> in brand exposure value` : '';
+    takeaways.push(`<strong>Organic Social —</strong> <strong>${formatNum(totalImp)}</strong> impressions across <strong>${socialAll.length}</strong> posts${engText}${bevText}.`);
   }
 
   if (paidAll.length) {
@@ -13799,7 +13922,7 @@ function openPartnerReport(brand) {
   const html = generatePartnerReport(brand);
   const win  = window.open('', '_blank');
   if (!win) {
-    alert('Pop-up blocked. Please allow pop-ups for this page and try again.');
+    showErrorToast('Pop-up blocked. Please allow pop-ups for this page and try again.');
     return;
   }
   win.document.write(html);
