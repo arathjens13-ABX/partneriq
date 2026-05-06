@@ -25,6 +25,8 @@ A quick reference for working on this codebase. Read this before making any chan
 
 Do not start writing code until the plan is confirmed or the user says to proceed.
 
+**Function map maintenance rule:** Any time a function is added, removed, or renamed — in any file — the corresponding sub-table in the **Function / Code Map** section must be updated in the same session before the work is considered done. This is non-negotiable: a stale map is worse than no map.
+
 ---
 
 ## What this project is
@@ -55,6 +57,9 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `17_general_survey_assignment.js` | General survey question-to-partner assignment |
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
+| `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`vsConservativeEstimate`, `computeVSLocationMeans`), portfolio and partner-page renderers |
+| `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
+| `shell.html` | Static HTML shell — `<header>`, `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), footer; concatenated with the JS/CSS files at export time |
 
 ---
 
@@ -108,10 +113,11 @@ Changes to these affect the entire app. Flag them in your plan and state what do
 - **Register every new brand** with `DataStore.registerBrand(brand, channel)`.
 
 ### DataStore safety checklist
-Any time you add or rename a key in `DataStore`, tick all three before finishing:
+Any time you add or rename a key in `DataStore`, tick all four before finishing:
 - [ ] `DataStore` initial declaration / `reset()`
 - [ ] `getSerializableDataStore()` — included in exports
 - [ ] `hydrateFromPreloaded()` — restored on load
+- [ ] **Function / Code Map** — update the `04_datastore.js` sub-table if any functions were added or changed
 
 ### Export / Sharing
 - **Use the three injection blocks** (`PRELOADED_DATA_START/END`, `DASHBOARD_META_START/END`, `VIEWER_MODE_START/END`). Never write data outside them.
@@ -268,6 +274,350 @@ Add at the **top** of the `CHANGELOG` array in `03_changelog.js`:
 
 ---
 
+## Function / Code Map
+
+A per-file index of every significant function. Use this to jump directly to the right place without reading the whole codebase. Internal one-liner helpers are omitted; everything that drives a UI feature, data flow, or cross-file API is listed.
+
+### `04_datastore.js` — DataStore, brand resolution, import/export
+
+| Function | What it does |
+|----------|-------------|
+| `resolveCanonicalBrandName(value)` | Returns the canonical brand string for any raw name; applies alias rules and auto-detected prefix groups |
+| `resolveAndTrackRaw(row, field, rawField)` | Canonicalizes one field in a row object and stores the original in `rawField` |
+| `compactBrandToken(value)` | Lowercased, punctuation-stripped token used for fuzzy brand matching |
+| `detectWordPrefixGroups(brandNames, blockedSet)` | Auto-detects brand families by shared word prefix (e.g. "Toyota Dealers" → "Toyota") |
+| `getBrandMergeRules()` | Returns the active alias rules map from `DataStore.brandAliasRules` |
+| `DataStore.reset()` | Clears all data arrays, rules, and presets back to defaults |
+| `DataStore.registerBrand(name, channel)` | Adds a brand to the global brand registry for a given channel |
+| `DataStore.getBrandList()` | Returns sorted array of all registered brands |
+| `DataStore.hasAnyData()` | Guards rendering — returns `false` when nothing is loaded |
+| `canonicalizeAllBrandData(skipAutoDetect)` | Runs `resolveAndTrackRaw` over every channel's rows — call after any data load or alias change |
+| `rebuildBrandRegistryFromData()` | Clears and re-registers brands from all loaded rows; called by `canonicalizeAllBrandData` |
+| `applyAutoDetectedAliases()` | Applies word-prefix group aliases across all channels |
+| `normalizeSeasonLabel(str)` | Normalizes season strings to a canonical format for cross-channel matching |
+| `normalizeLoadedRows()` | Post-load hook: type-coerces numeric/date columns across all channels |
+| `getSerializableDataStore()` | Returns a plain object snapshot of DataStore for embedding in an export |
+| `hydrateFromPreloaded(data)` | Restores DataStore from an embedded `PRELOADED_DATA` object on load |
+| `loadPreloadedData()` | Top-level boot function: calls `hydrateFromPreloaded`, normalizes, canonicalizes |
+| `getCurrentUserPresets()` | Serializes current UI toggles/filters for persistence |
+| `applyUserPresets(presets)` | Restores UI state from a saved preset object |
+| `exportPreloadedDashboard()` | Injects DataStore + meta into the HTML template and triggers download |
+| `safeJSONStringify(value, space)` | `JSON.stringify` wrapper that handles circular refs and BigInt |
+| `applyViewerMode()` | Hides all upload/edit controls when `VIEWER_MODE === true` |
+| `generateMockData()` | Populates DataStore with seeded random demo data for testing |
+| `canonicalizeObjectRowsByBrand(sourceObj, primaryField)` | Canonicalizes brand names inside a keyed object (used for paid social groups) |
+
+---
+
+### `05_paid_constants.js` — Formatting, paid parsing constants, brand data accessors
+
+| Function | What it does |
+|----------|-------------|
+| `formatNum(n)` | Formats integers with commas; compact K/M for values ≥ 10 000 |
+| `formatCurrency(n)` | `$` prefix + K/M compact formatting |
+| `formatPct(n, digits)` | Multiplies by 100 and appends `%` |
+| `pctChange(curr, prev)` | Returns a signed ratio `(curr - prev) / prev` or `null` |
+| `escapeHTML(value)` | HTML-escapes a string for safe DOM injection |
+| `normalizePartnerName(value)` | Lowercases and strips punctuation for partner name matching |
+| `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string |
+| `findRuleMatchInCampaign(campaignName)` | Checks saved assignment rules before heuristic parsing |
+| `normalizePaidRow(row, fallbackBrand)` | Coerces a raw paid CSV row into a standardized paid row object |
+| `getBrandTVData(brand, season)` | Returns TV signage rows for a brand/season (excludes virtual branding rows) |
+| `getBrandSocialData(brand, season)` | Returns organic social rows for a brand/season |
+| `getBrandPaidData(brand, season)` | Returns aggregated paid social rows for a brand/season |
+| `getBrandPaidDailyRows(brand, season)` | Returns daily-granularity paid rows for pacing charts |
+| `getPaidSeasons(brand)` | Returns distinct seasons present in paid data for a brand |
+| `getPaidYoY(brand, period, key)` | Computes YoY delta for a paid metric key |
+
+---
+
+### `06_helpers.js` — YoY helpers, tooltips, ranking, shared wiring
+
+| Function | What it does |
+|----------|-------------|
+| `getUniqueMatchdates(rows)` | Returns sorted unique Matchdate strings from a TV row set |
+| `getMatchdateCountForBrandSeason(brand, season)` | Game count for a brand in a given season (used for YoY normalization) |
+| `getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit)` | Returns prior-season TV rows capped to the same game count as the current season |
+| `getYoYRowSets(brand, period)` | Returns `{ current, prior }` TV row sets for a brand/period, prior normalized by matchdate count |
+| `computeYoYForMetric(brand, period, metricKey)` | Returns `{ curr, prev, change }` for one TV metric |
+| `getAssetRanking(location, season)` | Returns all brands sorted by QIMV for a given asset location |
+| `getBrandRankOnAsset(brand, location, season)` | Returns ordinal rank of a brand on a specific asset |
+| `getBrandOverallRank(brand, season)` | Returns a brand's overall TV rank across all locations |
+| `showTooltip(event, html)` / `hideTooltip()` | Portal tooltip display — position next to cursor |
+| `attachDefinitionTooltip(el, term)` | Attaches a glossary-definition tooltip to an element |
+| `attachAssetRankTooltip(el, brand, location, season)` | Attaches a rank-context tooltip to a TV asset cell |
+| `makeInfoIcon(term)` | Returns an `ⓘ` span wired to a definition tooltip |
+| `wireInfoIcons(root)` | Wires all `.info-icon` elements inside `root` after render |
+| `wireSectionToggles()` | Delegates to the same function in `07_paid_assignment.js`; kept here for discoverability |
+| `getAllPaidRows()` | Flattens `DataStore.paidSocial` keyed object into a single flat array |
+| `getPaidCampaignAssignmentGroups(onlyReview)` | Groups paid rows by campaign name; returns assignment status for review modal |
+| `getPaidAssignmentSummary()` | Returns `{ total, high, medium, review, unassigned }` counts for the modal header |
+| `renderPaidAssignmentReview()` | Renders the paid campaign assignment review table inside the modal |
+| `openPaidAssignmentReview()` / `closePaidAssignmentReview()` | Show/hide the paid assignment modal |
+
+---
+
+### `07_paid_assignment.js` — Portfolio helpers, sorting, pacing, partner asset rendering
+
+| Function | What it does |
+|----------|-------------|
+| `getTVRowsForPeriod(period)` | Returns TV rows for a period; strips virtual branding rows via `_isVBRow` |
+| `getPortfolioSeasons()` | Returns sorted distinct seasons across TV + survey data |
+| `getPortfolioLatestSeason()` | Returns the most recent season string |
+| `getSocialRowsForPeriod(period)` | Returns organic social rows filtered to a period |
+| `getPreviousPortfolioSeason(season)` | Returns the season immediately before the given one |
+| `getPortfolioYoYRowSets(period)` | Returns `{ current, prior }` row sets for portfolio-level TV YoY |
+| `getSelectedHomePeriod()` | Returns the active period selector value from the home page filter |
+| `aggregateBy(rows, keyName)` | Groups an array of rows by a key and sums numeric columns |
+| `pctChangeFromValues(curr, prev)` | Simple signed pct change; safe for zero/null inputs |
+| `formatSignedPercent(change, opts)` | Formats a ratio as `+12.3 %` with sign; respects `invert` flag |
+| `formatDurationFromMinutes(minutes)` | Converts a decimal minute count to `HH:MM:SS` |
+| `renderSimpleLeaderboardTable(rows, columns, tableId)` | Builds a sortable leaderboard `<table>` from a rows + columns spec |
+| `wireSortableTables()` | Binds click handlers on all `[data-sort-key]` `<th>` elements |
+| `setTableSort(tableId, sortKey)` | Programmatically sets the sort state on a table |
+| `getPartnerAssetsForSeason(brand, period)` | Returns asset-level TV stats for a brand in a period |
+| `renderPartnerNameWithAssets(partnerName, period)` | Returns HTML for a partner name with asset badge chips |
+| `addPartnerYoY(rows, period)` | Annotates leaderboard rows with YoY delta fields |
+| `destroyCharts()` | Tears down all active Chart.js instances before a re-render |
+
+---
+
+### `08_home_pages.js` — Home page, partner browse, portfolio home, utility pages
+
+| Function | What it does |
+|----------|-------------|
+| `renderPortfolioHome(main)` | Renders the main home page with channel quick-link cards and season filter |
+| `renderPartnerBrowsePage(main)` | Renders the full partner grid / roster browse page |
+| `_renderPartnerGrid(main, rosterActive, allBrands)` | Inner renderer for the partner grid, shared between browse modes |
+| `openPortfolioHome()` | Sets `currentPage='home'` and calls `renderApp()` |
+| `openTVPortfolioPage()` | Sets `currentPage='tv'` and calls `renderApp()` |
+| `openDataHealthPage()` | Navigates to the data health summary page |
+| `openGlossaryPage()` | Navigates to the metric glossary page |
+
+---
+
+### `09_app_core.js` — Top-level routing, partner page shell, channel tag nav
+
+| Function | What it does |
+|----------|-------------|
+| `renderApp()` | **Main router** — reads `currentBrand` / `currentPage` and delegates to the right renderer |
+| `renderTVPortfolioPage(main)` | Renders the TV Visible Signage portfolio page (lives here because it references many channels) |
+| `renderTakeaways(brand, latestSeason, prevSeason)` | Renders the "Key takeaways" YoY summary block on partner pages |
+
+> **Global state declared here:** `currentBrand`, `currentPage`, `currentPeriod`, `comparisonMode`, `openSections`
+
+---
+
+### `10_tv_section.js` — TV section render, charts, asset breakdown
+
+| Function | What it does |
+|----------|-------------|
+| `renderTVSection(brand)` | Main entry — renders the full TV Visible Signage collapsible section into `#tv-slot` |
+| `renderAssetBreakdown(brand, period)` | Asset-by-asset table with YoY, sort, and hover interactions |
+| `renderAssetQuadrant(brand, period)` | 4-quadrant scatter chart (QIMV vs Exposures) for a brand's assets |
+| `renderPaceChart(brand, period)` | Season-pace SVG line chart overlaying current vs prior season |
+| `renderPaidEfficiencyScatter(partnerAggs, resultFilter)` | Portfolio-level paid efficiency scatter plot |
+| `renderTopMatchesTable(rows)` | Renders the top-games table inside the TV section |
+| `renderYoYChange(yoy)` | Returns a formatted YoY badge `<span>` |
+| `aggregateAssetRows(rows)` | Sums TV rows by asset location |
+| `assetStatsFromAggregate(byAsset)` | Converts aggregated map to a sorted stats array |
+| `getAssetYoYChange(brand, assetName, period)` | YoY delta for one named asset |
+| `getAssetSortIndicator(key)` | Returns `▲`/`▼`/`·` for a sortable column |
+| `sortAssetRows(assets)` | Applies current sort state to the asset array |
+| `getAssetSeasonTrend(brand, assetName)` | Returns multi-season trend data for an asset |
+| `getLocationQpmAverage(locationName, period)` | Portfolio average QIMV-per-minute for a location |
+| `chartDefaults()` | Returns shared Chart.js default options for all charts in this file |
+| `wireAssetBreakdownHovers(brand, period)` | Binds row-hover tooltip handlers on the asset table |
+| `wirePaidEfficiencyScatter()` | Wires filter toggle buttons on the paid efficiency scatter |
+
+---
+
+### `11_portfolio_pages.js` — Organic Social and Paid portfolio pages
+
+| Function | What it does |
+|----------|-------------|
+| `renderOrganicSocialPortfolioPage(main)` | Full Organic Social portfolio page with tabs (Partner Performance, Content Series, Brand on Asset) |
+| `getOrganicPortfolioAllRows()` | Returns all organic social rows from all sub-types |
+| `getOrganicPortfolioSourceRows(tab)` | Returns rows for a specific organic tab |
+| `filterOrganicPortfolioRowsByDate(rows)` | Applies active date filter to organic portfolio rows |
+| `sortOrganicPortfolioRows(rows)` | Applies current sort to the organic leaderboard |
+| `getOrganicPortfolioDateLabel()` | Returns a human-readable date range label for the organic filter |
+| `getAllPaidFiscalSeasons()` | Returns distinct seasons from all paid rows |
+| `getPaidRowsForPeriod(period)` | Returns paid rows filtered to a given period |
+
+---
+
+### `12_paid_section.js` — Paid Social partner section and portfolio page
+
+| Function | What it does |
+|----------|-------------|
+| `renderPaidPortfolioPage(main)` | Portfolio-level Paid Social page with leaderboard and efficiency scatter |
+| `renderPaidSection(brand)` | Partner-page Paid Social collapsible section into `#paid-slot` |
+| `renderPaidMultiCampaignChart(brand, period, metricKeyOverride)` | Multi-campaign pacing SVG chart for a partner |
+| `wireMultiPacingChart(brand, period)` | Wires the metric-toggle buttons on the pacing chart |
+| `renderPaidCampaignTable(rows)` | Campaign-by-campaign summary table |
+| `renderPaidPlaceholder()` | "No paid data" empty state |
+| `getPacingMetricKey(brand)` / `setPacingMetricKey(brand, key)` | Get/set the active pacing metric for a brand's chart |
+| `updateBrandDropdown(query)` | Filters and renders the header partner search dropdown |
+
+---
+
+### `13_survey_section.js` — Survey Research section and portfolio page
+
+| Function | What it does |
+|----------|-------------|
+| `renderSurveyPortfolioPage(main)` | Full Survey portfolio page with brand awareness tab |
+| `renderBrandAwarenessTab(container, main)` | Brand awareness leaderboard and survey wave overview |
+| `renderSurveyTrendChart(brand, phase)` | SVG line chart of survey metric trends across waves |
+| `renderSurveyWaveTable(brand)` | Wave-by-wave metric table for a brand |
+| `wireSurveyTrendHovers()` | Tooltip hovers on the survey trend chart |
+| `getBrandSurveyData(brand, season, phase)` | Returns filtered survey rows for a brand |
+| `getSurveySeasons()` | Returns distinct survey seasons |
+| `getSurveyLatestWave(brand, phase)` | Most recent wave row for a brand |
+| `getSurveyPriorWave(brand, phase)` | Second-most-recent wave for YoY comparison |
+| `getSurveyTrend(brand, phase)` | Full ordered trend array across all waves |
+| `getSurveyMetricYoY(brand, phase, metric)` | YoY delta for a single survey metric |
+| `getSurveyRankYoY(brand, phase, rankKey)` | YoY delta for a rank field |
+| `normalizeSurveyRow(row)` | Coerces raw CSV columns to typed survey row |
+| `parseSurveyPct(val)` / `parseSurveyInt(val)` | Survey-specific numeric parsers |
+| `getPartnerRoster()` / `isCurrentPartner(brand)` / `getPartnerCategory(brand)` | Roster lookups |
+| `selectBrandFromSurvey(brand)` | Navigates to a partner page from the survey portfolio |
+
+---
+
+### `14_organic_section.js` — Organic Social section, file detection, ingest
+
+| Function | What it does |
+|----------|-------------|
+| `renderOrganicSocialSection(brand)` | Partner-page Organic Social collapsible section into `#organic-slot` |
+| `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
+| `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
+| `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file |
+| `ingestFile(file, rows, fileType)` | Routes a parsed file to the correct channel ingest function |
+| `normalizeZoomphRow(row, fileType)` | Coerces a raw organic row into a typed object |
+| `extractZoomphBrand(name)` | Strips date/suffix noise from a Zoomph filename to extract brand name |
+| `filterZoomphRowsByPartnerDate(rows)` | Applies active date filter to organic rows |
+| `aggregateZoomphTotals(rows)` | Sums impressions/engagements/reach across organic rows |
+| `getZoomphTotalsYoY(brand, metric)` | YoY delta for an organic metric |
+| `getBrandZoomphPerf(brand, month)` | Partner Performance rows for a brand |
+| `getBrandZoomphSeries(brand)` | Content Series rows for a brand |
+| `getBrandZoomphAssets(brand)` | Brand on Asset rows for a brand |
+| `getZoomphReportMonths(brand)` | Distinct report months present for a brand |
+| `hasZoomphData(brand)` | Guard: `true` if any organic rows exist for a brand |
+| `wireZoomphTabs(brand)` | Wires the organic sub-tab click handlers |
+| `wirePartnerOrganicDateFilter(brand)` | Wires the date-filter dropdown for organic section |
+| `wireZoomphTrendChart(brand)` | Tooltip hovers on the organic trend chart |
+| `parseZoomphNum(v)` / `parseZoomphPct(v)` | Organic-specific numeric parsers |
+
+---
+
+### `16_report_template.js` — PDF partner report
+
+| Function | What it does |
+|----------|-------------|
+| `generatePartnerReport(brand)` | Builds and opens the full HTML partner report in a new tab |
+| `gatherReportData(brand)` | Aggregates all channel data for a brand into a single report object |
+| `openPartnerReport(brand)` | Entry point: calls `gatherReportData` then `generatePartnerReport` |
+| `openReportModal(prefilledBrand)` | Opens the 3-step report export modal |
+| `closeReportModal()` | Closes and resets the report modal |
+| `_renderReportModalStep()` | Dispatches to the active step renderer |
+| `_renderReportStep1(body)` | Step 1: partner picker |
+| `_renderReportStep2(body)` | Step 2: section selection |
+| `_renderReportStep3(body)` | Step 3: preview + download |
+| `_wireReportPartnerItems()` | Wires partner list click handlers in step 1 |
+| `reportDelta(pct, invert)` | Returns a colour-coded delta badge for the report |
+| `surveyBar(pct, rank, label, total)` | Renders an SVG bar for survey metrics in the report |
+| `renderOrgLogo(size)` | Renders the org logo SVG at a given size |
+| `renderPartnerLogo(brand, size)` | Renders a partner initial-avatar at a given size |
+
+---
+
+### `17_general_survey_assignment.js` — General survey question-to-partner linking
+
+| Function | What it does |
+|----------|-------------|
+| `openGeneralSurveyReview()` / `closeGeneralSurveyReview()` | Show/hide the general survey assignment modal |
+| `renderGeneralSurveyAssignmentUI()` | Renders the full assignment review table inside the modal |
+
+---
+
+### `18_affidavits_section.js` — TV/Radio Affidavits
+
+| Function | What it does |
+|----------|-------------|
+| `ingestAffidavitFile(rows, channel)` | Parses and stores TV or radio affidavit rows into `DataStore.affidavits` |
+| `normalizeAffidavitRow(row, channel)` | Coerces a raw affidavit CSV row into a typed object |
+| `getAffidavitsForBrand(brand)` | Returns affidavit rows for a brand |
+| `hasAffidavitDataForBrand(brand)` | Guard for the partner-page section |
+| `getAffidavitSummary(brand)` | Returns `{ totalSpots, totalValue, byChannel }` for a brand |
+| `renderAffidavitsSection(brand)` | Partner-page TV/Radio Affidavits collapsible section into `#affidavits-slot` |
+
+---
+
+### `19_anc_led_section.js` — ANC LED section
+
+| Function | What it does |
+|----------|-------------|
+| `ingestANCLEDFile(rows, filename)` | Parses and stores ANC LED rows into `DataStore.ancLED` |
+| `normalizeANCLEDRow(row, arena, asset, startDate, endDate)` | Coerces a raw ANC LED row into a typed object |
+| `parseANCFilename(filename)` | Extracts arena, asset, and date range from the ANC filename convention |
+| `parseDuration(str)` / `formatDuration(seconds)` | Converts HH:MM:SS strings to seconds and back |
+| `getANCLEDRowsForBrand(brand)` | Returns ANC LED rows for a brand |
+| `hasANCLEDDataForBrand(brand)` | Guard for the partner-page section |
+| `getANCLEDSummary(brand)` | Returns `{ totalDuration, totalImpressions, byArena }` for a brand |
+| `renderANCLEDSection(brand)` | Partner-page ANC LED collapsible section into `#anc-led-slot` |
+
+---
+
+### `20_virtual_signage_section.js` — On-Court Virtual Signage
+
+| Function | What it does |
+|----------|-------------|
+| `ingestVirtualSignageSchedule(rows)` | Parses and stores the schedule CSV into `DataStore.virtualSignageSchedule` |
+| `isVirtualBrandingRow(r)` | Returns `true` for TV rows where `Tool="Virtual Branding"` — used to strip these from the regular TV section |
+| `normalizeVSDate(str)` | Normalizes `M/D/YY` or `M/D/YYYY` to `YYYY-MM-DD` for cross-source matching |
+| `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → TV metrics map for home-game actuals lookup |
+| `getLatestSeasonVSRows()` | Returns virtual branding TV rows for the most recent season only |
+| `getVirtualBrandingTVRows(brand, location)` | Filters TV rows to virtual branding rows, optionally by brand/location |
+| `computeVSLocationMeans()` | Computes per-position simple means from home-game TV actuals (used for away-game estimates and the averages table) |
+| `vsConservativeEstimate(vals)` | Returns `floor(min(mean, median))` — the estimation strategy for away games |
+| `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates |
+| `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals |
+| `computeVSLocationAverages()` | Delegates to `computeVSLocationMeans()` for the averages display table |
+| `groupVSPartnerStats(partnerStats)` | Groups sub-brands by shared prefix into brand-family aggregates |
+| `hasVirtualSignageDataForBrand(brand)` | Guard for the partner-page section |
+| `renderVirtualSignagePage(main)` | Portfolio-level On-Court Virtual Signage page |
+| `renderVirtualSignageSection(brand)` | Partner-page On-Court Virtual Signage collapsible section into `#virtual-signage-slot` |
+| `openVirtualSignagePage()` | Navigation helper: sets `currentPage='virtual-signage'` and calls `renderApp()` |
+| `formatVSDate(dateRaw)` | Formats a raw schedule date string as `"Mon D"` |
+
+---
+
+### `21_web_digital_section.js` — Web & Digital (Blazers.com, RoseQuarter.com, Pre-Roll)
+
+| Function | What it does |
+|----------|-------------|
+| `ingestBlazersBannersFile(file, ext)` | Parses Blazers.com delivery report (XLSX or CSV) into `DataStore.webBlazersBanners` |
+| `ingestRQBannersFile(file, ext)` | Parses RoseQuarter.com delivery report into `DataStore.webRQBanners` |
+| `ingestWebPreRollFile(file, ext)` | Parses pre-roll video report into `DataStore.webPreRoll` |
+| `extractBlazersOrderPartner(orderStr)` | Extracts brand name and season from an Order column string like `"Fred Meyer 2025-2026 > Trailblazers"` |
+| `getWebAdType(lineItemStr)` | Classifies a line item as `'banner'` or `'pushdown'` |
+| `isWebDNU(lineItemStr)` | Returns `true` for DNU (do not use / deprecated) line items |
+| `aggregateWebBannerRows(rows)` | Sums impressions, clicks, and computes weighted CTR across banner rows |
+| `getBlazersBannersForBrand(brand)` | Returns Blazers.com banner rows for a brand |
+| `getRQBannersForBrand(brand)` | Returns RoseQuarter.com banner rows for a brand |
+| `getPreRollForBrand(brand)` | Returns pre-roll rows for a brand |
+| `renderWebDigitalSection(brand)` | Partner-page Web & Digital collapsible section into `#web-digital-slot`; delegates to the three subsection renderers |
+| `renderBlazersBannersSubsection(brand, rows)` | Blazers.com display-ad breakdown: KPIs, by-type table |
+| `renderRQBannersSubsection(brand, rows)` | RoseQuarter.com display-ad breakdown |
+| `renderPreRollSubsection(brand, rows)` | Pre-roll video breakdown: KPIs, monthly bar chart, game-by-game table |
+| `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |
+| `parseWebNum(v)` / `parseWebPct(v)` | Web & Digital numeric parsers (support K/M/B suffixes and `%`-formatted CTR) |
+| `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix (bypasses PapaParse's header issues with date-row exports) |
+
+---
+
 ## Adding a new data channel (full checklist)
 
 1. - [ ] Add detection branch in `detectFileType()` (`14_organic_section.js`)
@@ -281,4 +631,6 @@ Add at the **top** of the `CHANGELOG` array in `03_changelog.js`:
 9. - [ ] Add a channel tag entry in the `channelTags` array (`09_app_core.js`)
 10. - [ ] Add to file log renderer in `renderFileLog()` (`14_organic_section.js`)
 11. - [ ] Add home quick link card if it deserves portfolio-level visibility (`08_home_pages.js`)
-12. - [ ] Update `CHANGELOG`
+12. - [ ] Add the new file row to the **file responsibility table** (the `| File | Responsibility |` table in "What this project is")
+13. - [ ] Add a new sub-table for `XX_xxx_section.js` to the **Function / Code Map** section, and update any existing sub-tables whose functions were modified (typically `04_datastore.js` and `14_organic_section.js`)
+14. - [ ] Update `CHANGELOG`
