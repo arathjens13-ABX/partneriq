@@ -308,26 +308,50 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
   if (tvAll.length) {
     const totalImp = sum(tvAll, 'Sponsorship QI Impressions');
     const totalMV = sum(tvAll, 'QI Media Value ($)');
-    takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures.`);
-    takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value.`);
 
-    // Overall ranking context
-    const overallRank = getBrandOverallRank(brand, currentPeriod);
-    if (overallRank && overallRank.total > 1) {
-      takeaways.push(`Ranks <strong>${ordinal(overallRank.rank)} of ${overallRank.total}</strong> brands by QIMV per minute in ${currentPeriod === 'all' ? 'the portfolio' : currentPeriod}, signaling ${overallRank.rank <= Math.ceil(overallRank.total / 3) ? 'top-tier' : overallRank.rank > Math.ceil(overallRank.total * 2 / 3) ? 'below-average' : 'middle-of-pack'} exposure efficiency.`);
-    }
-
+    let qimvYoYText = '', impYoYText = '';
     if (latestSeason && prevSeason) {
-      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship QI Impressions');
-      if (impYoY !== null) {
-        const cls = impYoY.change >= 0 ? 'up' : 'down';
-        takeaways.push(`<strong>QI Impressions YoY —</strong> QI sponsorship impressions <span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> (${impYoY.basis}), signaling ${impYoY.change >= 0 ? 'strengthened' : 'reduced'} broadcast visibility.`);
-      }
       const qimvYoY = computeYoYForMetric(brand, currentPeriod, 'QI Media Value ($)');
       if (qimvYoY !== null) {
         const cls = qimvYoY.change >= 0 ? 'up' : 'down';
-        takeaways.push(`<strong>QIMV YoY —</strong> QI Media Value <span class="${cls}">${qimvYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(qimvYoY.change * 100).toFixed(1)}%</span> (${qimvYoY.basis}), reflecting ${qimvYoY.change >= 0 ? 'improved' : 'reduced'} sponsorship quality and exposure.`);
+        qimvYoYText = ` (<span class="${cls}">${qimvYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(qimvYoY.change * 100).toFixed(1)}%</span> YoY, ${qimvYoY.basis})`;
       }
+      const impYoY = computeYoYForMetric(brand, currentPeriod, 'Sponsorship QI Impressions');
+      if (impYoY !== null) {
+        const cls = impYoY.change >= 0 ? 'up' : 'down';
+        impYoYText = ` (<span class="${cls}">${impYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(impYoY.change * 100).toFixed(1)}%</span> YoY, ${impYoY.basis})`;
+      }
+    }
+
+    takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${qimvYoYText}.`);
+    takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures${impYoYText}.`);
+  }
+
+  // Survey — pick whichever of aided/unaided recall has the higher %; omit if neither available
+  const latestWave = getSurveyLatestWave(brand, 'all');
+  if (latestWave) {
+    const ap = latestWave.AidedPct, up = latestWave.UnaidedPct;
+    let chosenPct = null, chosenLabel = null, chosenPriorKey = null;
+    if (ap !== null && up !== null) {
+      if (ap >= up) { chosenPct = ap; chosenLabel = 'Aided Recall'; chosenPriorKey = 'AidedPct'; }
+      else           { chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct'; }
+    } else if (ap !== null) {
+      chosenPct = ap; chosenLabel = 'Aided Recall'; chosenPriorKey = 'AidedPct';
+    } else if (up !== null) {
+      chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct';
+    }
+    if (chosenPct !== null) {
+      const priorWave = getSurveyPriorWave(brand, 'all');
+      let yoyText = '';
+      if (priorWave) {
+        const priorPct = priorWave[chosenPriorKey];
+        if (priorPct !== null) {
+          const ppChange = chosenPct - priorPct;
+          const cls = ppChange >= 0 ? 'up' : 'down';
+          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)} pp YoY</span>)`;
+        }
+      }
+      takeaways.push(`<strong>${chosenLabel} —</strong> <strong>${(chosenPct * 100).toFixed(1)}%</strong> fan awareness${yoyText} (${latestWave.Season}).`);
     }
   }
 
@@ -335,8 +359,9 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
     const totalImp = sum(socialAll, 'Impressions');
     const totalVal = sum(socialAll, 'BrandExposureValue');
     const engRate = avg(socialAll, 'EngagementRate');
-    takeaways.push(`Social activity produced <strong>${formatNum(totalImp)}</strong> impressions across <strong>${socialAll.length}</strong> posts with an average engagement rate of <strong>${formatPct(engRate, 2)}</strong>.`);
-    takeaways.push(`Organic brand exposure value reached <strong>${formatCurrency(totalVal)}</strong>, a material contribution alongside paid media.`);
+    const engText = engRate ? ` at <strong>${formatPct(engRate, 2)}</strong> avg engagement` : '';
+    const bevText = totalVal > 0 ? `, valued at <strong>${formatCurrency(totalVal)}</strong> in brand exposure value` : '';
+    takeaways.push(`<strong>Organic Social —</strong> <strong>${formatNum(totalImp)}</strong> impressions across <strong>${socialAll.length}</strong> posts${engText}${bevText}.`);
   }
 
   if (paidAll.length) {
