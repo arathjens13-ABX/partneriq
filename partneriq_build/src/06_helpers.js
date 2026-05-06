@@ -1,4 +1,20 @@
 // ============================================================
+// ERROR TOAST
+// ============================================================
+function showErrorToast(msg) {
+  let toast = document.getElementById('app-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'app-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(() => toast.classList.remove('visible'), 4000);
+}
+
+// ============================================================
 // AUTO-MATCH YoY — "apples to apples" game-count comparison
 // ============================================================
 // Returns the unique matchdates for a brand+season (or all brands if brand is null)
@@ -235,8 +251,8 @@ function openPaidAssignmentReview() { renderPaidAssignmentReview(); document.get
 function closePaidAssignmentReview() { document.getElementById('paidAssignmentBackdrop').classList.remove('active'); }
 function renderPaidAssignmentReview() { const content = document.getElementById('paidAssignmentContent'); if (!content) return; const summary = getPaidAssignmentSummary(); paidAssignmentReviewGroups = getPaidCampaignAssignmentGroups(true); const partnerOptions = getPaidPartnerOptions(); const rowsHtml = paidAssignmentReviewGroups.length ? `<datalist id="paidPartnerOptions">${partnerOptions.map(p => `<option value="${escapeHTML(p)}"></option>`).join('')}</datalist><div style="overflow-x:auto; max-height: 56vh; border: 1px solid var(--border-soft); border-radius: 6px;"><table class="data-table"><thead><tr><th class="text-left">Campaign</th><th class="text-left">Suggested / Current Partner</th><th>Confidence</th><th class="text-left">Objective</th><th class="num sep">Spend</th><th class="num">Impressions</th><th class="text-left">Assign To</th><th></th></tr></thead><tbody>${paidAssignmentReviewGroups.map((g, i) => `<tr><td class="text-left" style="max-width: 320px;"><span title="${escapeHTML(g.campaign)}">${escapeHTML(g.campaign)}</span><div class="comparison-basis block">${escapeHTML(g.status || g.notes || 'Needs review')}</div></td><td class="text-left">${escapeHTML(g.displayPartner || '—')}</td><td>${confidenceBadge(g.confidence)}</td><td class="text-left">${escapeHTML(g.objective || '—')}${g.resultMetric ? `<div class="comparison-basis block">${escapeHTML(g.resultMetric)}</div>` : ''}</td><td class="num sep">${formatCurrency(g.spend)}</td><td class="num">${formatNum(g.impressions)}</td><td class="text-left"><input class="assignment-input" list="paidPartnerOptions" id="paidAssignInput-${i}" value="${escapeHTML(g.displayPartner || '')}" placeholder="Choose or type partner" /></td><td class="num"><button class="btn" data-paid-assign-index="${i}" type="button">Assign</button></td></tr>`).join('')}</tbody></table></div><div class="assignment-actions" style="margin-top: 14px;"><button class="btn" id="paidAssignMediumBtn" type="button">Accept all medium suggestions</button><button class="btn btn-primary" id="paidAssignmentDoneBtn" type="button">Done</button></div>` : `<div class="section-unavailable">No paid campaign assignments need review. High-confidence structured campaigns are already assigned.</div><div class="assignment-actions" style="margin-top: 14px;"><button class="btn btn-primary" id="paidAssignmentDoneBtn" type="button">Done</button></div>`; content.innerHTML = `<div class="assignment-summary"><div class="assignment-stat"><div class="label">Campaigns</div><div class="value">${formatNum(summary.total)}</div></div><div class="assignment-stat"><div class="label">High Confidence</div><div class="value">${formatNum(summary.high)}</div></div><div class="assignment-stat"><div class="label">Medium</div><div class="value">${formatNum(summary.medium)}</div></div><div class="assignment-stat"><div class="label">Unassigned / Review</div><div class="value">${formatNum(summary.unassigned || summary.review)}</div></div></div>${rowsHtml}`; content.querySelectorAll('[data-paid-assign-index]').forEach(btn => btn.addEventListener('click', () => { const idx = Number(btn.dataset.paidAssignIndex); const input = document.getElementById(`paidAssignInput-${idx}`); assignPaidCampaignGroup(idx, input ? input.value : ''); })); const mediumBtn = document.getElementById('paidAssignMediumBtn'); if (mediumBtn) mediumBtn.addEventListener('click', acceptMediumPaidSuggestions); const doneBtn = document.getElementById('paidAssignmentDoneBtn'); if (doneBtn) doneBtn.addEventListener('click', closePaidAssignmentReview); }
 function addPaidAssignmentRuleFromCampaign(campaignName, partner) { if (!campaignName || !partner) return; const parsed = parsePaidCampaignName(campaignName, ''); if (parsed.partnerRaw) DataStore.paidAssignmentRules[parsed.partnerRaw] = partner; const freeformTokens = String(campaignName).split(/[_\s-]+/).filter(Boolean); partner.split(/\s+/).forEach(part => { const match = freeformTokens.find(t => compactToken(t) === compactToken(part)); if (match && match.length > 2) DataStore.paidAssignmentRules[match] = partner; }); }
-function assignPaidCampaignGroup(idx, partnerValue) { const group = paidAssignmentReviewGroups[idx]; const partner = normalizePartnerName(partnerValue); if (!group || !partner) { alert('Choose or type a partner name before assigning.'); return; } group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Manually assigned'; r.PartnerParseNotes = `Manually assigned to ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
-function acceptMediumPaidSuggestions() { let count = 0; paidAssignmentReviewGroups.forEach(group => { if (group.confidence === 'medium' && group.displayPartner) { const partner = normalizePartnerName(group.displayPartner); group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Accepted medium suggestion'; r.PartnerParseNotes = `Accepted suggested partner ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); count += 1; } }); if (!count) alert('No medium-confidence suggestions are available to accept.'); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
+function assignPaidCampaignGroup(idx, partnerValue) { const group = paidAssignmentReviewGroups[idx]; const partner = normalizePartnerName(partnerValue); if (!group || !partner) { showErrorToast('Choose or type a partner name before assigning.'); return; } group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Manually assigned'; r.PartnerParseNotes = `Manually assigned to ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
+function acceptMediumPaidSuggestions() { let count = 0; paidAssignmentReviewGroups.forEach(group => { if (group.confidence === 'medium' && group.displayPartner) { const partner = normalizePartnerName(group.displayPartner); group.rows.forEach(r => { r.Brand = partner; r.Partner = partner; r.ParsedPartner = partner; r.PartnerConfidence = 'high'; r.PartnerParseStatus = 'Accepted medium suggestion'; r.PartnerParseNotes = `Accepted suggested partner ${partner}.`; }); addPaidAssignmentRuleFromCampaign(group.campaign, partner); count += 1; } }); if (!count) showErrorToast('No medium-confidence suggestions are available to accept.'); regroupPaidRowsByBrand(); renderPaidAssignmentReview(); renderApp(); updateBrandDropdown(document.getElementById('brandSearch').value); }
 
 
 // ============================================================
@@ -397,9 +413,9 @@ function addBrandAliasFromInputs() {
   const canonicalInput = document.getElementById('brandCanonicalInput');
   const alias = String(aliasInput ? aliasInput.value : '').trim();
   const canonicalRaw = String(canonicalInput ? canonicalInput.value : '').trim();
-  if (!alias || !canonicalRaw) { alert('Enter both the source name and the canonical partner name.'); return; }
+  if (!alias || !canonicalRaw) { showErrorToast('Enter both the source name and the canonical partner name.'); return; }
   const canonical = resolveCanonicalBrandName(canonicalRaw);
-  if (alias === canonical) { alert('The alias and canonical partner are exactly the same.'); return; }
+  if (alias === canonical) { showErrorToast('The alias and canonical partner are exactly the same.'); return; }
   DataStore.brandMergeRules[alias] = canonical;
   canonicalizeAllBrandData();
   renderBrandAliasManager();
@@ -412,9 +428,9 @@ function addBrandRenameFromInputs() {
   const currentInput = document.getElementById('brandCurrentInput');
   const former  = String(formerInput  ? formerInput.value  : '').trim();
   const currentRaw = String(currentInput ? currentInput.value : '').trim();
-  if (!former || !currentRaw) { alert('Enter both the former name and the current partner name.'); return; }
+  if (!former || !currentRaw) { showErrorToast('Enter both the former name and the current partner name.'); return; }
   const current = resolveCanonicalBrandName(currentRaw);
-  if (former === current) { alert('The former name and current name are exactly the same.'); return; }
+  if (former === current) { showErrorToast('The former name and current name are exactly the same.'); return; }
   DataStore.brandMergeRules[former] = current;
   if (!(DataStore.brandNameChanges instanceof Set)) DataStore.brandNameChanges = new Set();
   DataStore.brandNameChanges.add(former);

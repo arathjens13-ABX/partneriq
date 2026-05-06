@@ -1,5 +1,21 @@
 const CHANGELOG = [
   {
+    version: 'v0.31',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Codebase cleanup — toast errors, dead code removal, normalization safety',
+    changes: [
+      {
+        category: 'Code Quality',
+        items: [
+          `Replaced all browser alert() calls (06_helpers.js, 04_datastore.js, 16_report_template.js) with a new showErrorToast() helper that displays a styled in-app toast notification`,
+          `Deleted unused formatMeanDiff() function from 07_paid_assignment.js — was defined but never called`,
+          `Added per-row try/catch error handling in normalizeLoadedRows() (04_datastore.js) so a malformed row logs a console warning and is skipped rather than crashing the entire normalization pipeline`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.30',
     date: 'May 2026',
     source: 'Claude',

@@ -258,42 +258,56 @@ function hasPreloadedData() {
 
 function normalizeLoadedRows() {
   (DataStore.tvSignage || []).forEach(r => {
-    if (r && r.Season) r.Season = normalizeSeasonLabel(r.Season);
-    resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+    try {
+      if (r && r.Season) r.Season = normalizeSeasonLabel(r.Season);
+      resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+    } catch(e) { console.warn('normalizeLoadedRows: skipped malformed TV row', e); }
   });
 
   Object.values(DataStore.organicSocial || {}).forEach(rows => {
     if (!Array.isArray(rows)) return;
     rows.forEach(r => {
-      if (r.Season) r.Season = normalizeSeasonLabel(r.Season);
-      resolveAndTrackRaw(r, 'Partner', '_rawPartner');
-      resolveAndTrackRaw(r, 'Brand', '_rawBrand');
-      if (r.PartnerExposureDate && !r._date) r._date = new Date(r.PartnerExposureDate);
-      if (r._date && typeof r._date === 'string') r._date = new Date(r._date);
-      if (!r._year && r._date instanceof Date && !isNaN(r._date)) r._year = r._date.getFullYear();
+      try {
+        if (r.Season) r.Season = normalizeSeasonLabel(r.Season);
+        resolveAndTrackRaw(r, 'Partner', '_rawPartner');
+        resolveAndTrackRaw(r, 'Brand', '_rawBrand');
+        if (r.PartnerExposureDate && !r._date) r._date = new Date(r.PartnerExposureDate);
+        if (r._date && typeof r._date === 'string') r._date = new Date(r._date);
+        if (!r._year && r._date instanceof Date && !isNaN(r._date)) r._year = r._date.getFullYear();
+      } catch(e) { console.warn('normalizeLoadedRows: skipped malformed organic row', e); }
     });
   });
 
   Object.entries(DataStore.paidSocial || {}).forEach(([brand, rows]) => {
     if (!Array.isArray(rows)) return;
-    rows.forEach(r => normalizePaidRow(r, brand === UNASSIGNED_PAID_KEY ? '' : brand));
+    rows.forEach(r => {
+      try { normalizePaidRow(r, brand === UNASSIGNED_PAID_KEY ? '' : brand); }
+      catch(e) { console.warn('normalizeLoadedRows: skipped malformed paid row', e); }
+    });
   });
 
   if (Array.isArray(DataStore.surveys)) {
-    DataStore.surveys.forEach(r => resolveAndTrackRaw(r, 'Brand', '_rawBrand'));
+    DataStore.surveys.forEach(r => {
+      try { resolveAndTrackRaw(r, 'Brand', '_rawBrand'); }
+      catch(e) { console.warn('normalizeLoadedRows: skipped malformed survey row', e); }
+    });
   }
 
   (DataStore.webBlazersBanners || []).forEach(r => {
-    if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+    try { if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand); }
+    catch(e) { console.warn('normalizeLoadedRows: skipped malformed Blazers banner row', e); }
   });
   (DataStore.webRQBanners || []).forEach(r => {
-    if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand);
+    try { if (r) r.Brand = resolveCanonicalBrandName(r._rawAdvertiser || r.Brand); }
+    catch(e) { console.warn('normalizeLoadedRows: skipped malformed RQ banner row', e); }
   });
   (DataStore.webPreRoll || []).forEach(r => {
-    if (r) {
-      r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
-      if (r.EventDate && typeof r.EventDate === 'string') r.EventDate = new Date(r.EventDate);
-    }
+    try {
+      if (r) {
+        r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+        if (r.EventDate && typeof r.EventDate === 'string') r.EventDate = new Date(r.EventDate);
+      }
+    } catch(e) { console.warn('normalizeLoadedRows: skipped malformed pre-roll row', e); }
   });
 }
 
@@ -692,7 +706,7 @@ function safeJSONStringify(value, space) {
 
 function exportPreloadedDashboard() {
   if (!DataStore.hasAnyData()) {
-    alert('Load TV, social, or other dashboard data before exporting a preloaded copy.');
+    showErrorToast('Load TV, social, or other dashboard data before exporting a preloaded copy.');
     return;
   }
 

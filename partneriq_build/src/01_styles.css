@@ -2794,3 +2794,30 @@ header {
 .survey-kpi-grid .kpi .kpi-change + .kpi-change {
   margin-top: 2px;
 }
+
+/* ── Error toast ─────────────────────────────────────────────── */
+#app-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: var(--bg-elev-3);
+  border: 1px solid var(--negative);
+  color: var(--text);
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 9999;
+  max-width: 480px;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+}
+#app-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  pointer-events: auto;
+}
