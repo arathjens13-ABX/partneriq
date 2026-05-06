@@ -388,23 +388,23 @@ function getTopTakeaways(period) {
     takeaways.push(`<strong>${partners[0].name}</strong> led the portfolio by total TV QI Media Value at <strong>${formatCurrency(partners[0].qimv)}</strong>${partners[0].yoyQimv !== null ? ` (${formatSignedPercent(partners[0].yoyQimv)} YoY)` : ''}.`);
   }
 
-  // Survey leader — brand with the highest aided or unaided recall % across the portfolio
+  // Survey leader — brand with the best (lowest) aided or unaided recall rank across the portfolio
   const surveyBrands = getSurveyBrandList();
   if (surveyBrands.length) {
-    let topBrand = null, topPct = -1, topLabel = '';
+    let topBrand = null, topRank = Infinity, topLabel = '';
     surveyBrands.forEach(b => {
       const wave = getSurveyLatestWave(b, 'all');
       if (!wave) return;
-      const ap = wave.AidedPct, up = wave.UnaidedPct;
-      const best = (ap !== null && up !== null) ? Math.max(ap, up) : (ap !== null ? ap : up);
-      if (best !== null && best > topPct) {
-        topPct = best;
+      const ar = wave.AidedRecallRank, ur = wave.UnaidedRecallRank;
+      const best = (ar !== null && ur !== null) ? Math.min(ar, ur) : (ar !== null ? ar : ur);
+      if (best !== null && best < topRank) {
+        topRank = best;
         topBrand = b;
-        topLabel = (up !== null && up > (ap ?? -1)) ? 'unaided' : 'aided';
+        topLabel = (ur !== null && ur < (ar ?? Infinity)) ? 'unaided' : 'aided';
       }
     });
     if (topBrand) {
-      takeaways.push(`<strong>${topBrand}</strong> led the portfolio in fan awareness at <strong>${(topPct * 100).toFixed(1)}%</strong> ${topLabel} recall.`);
+      takeaways.push(`<strong>${topBrand}</strong> held the top ${topLabel} recall ranking among surveyed partners (ranked <strong>${ordinal(topRank)}</strong>).`);
     }
   }
 
