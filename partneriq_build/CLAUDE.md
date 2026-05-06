@@ -335,6 +335,7 @@ A per-file index of every significant function. Use this to jump directly to the
 
 | Function | What it does |
 |----------|-------------|
+| `showErrorToast(msg)` | Displays a brief in-app error notification (bottom-center toast, auto-dismisses after 4 s) |
 | `getUniqueMatchdates(rows)` | Returns sorted unique Matchdate strings from a TV row set |
 | `getMatchdateCountForBrandSeason(brand, season)` | Game count for a brand in a given season (used for YoY normalization) |
 | `getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit)` | Returns prior-season TV rows capped to the same game count as the current season |

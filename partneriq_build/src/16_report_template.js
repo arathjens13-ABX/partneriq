@@ -490,7 +490,7 @@ function openPartnerReport(brand) {
   const html = generatePartnerReport(brand);
   const win  = window.open('', '_blank');
   if (!win) {
-    alert('Pop-up blocked. Please allow pop-ups for this page and try again.');
+    showErrorToast('Pop-up blocked. Please allow pop-ups for this page and try again.');
     return;
   }
   win.document.write(html);

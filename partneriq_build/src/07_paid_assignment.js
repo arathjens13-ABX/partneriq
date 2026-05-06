@@ -175,15 +175,6 @@ function formatSignedPercent(change, opts = {}) {
   return `<span class="yoy-change ${cls}">${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%</span>`;
 }
 
-function formatMeanDiff(value, mean, label = '') {
-  if (!mean || !isFinite(mean)) return '<span class="mean-diff neutral">—</span>';
-  const diff = (value - mean) / mean;
-  const cls = diff > 0.005 ? 'up' : diff < -0.005 ? 'down' : 'neutral';
-  const arrow = diff > 0.005 ? '▲' : diff < -0.005 ? '▼' : '•';
-  const sign = diff > 0.005 ? '+' : diff < -0.005 ? '-' : '';
-  return `<span class="mean-diff ${cls}" title="${label}">${arrow} ${sign}${Math.abs(diff * 100).toFixed(1)}%</span>`;
-}
-
 function renderSimpleLeaderboardTable(rows, columns, tableId = null) {
   if (!rows.length) return `<div class="section-unavailable">No TV data available for this view.</div>`;
   const activeSort = tableId ? tableSortStates[tableId] : null;
