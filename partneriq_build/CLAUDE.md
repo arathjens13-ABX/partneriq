@@ -517,20 +517,23 @@ A per-file index of every significant function. Use this to jump directly to the
 
 | Function | What it does |
 |----------|-------------|
-| `generatePartnerReport(brand)` | Builds and opens the full HTML partner report in a new tab |
+| `generatePartnerReport(brand, options)` | Builds the full HTML report; `options = { sections:{key:bool}, takeaways:{key:[idx,...]} }` controls which sections and takeaway bullets render; multi-page by default (no single-page height cap) |
 | `gatherReportData(brand)` | Aggregates all channel data for a brand into a single report object |
-| `openPartnerReport(brand)` | Entry point: calls `gatherReportData` then `generatePartnerReport` |
-| `openReportModal(prefilledBrand)` | Opens the 3-step report export modal |
+| `openPartnerReport(brand, options)` | Entry point: calls `generatePartnerReport(brand, options)` and opens result in a new tab |
+| `_computeSectionTakeaways(brand, season)` | Returns an object keyed by section key, each value an array of HTML takeaway bullet strings; used by both the modal customizer and the report renderer |
+| `openReportModal(prefilledBrand)` | Opens the 4-step report export modal |
 | `closeReportModal()` | Closes and resets the report modal |
-| `_renderReportModalStep()` | Dispatches to the active step renderer |
+| `_renderReportModalStep()` | Dispatches to the active step renderer (steps 1–4) |
 | `_renderReportStep1(body)` | Step 1: partner picker |
-| `_renderReportStep2(body)` | Step 2: section selection |
-| `_renderReportStep3(body)` | Step 3: preview + download |
+| `_renderReportStep2(body)` | Step 2: season picker (advances to Step 3) |
+| `_renderReportStep3(body)` | Step 3: section & takeaway customizer — checkboxes for each data channel and its individual takeaways |
+| `_renderReportStep4(body)` | Step 4: confirm & generate (shows enabled/disabled sections, triggers `openPartnerReport`) |
 | `_wireReportPartnerItems()` | Wires partner list click handlers in step 1 |
 | `reportDelta(pct, invert)` | Returns a colour-coded delta badge for the report |
 | `surveyBar(pct, rank, label, total)` | Renders an SVG bar for survey metrics in the report |
 | `renderOrgLogo(size)` | Renders the org logo SVG at a given size |
 | `renderPartnerLogo(brand, size)` | Renders a partner initial-avatar at a given size |
+| `REPORT_SECTION_DEFS` | Constant array defining all reportable sections (key, icon, label) |
 
 ---
 

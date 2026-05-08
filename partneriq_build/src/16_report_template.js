@@ -168,38 +168,64 @@ function surveyBar(pct, rank, label, total) {
 }
 
 // ── Main render ────────────────────────────────────────────
-function generatePartnerReport(brand) {
+// options = { sections: {tv:bool,...}, takeaways: {tv:[0,1,...],...} }
+// When options is null/undefined all sections with data are included.
+function generatePartnerReport(brand, options) {
   const d   = gatherReportData(brand);
   const now = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const hasOpts = !!(options && options.sections);
 
-  // Top-line KPIs — pick the 4 most meaningful for this partner
+  function secEnabled(key) {
+    if (!hasOpts) return true;
+    return !!options.sections[key];
+  }
+  function secTakeaways(key) {
+    const all = allTakeawaysMap[key] || [];
+    if (!hasOpts) return all;
+    const idxs = (options.takeaways || {})[key];
+    if (!idxs || !idxs.length) return [];
+    return idxs.map(i => all[i]).filter(Boolean);
+  }
+  function renderTakeawayStrip(takeaways) {
+    if (!takeaways || !takeaways.length) return '';
+    return `<div class="r-takeaway-strip">
+      <div class="r-takeaway-kicker">Key Takeaways</div>
+      <ul class="r-takeaway-list">${takeaways.map(t =>
+        `<li class="r-takeaway-item">${t}</li>`).join('')}
+      </ul>
+    </div>`;
+  }
+
+  // Compute all takeaways once (uses season from gathered data)
+  const allTakeawaysMap = _computeSectionTakeaways(brand, d.tv.season);
+
+  // Top-line KPIs — pick the 4 most meaningful for enabled sections
   const topKpis = [];
-  if (d.tv.qimv > 0) topKpis.push({
+  if (secEnabled('tv') && d.tv.qimv > 0) topKpis.push({
     label: 'QI Media Value',
     value: formatCurrency(d.tv.qimv),
     delta: reportDelta(d.tv.yoyPct),
     sub:   d.tv.season || '',
   });
-  if (d.tv.impressions > 0) topKpis.push({
+  if (secEnabled('tv') && d.tv.impressions > 0) topKpis.push({
     label: 'QI Impressions',
     value: formatNum(d.tv.impressions),
     delta: '',
     sub:   `${d.tv.matches} games`,
   });
-  if (d.organic.latest?.ViewsImpressions) topKpis.push({
+  if (secEnabled('organic') && d.organic.latest?.ViewsImpressions) topKpis.push({
     label: 'Social Impressions',
     value: formatNum(d.organic.latest.ViewsImpressions),
     delta: reportDelta(d.organic.imprYoY?.change),
     sub:   d.organic.latest._reportMonth || '',
   });
-  if (d.survey.wave?.UnaidedPct !== null && d.survey.wave?.UnaidedPct !== undefined) topKpis.push({
+  if (secEnabled('survey') && d.survey.wave?.UnaidedPct != null) topKpis.push({
     label: 'Unaided Brand Recall',
     value: Math.round(d.survey.wave.UnaidedPct * 100) + '%',
     delta: '',
     sub: `#${d.survey.wave.UnaidedRecallRank || '—'} of ${d.survey.totalInWave}`,
   });
-  // Pad to 4 with paid if needed
-  if (topKpis.length < 4 && d.paid.agg) topKpis.push({
+  if (topKpis.length < 4 && secEnabled('paid') && d.paid.agg) topKpis.push({
     label: 'Paid Impressions',
     value: formatNum(d.paid.agg.impressions),
     delta: '',
@@ -215,72 +241,198 @@ function generatePartnerReport(brand) {
       ${k.sub   ? `<div class="r-kpi-sub">${k.sub}</div>` : ''}
     </div>`).join('');
 
-  // TV assets table
-  const tvTable = d.tv.topAssets.length ? `
-    <table class="r-table">
-      <thead><tr>
-        <th>Asset</th>
-        <th class="r-num">Impressions</th>
-        <th class="r-num">QI MV</th>
-        <th class="r-num">QIMV/min</th>
-      </tr></thead>
-      <tbody>
-        ${d.tv.topAssets.map(a => `<tr>
-          <td>${a.name}</td>
-          <td class="r-num">${formatNum(a.impressions)}</td>
-          <td class="r-num r-accent">${formatCurrency(a.qimv)}</td>
-          <td class="r-num">${formatCurrency(a.qimvPerMin)}</td>
-        </tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="r-totals-row">
-      <span>Total QI Media Value</span>
-      <span class="r-accent">${formatCurrency(d.tv.qimv)}</span>
-    </div>
-    ${d.tv.soV ? `<div class="r-totals-row"><span>Avg Share of Voice</span><span>${d.tv.soV}%</span></div>` : ''}
-  ` : `<div class="r-empty">No TV signage data loaded for ${d.tv.season || 'this season'}.</div>`;
+  // ── Section blocks ────────────────────────────────────────
+  // Each enabled section is a full-width card that flows naturally across PDF pages.
 
-  // Organic card body
-  const organicBody = d.organic.latest ? `
-    <div class="r-metric-row"><span>Views / Impressions</span>
-      <span>${formatNum(d.organic.latest.ViewsImpressions)} ${reportDelta(d.organic.imprYoY?.change)}</span></div>
-    <div class="r-metric-row"><span>Engagements</span>
-      <span>${formatNum(d.organic.latest.Engagements)}</span></div>
-    <div class="r-metric-row"><span>Engagement Rate</span>
-      <span>${d.organic.latest.EngagementRate !== null ? formatPct(d.organic.latest.EngagementRate,2) : '—'}</span></div>
-    <div class="r-metric-row"><span>Organic Posts</span>
-      <span>${formatNum(d.organic.latest.OrganicPosts)}</span></div>
-    <div class="r-metric-row r-accent-row"><span>Brand Exposure Value</span>
-      <span class="r-accent">${formatCurrency(d.organic.latest.BrandValue)} ${reportDelta(d.organic.valYoY?.change)}</span></div>
-  ` : `<div class="r-empty">No organic social data loaded.</div>`;
+  const sectionBlocks = [];
 
-  // Survey card body
-  const surveyBody = d.survey.wave ? `
-    ${surveyBar(d.survey.wave.UnaidedPct, d.survey.wave.UnaidedRecallRank, 'Unaided Recall', d.survey.totalInWave)}
-    ${surveyBar(d.survey.wave.AidedPct,   d.survey.wave.AidedRecallRank,   'Aided Recall',   d.survey.totalInWave)}
-    ${d.survey.wave.LocalHQPct !== null
-      ? surveyBar(d.survey.wave.LocalHQPct, d.survey.wave.LocalHQRecallRank, 'Local HQ Recall', d.survey.totalInWave)
-      : ''}
-    <div class="r-survey-meta">${d.survey.wave.Survey} · ${d.survey.wave.TotalSurveyResponses || '—'} respondents</div>
-  ` : `<div class="r-empty">No survey data loaded.</div>`;
-
-  // Paid card (optional — only shown if data exists)
-  const paidCard = (d.paid.agg && d.channels.paid) ? `
-    <div class="r-card r-card-full">
-      <div class="r-card-header">
-        <span class="r-card-icon">💰</span>
-        <span class="r-card-title">Paid Social</span>
-        <span class="r-card-badge">${d.paid.season || ''}</span>
+  // TV Visible Signage
+  if (secEnabled('tv')) {
+    const tvTable = d.tv.topAssets.length ? `
+      <table class="r-table">
+        <thead><tr>
+          <th>Asset</th>
+          <th class="r-num">Impressions</th>
+          <th class="r-num">QI MV</th>
+          <th class="r-num">QIMV/min</th>
+        </tr></thead>
+        <tbody>
+          ${d.tv.topAssets.map(a => `<tr>
+            <td>${a.name}</td>
+            <td class="r-num">${formatNum(a.impressions)}</td>
+            <td class="r-num r-accent">${formatCurrency(a.qimv)}</td>
+            <td class="r-num">${formatCurrency(a.qimvPerMin)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+      <div class="r-totals-row">
+        <span>Total QI Media Value</span>
+        <span class="r-accent">${formatCurrency(d.tv.qimv)}</span>
       </div>
-      <div class="r-card-body r-paid-grid">
-        <div class="r-paid-kpi"><div class="r-paid-label">Impressions</div><div class="r-paid-val">${formatNum(d.paid.agg.impressions)}</div></div>
-        <div class="r-paid-kpi"><div class="r-paid-label">Reach</div><div class="r-paid-val">${formatNum(d.paid.agg.reach)}</div></div>
-        <div class="r-paid-kpi"><div class="r-paid-label">Link Clicks</div><div class="r-paid-val">${formatNum(d.paid.agg.clicks)}</div></div>
-        <div class="r-paid-kpi"><div class="r-paid-label">CTR</div><div class="r-paid-val">${formatPct(d.paid.agg.ctr, 2)}</div></div>
-        <div class="r-paid-kpi"><div class="r-paid-label">Campaigns</div><div class="r-paid-val">${formatNum(d.paid.agg.campaignCount)}</div></div>
-        <div class="r-paid-kpi"><div class="r-paid-label">Results</div><div class="r-paid-val">${formatNum(d.paid.agg.results)}</div></div>
-      </div>
-    </div>` : '';
+      ${d.tv.soV ? `<div class="r-totals-row"><span>Avg Share of Voice</span><span>${d.tv.soV}%</span></div>` : ''}
+    ` : `<div class="r-empty">No TV signage data loaded for ${d.tv.season || 'this season'}.</div>`;
+
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">📺</span>
+            <span class="r-card-title">TV Visible Signage</span>
+            <span class="r-card-badge">${d.tv.matches} games · ${d.tv.season || ''}</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('tv'))}
+          <div class="r-card-body">${tvTable}</div>
+        </div>
+      </div>`);
+  }
+
+  // Organic Social
+  if (secEnabled('organic')) {
+    const organicBody = d.organic.latest ? `
+      <div class="r-metric-row"><span>Views / Impressions</span>
+        <span>${formatNum(d.organic.latest.ViewsImpressions)} ${reportDelta(d.organic.imprYoY?.change)}</span></div>
+      <div class="r-metric-row"><span>Engagements</span>
+        <span>${formatNum(d.organic.latest.Engagements)}</span></div>
+      <div class="r-metric-row"><span>Engagement Rate</span>
+        <span>${d.organic.latest.EngagementRate != null ? formatPct(d.organic.latest.EngagementRate, 2) : '—'}</span></div>
+      <div class="r-metric-row"><span>Organic Posts</span>
+        <span>${formatNum(d.organic.latest.OrganicPosts)}</span></div>
+      <div class="r-metric-row r-accent-row"><span>Brand Exposure Value</span>
+        <span class="r-accent">${formatCurrency(d.organic.latest.BrandValue)} ${reportDelta(d.organic.valYoY?.change)}</span></div>
+    ` : `<div class="r-empty">No organic social data loaded.</div>`;
+
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">📱</span>
+            <span class="r-card-title">Organic Social</span>
+            ${d.organic.latest ? `<span class="r-card-badge">${d.organic.latest._reportMonth || 'Latest'}</span>` : ''}
+          </div>
+          ${renderTakeawayStrip(secTakeaways('organic'))}
+          <div class="r-card-body">${organicBody}</div>
+        </div>
+      </div>`);
+  }
+
+  // Brand Awareness Survey
+  if (secEnabled('survey')) {
+    const surveyBody = d.survey.wave ? `
+      ${surveyBar(d.survey.wave.UnaidedPct, d.survey.wave.UnaidedRecallRank, 'Unaided Recall', d.survey.totalInWave)}
+      ${surveyBar(d.survey.wave.AidedPct,   d.survey.wave.AidedRecallRank,   'Aided Recall',   d.survey.totalInWave)}
+      ${d.survey.wave.LocalHQPct != null
+        ? surveyBar(d.survey.wave.LocalHQPct, d.survey.wave.LocalHQRecallRank, 'Local HQ Recall', d.survey.totalInWave)
+        : ''}
+      <div class="r-survey-meta">${d.survey.wave.Survey} · ${d.survey.wave.TotalSurveyResponses || '—'} respondents</div>
+    ` : `<div class="r-empty">No survey data loaded.</div>`;
+
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">📊</span>
+            <span class="r-card-title">Brand Awareness Survey</span>
+            ${d.survey.wave ? `<span class="r-card-badge">${d.survey.wave.Survey}</span>` : ''}
+          </div>
+          ${renderTakeawayStrip(secTakeaways('survey'))}
+          <div class="r-card-body">${surveyBody}</div>
+        </div>
+      </div>`);
+  }
+
+  // Paid Social
+  if (secEnabled('paid') && d.paid.agg && d.channels.paid) {
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">💰</span>
+            <span class="r-card-title">Paid Social</span>
+            <span class="r-card-badge">${d.paid.season || ''}</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('paid'))}
+          <div class="r-card-body r-paid-grid">
+            <div class="r-paid-kpi"><div class="r-paid-label">Spend</div><div class="r-paid-val">${formatCurrency(d.paid.agg.spend)}</div></div>
+            <div class="r-paid-kpi"><div class="r-paid-label">Impressions</div><div class="r-paid-val">${formatNum(d.paid.agg.impressions)}</div></div>
+            <div class="r-paid-kpi"><div class="r-paid-label">Reach</div><div class="r-paid-val">${formatNum(d.paid.agg.reach)}</div></div>
+            <div class="r-paid-kpi"><div class="r-paid-label">Link Clicks</div><div class="r-paid-val">${formatNum(d.paid.agg.clicks)}</div></div>
+            <div class="r-paid-kpi"><div class="r-paid-label">CTR</div><div class="r-paid-val">${formatPct(d.paid.agg.ctr, 2)}</div></div>
+            <div class="r-paid-kpi"><div class="r-paid-label">Campaigns</div><div class="r-paid-val">${d.paid.agg.campaignCount}</div></div>
+          </div>
+        </div>
+      </div>`);
+  }
+
+  // ANC LED
+  if (secEnabled('ancLED') && typeof hasANCLEDDataForBrand === 'function' && hasANCLEDDataForBrand(brand)) {
+    const ancSummary = typeof getANCLEDSummary === 'function' ? getANCLEDSummary(brand) : null;
+    const ancBody = ancSummary ? `
+      <div class="r-metric-row"><span>Total Duration</span>
+        <span>${typeof formatDuration === 'function' ? formatDuration(ancSummary.totalDuration || 0) : '—'}</span></div>
+      ${ancSummary.totalImpressions ? `<div class="r-metric-row"><span>Impressions</span><span>${formatNum(ancSummary.totalImpressions)}</span></div>` : ''}
+    ` : `<div class="r-empty">ANC LED data available.</div>`;
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">🏟️</span>
+            <span class="r-card-title">ANC LED</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('ancLED'))}
+          <div class="r-card-body">${ancBody}</div>
+        </div>
+      </div>`);
+  }
+
+  // TV/Radio Affidavits
+  if (secEnabled('affidavit') && typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(brand)) {
+    const affSummary = typeof getAffidavitSummary === 'function' ? getAffidavitSummary(brand) : null;
+    const affBody = affSummary ? `
+      ${affSummary.totalSpots ? `<div class="r-metric-row"><span>Total Spots</span><span>${formatNum(affSummary.totalSpots)}</span></div>` : ''}
+      ${affSummary.totalValue ? `<div class="r-metric-row r-accent-row"><span>Total Value</span><span class="r-accent">${formatCurrency(affSummary.totalValue)}</span></div>` : ''}
+    ` : `<div class="r-empty">Affidavit data available.</div>`;
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">📝</span>
+            <span class="r-card-title">TV / Radio Affidavits</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('affidavit'))}
+          <div class="r-card-body">${affBody}</div>
+        </div>
+      </div>`);
+  }
+
+  // On-Court Virtual Signage
+  if (secEnabled('virtualSignage') && typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">🏀</span>
+            <span class="r-card-title">On-Court Virtual Signage</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('virtualSignage'))}
+          <div class="r-card-body"><div class="r-empty">See detailed on-court virtual signage data in the dashboard.</div></div>
+        </div>
+      </div>`);
+  }
+
+  // Web & Digital
+  if (secEnabled('webDisplay') && typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(brand)) {
+    sectionBlocks.push(`
+      <div class="r-section-block">
+        <div class="r-card">
+          <div class="r-card-header">
+            <span class="r-card-icon">🌐</span>
+            <span class="r-card-title">Web &amp; Digital</span>
+          </div>
+          ${renderTakeawayStrip(secTakeaways('webDisplay'))}
+          <div class="r-card-body"><div class="r-empty">See detailed web &amp; digital data in the dashboard.</div></div>
+        </div>
+      </div>`);
+  }
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -299,7 +451,7 @@ function generatePartnerReport(brand) {
 html{font-size:10px;}
 body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-font-smoothing:antialiased;}
 
-.r-page{width:1100px;min-height:820px;margin:40px auto;position:relative;overflow:hidden;
+.r-page{width:1100px;margin:40px auto;position:relative;
   background:var(--black);box-shadow:0 40px 120px rgba(0,0,0,0.8);}
 .r-bg{position:absolute;inset:0;
   background-image:url('data:image/png;base64,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');
@@ -344,10 +496,10 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 .r-kpi-sub{font-size:1.0rem;color:var(--muted);margin-top:4px;}
 .delta-up{color:#7ecb7e;}.delta-down{color:#e07272;}
 
-/* Channel cards grid */
-.r-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:18px;}
+/* Section blocks — stacked vertically, each a full-width card */
+.r-sections{display:flex;flex-direction:column;gap:18px;margin-bottom:18px;}
+.r-section-block{break-inside:avoid;page-break-inside:avoid;}
 .r-card{background:var(--surface);border:1px solid var(--border);border-radius:5px;overflow:hidden;}
-.r-card-full{grid-column:1/-1;}
 .r-card-header{display:flex;align-items:center;gap:9px;padding:12px 16px 11px;
   border-bottom:1px solid var(--border);background:rgba(255,255,255,0.03);}
 .r-card-icon{font-size:1.3rem;}
@@ -391,6 +543,15 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 .r-survey-rank{font-family:var(--fd);font-size:0.95rem;color:var(--muted);min-width:52px;text-align:right;}
 .r-survey-meta{font-size:1.0rem;color:var(--muted);margin-top:10px;padding-top:8px;border-top:1px solid var(--border);}
 
+/* Takeaway strip (appears inside each section card) */
+.r-takeaway-strip{border-bottom:1px solid var(--border);padding:12px 16px 10px;
+  background:rgba(200,16,46,0.04);}
+.r-takeaway-kicker{font-family:var(--fd);font-size:0.85rem;letter-spacing:0.14em;
+  text-transform:uppercase;color:var(--red);margin-bottom:7px;font-weight:600;}
+.r-takeaway-list{margin:0;padding-left:16px;display:flex;flex-direction:column;gap:3px;}
+.r-takeaway-item{font-size:1.1rem;color:var(--dim);line-height:1.45;}
+.r-takeaway-item strong{color:var(--text);}
+
 /* Paid grid */
 .r-paid-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:0;}
 .r-paid-kpi{padding:12px 14px;border-right:1px solid var(--border);}
@@ -412,8 +573,9 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 /* Print */
 @media print{
   html,body{background:#0a0a0a;margin:0;padding:0;}
-  .r-page{width:100%;margin:0;box-shadow:none;min-height:100vh;}
+  .r-page{width:100%;margin:0;box-shadow:none;}
   .r-no-print{display:none!important;}
+  .r-section-block{break-inside:avoid;page-break-inside:avoid;}
   *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
 }
 </style>
@@ -441,37 +603,7 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 
     <div class="r-strip">${kpisHTML}</div>
 
-    <div class="r-grid">
-      <div class="r-card">
-        <div class="r-card-header">
-          <span class="r-card-icon">📺</span>
-          <span class="r-card-title">TV Visible Signage</span>
-          <span class="r-card-badge">${d.tv.matches} games</span>
-        </div>
-        <div class="r-card-body">${tvTable}</div>
-      </div>
-
-      <div style="display:flex;flex-direction:column;gap:18px;">
-        <div class="r-card" style="flex:1;">
-          <div class="r-card-header">
-            <span class="r-card-icon">📱</span>
-            <span class="r-card-title">Organic Social</span>
-            ${d.organic.latest ? `<span class="r-card-badge">${d.organic.latest._reportMonth}</span>` : ''}
-          </div>
-          <div class="r-card-body">${organicBody}</div>
-        </div>
-        <div class="r-card" style="flex:1;">
-          <div class="r-card-header">
-            <span class="r-card-icon">📊</span>
-            <span class="r-card-title">Brand Awareness</span>
-            ${d.survey.wave ? `<span class="r-card-badge">${d.survey.wave.Survey}</span>` : ''}
-          </div>
-          <div class="r-card-body">${surveyBody}</div>
-        </div>
-      </div>
-    </div>
-
-    ${paidCard}
+    <div class="r-sections">${sectionBlocks.join('\n')}</div>
 
     <footer class="r-footer">
       <div class="r-footer-left"><strong>PartnerIQ</strong> · Portland Trail Blazers Partnership Intelligence</div>
@@ -485,9 +617,9 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 }
 
 // ── Open report in new window ──────────────────────────────
-function openPartnerReport(brand) {
+function openPartnerReport(brand, options) {
   if (!brand) return;
-  const html = generatePartnerReport(brand);
+  const html = generatePartnerReport(brand, options || null);
   const win  = window.open('', '_blank');
   if (!win) {
     showErrorToast('Pop-up blocked. Please allow pop-ups for this page and try again.');
@@ -521,7 +653,7 @@ function openPartnerReport(brand) {
 
 // ============================================================
 // REPORT EXPORT MODAL — step-through UI
-// Steps: 1) Pick partner  2) Pick season  3) Confirm & generate
+// Steps: 1) Pick partner  2) Pick season  3) Customize sections & takeaways  4) Confirm & generate
 // ============================================================
 
 const _reportModal = {
@@ -529,6 +661,9 @@ const _reportModal = {
   brand: null,
   season: null,
   searchQuery: '',
+  selectedSections: null,   // { tv: bool, organic: bool, ... } — null = not yet initialized
+  selectedTakeaways: null,  // { tv: Set<index>, organic: Set<index>, ... }
+  _expandedSections: new Set(), // which section panels are open in the customizer UI
 };
 
 function openReportModal(prefilledBrand = null) {
@@ -536,6 +671,9 @@ function openReportModal(prefilledBrand = null) {
   _reportModal.brand    = prefilledBrand || null;
   _reportModal.season   = null;
   _reportModal.searchQuery = '';
+  _reportModal.selectedSections = null;
+  _reportModal.selectedTakeaways = null;
+  _reportModal._expandedSections = new Set();
 
   document.getElementById('reportModalBackdrop').classList.add('active');
   _renderReportModalStep();
@@ -552,6 +690,7 @@ function _renderReportModalStep() {
   if (_reportModal.step === 1) _renderReportStep1(body);
   else if (_reportModal.step === 2) _renderReportStep2(body);
   else if (_reportModal.step === 3) _renderReportStep3(body);
+  else if (_reportModal.step === 4) _renderReportStep4(body);
 }
 
 // ── Step 1: Pick partner ────────────────────────────────────
@@ -655,7 +794,7 @@ function _renderReportStep2(body) {
 
   body.innerHTML = `
     <button class="report-back-btn" id="reportBackBtn1">← Back</button>
-    <div class="report-step-label">Step 2 of 3 — Choose a season</div>
+    <div class="report-step-label">Step 2 of 4 — Choose a season</div>
     <div style="margin-bottom:6px;">
       <div style="font-weight:500;font-size:15px;margin-bottom:3px;">${brand}</div>
       <div style="font-size:12px;color:var(--text-dim);">
@@ -668,7 +807,7 @@ function _renderReportStep2(body) {
     </div>
     <div class="report-season-grid" style="margin:16px 0;">${seasonBtns}</div>
     <button class="report-generate-btn" id="reportToStep3">
-      Continue →
+      Customize Report →
     </button>
   `;
 
@@ -683,53 +822,355 @@ function _renderReportStep2(body) {
     });
   });
   document.getElementById('reportToStep3').addEventListener('click', () => {
-    _reportModal.step = 3; _renderReportModalStep();
+    // Reset customization so Step 3 re-initializes it for the chosen brand/season
+    _reportModal.selectedSections = null;
+    _reportModal.selectedTakeaways = null;
+    _reportModal.step = 3;
+    _renderReportModalStep();
   });
 }
 
-// ── Step 3: Confirm & generate ──────────────────────────────
+// ── Step 3: Customize sections & takeaways ─────────────────
+// Definitions for every section that can appear in the report
+const REPORT_SECTION_DEFS = [
+  { key: 'tv',             icon: '📺', label: 'TV Visible Signage' },
+  { key: 'organic',        icon: '📱', label: 'Organic Social' },
+  { key: 'survey',         icon: '📊', label: 'Brand Awareness Survey' },
+  { key: 'paid',           icon: '💰', label: 'Paid Social' },
+  { key: 'ancLED',         icon: '🏟️', label: 'ANC LED' },
+  { key: 'affidavit',      icon: '📝', label: 'TV/Radio Affidavits' },
+  { key: 'virtualSignage', icon: '🏀', label: 'On-Court Virtual Signage' },
+  { key: 'webDisplay',     icon: '🌐', label: 'Web & Digital' },
+];
+
+// Compute bullet-point takeaways for each available section
+function _computeSectionTakeaways(brand, season) {
+  const out = {};
+
+  // TV Visible Signage
+  const tvRows = getBrandTVData(brand, season);
+  if (tvRows.length) {
+    const totalMV  = sum(tvRows, 'QI Media Value ($)');
+    const totalImp = sum(tvRows, 'Sponsorship QI Impressions');
+    const matches  = [...new Set(tvRows.map(r => r.Matchdate).filter(Boolean))].length;
+    const soV      = tvRows.length ? sum(tvRows, 'Share of Voice (%)') / tvRows.length : null;
+    const assetMap = {};
+    tvRows.forEach(r => {
+      const loc = r.Location || r.Tool || 'Unknown';
+      if (!assetMap[loc]) assetMap[loc] = 0;
+      assetMap[loc] += Number(r['QI Media Value ($)']) || 0;
+    });
+    const topAsset = Object.entries(assetMap).sort((a, b) => b[1] - a[1])[0];
+    const t = [];
+    if (totalMV  > 0) t.push(`Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value`);
+    if (totalImp > 0) t.push(`Delivered <strong>${formatNum(totalImp)}</strong> QI impressions across <strong>${matches}</strong> games`);
+    if (soV !== null && soV > 0) t.push(`<strong>${soV.toFixed(1)}%</strong> average share of voice`);
+    if (topAsset && topAsset[1] > 0) t.push(`Top asset: <strong>${topAsset[0]}</strong> — ${formatCurrency(topAsset[1])}`);
+    out.tv = t;
+  }
+
+  // Organic Social
+  const zRows = getBrandZoomphPerf(brand);
+  if (zRows.length) {
+    const latest = zRows[zRows.length - 1];
+    const t = [];
+    if (latest.ViewsImpressions) t.push(`<strong>${formatNum(latest.ViewsImpressions)}</strong> views & impressions`);
+    if (latest.Engagements)      t.push(`<strong>${formatNum(latest.Engagements)}</strong> total engagements`);
+    if (latest.BrandValue)       t.push(`<strong>${formatCurrency(latest.BrandValue)}</strong> brand exposure value`);
+    if (latest.OrganicPosts)     t.push(`<strong>${formatNum(latest.OrganicPosts)}</strong> organic posts published`);
+    out.organic = t;
+  }
+
+  // Survey
+  const surveyWave = getSurveyLatestWave(brand, 'Late') || getSurveyLatestWave(brand, 'Early');
+  if (surveyWave) {
+    const total = (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length;
+    const t = [];
+    if (surveyWave.UnaidedPct != null)
+      t.push(`<strong>${Math.round(surveyWave.UnaidedPct * 100)}%</strong> unaided brand recall (#${surveyWave.UnaidedRecallRank || '—'} of ${total})`);
+    if (surveyWave.AidedPct != null)
+      t.push(`<strong>${Math.round(surveyWave.AidedPct * 100)}%</strong> aided brand recall (#${surveyWave.AidedRecallRank || '—'} of ${total})`);
+    if (surveyWave.LocalHQPct != null)
+      t.push(`<strong>${Math.round(surveyWave.LocalHQPct * 100)}%</strong> local HQ awareness (#${surveyWave.LocalHQRecallRank || '—'} of ${total})`);
+    out.survey = t;
+  }
+
+  // Paid Social
+  const paidSeasons = getPaidSeasons(brand);
+  const latestPaidSeason = paidSeasons[paidSeasons.length - 1];
+  const paidRows = latestPaidSeason ? getBrandPaidData(brand, latestPaidSeason) : [];
+  if (paidRows.length) {
+    const agg = paidAggregate(paidRows);
+    const t = [];
+    if (agg.spend      > 0) t.push(`<strong>${formatCurrency(agg.spend)}</strong> total paid investment`);
+    if (agg.impressions > 0) t.push(`<strong>${formatNum(agg.impressions)}</strong> paid impressions delivered`);
+    if (agg.clicks     > 0) t.push(`<strong>${formatNum(agg.clicks)}</strong> link clicks at <strong>${formatPct(agg.ctr, 2)}</strong> CTR`);
+    if (agg.campaignCount > 0) t.push(`<strong>${agg.campaignCount}</strong> campaign${agg.campaignCount === 1 ? '' : 's'} running`);
+    out.paid = t;
+  }
+
+  // ANC LED
+  if (typeof hasANCLEDDataForBrand === 'function' && hasANCLEDDataForBrand(brand)) {
+    const anc = typeof getANCLEDSummary === 'function' ? getANCLEDSummary(brand) : null;
+    const t = [];
+    if (anc) {
+      if (anc.totalDuration)    t.push(`<strong>${typeof formatDuration === 'function' ? formatDuration(anc.totalDuration) : anc.totalDuration + 's'}</strong> total LED exposure time`);
+      if (anc.totalImpressions) t.push(`<strong>${formatNum(anc.totalImpressions)}</strong> ANC LED impressions`);
+    }
+    if (!t.length) t.push('ANC LED exposure data on record');
+    out.ancLED = t;
+  }
+
+  // TV/Radio Affidavits
+  if (typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(brand)) {
+    const aff = typeof getAffidavitSummary === 'function' ? getAffidavitSummary(brand) : null;
+    const t = [];
+    if (aff) {
+      if (aff.totalSpots) t.push(`<strong>${formatNum(aff.totalSpots)}</strong> broadcast spots delivered`);
+      if (aff.totalValue) t.push(`<strong>${formatCurrency(aff.totalValue)}</strong> total broadcast value`);
+    }
+    if (!t.length) t.push('TV/Radio affidavit data on record');
+    out.affidavit = t;
+  }
+
+  // Virtual Signage
+  if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
+    out.virtualSignage = ['On-court virtual signage placement data on record'];
+  }
+
+  // Web & Digital
+  if (typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(brand)) {
+    out.webDisplay = ['Web & Digital display impression data on record'];
+  }
+
+  return out;
+}
+
 function _renderReportStep3(body) {
   const brand  = _reportModal.brand;
   const season = _reportModal.season;
   const chs    = DataStore.channelsByBrand[brand] || {};
 
-  const channelDefs = [
-    { key: 'tv',      icon: '📺', label: 'TV Signage' },
-    { key: 'paid',    icon: '💰', label: 'Paid Social' },
-    { key: 'organic', icon: '📱', label: 'Organic Social' },
-    { key: 'survey',  icon: '📊', label: 'Survey' },
-  ];
+  // Compute takeaways once; build default selection on first visit
+  const allTakeaways = _computeSectionTakeaways(brand, season);
 
-  const channelTagsHTML = channelDefs.map(ch =>
-    `<div class="report-channel-tag ${chs[ch.key] ? 'has' : 'missing'}">
-      ${ch.icon} ${ch.label}
-    </div>`
-  ).join('');
+  if (!_reportModal.selectedSections) {
+    _reportModal.selectedSections  = {};
+    _reportModal.selectedTakeaways = {};
+    REPORT_SECTION_DEFS.forEach(def => {
+      const hasData = allTakeaways[def.key] && allTakeaways[def.key].length > 0;
+      _reportModal.selectedSections[def.key]  = hasData;
+      _reportModal.selectedTakeaways[def.key] = hasData
+        ? new Set(allTakeaways[def.key].map((_, i) => i))  // all checked by default
+        : new Set();
+    });
+  }
+
+  function buildHTML() {
+    const availableDefs = REPORT_SECTION_DEFS.filter(
+      def => allTakeaways[def.key] && allTakeaways[def.key].length > 0
+    );
+    const unavailableDefs = REPORT_SECTION_DEFS.filter(
+      def => !allTakeaways[def.key] || !allTakeaways[def.key].length
+    );
+
+    const sectionItems = availableDefs.map(def => {
+      const isSelected = _reportModal.selectedSections[def.key];
+      const isExpanded = _reportModal._expandedSections.has(def.key);
+      const takeaways  = allTakeaways[def.key] || [];
+      const selCount   = (_reportModal.selectedTakeaways[def.key] || new Set()).size;
+
+      const takeawayRows = takeaways.map((txt, idx) => {
+        const checked = (_reportModal.selectedTakeaways[def.key] || new Set()).has(idx);
+        return `<label class="report-takeaway-item">
+          <input type="checkbox" class="report-takeaway-checkbox"
+            data-section="${def.key}" data-idx="${idx}" ${checked ? 'checked' : ''}/>
+          <span class="report-takeaway-text">${txt}</span>
+        </label>`;
+      }).join('');
+
+      const takeawayPanel = `<div class="report-takeaway-panel" id="tp-${def.key}"
+        style="display:${isExpanded ? 'flex' : 'none'}">${takeawayRows}</div>`;
+
+      return `<div class="report-section-item ${isSelected ? 'section-selected' : ''}" data-section-key="${def.key}">
+        <div class="report-section-row">
+          <input type="checkbox" class="report-section-checkbox"
+            data-section-toggle="${def.key}" ${isSelected ? 'checked' : ''}/>
+          <span class="report-section-icon">${def.icon}</span>
+          <span class="report-section-label">${def.label}</span>
+          <span class="report-section-badge">${selCount}/${takeaways.length} takeaway${takeaways.length === 1 ? '' : 's'}</span>
+          <button class="report-section-expand-btn ${isExpanded ? 'is-open' : ''}"
+            data-section-expand="${def.key}" title="Show takeaways">▶</button>
+        </div>
+        ${takeawayPanel}
+      </div>`;
+    }).join('');
+
+    const unavailableNote = unavailableDefs.length
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
+          ${unavailableDefs.map(d => `${d.icon} ${d.label}`).join(' · ')} — no data loaded
+        </div>`
+      : '';
+
+    const selectedCount = Object.values(_reportModal.selectedSections).filter(Boolean).length;
+
+    return `
+      <button class="report-back-btn" id="reportBackBtn2">← Back</button>
+      <div class="report-step-label">Step 3 of 4 — Customize report</div>
+      <div class="report-customize-header">
+        <div style="font-size:12px;color:var(--text-dim);">${brand} · ${season}</div>
+        <div class="report-customize-actions">
+          <button class="report-customize-action-btn" id="reportSelectAll">Select all</button>
+          <button class="report-customize-action-btn" id="reportDeselectAll">Deselect all</button>
+        </div>
+      </div>
+      <div class="report-section-picker" id="reportSectionPicker">${sectionItems}</div>
+      ${unavailableNote}
+      <button class="report-generate-btn" id="reportToStep4" ${selectedCount === 0 ? 'disabled' : ''}>
+        Preview &amp; Generate →
+      </button>
+    `;
+  }
+
+  body.innerHTML = buildHTML();
+
+  function wireStep3() {
+    document.getElementById('reportBackBtn2').addEventListener('click', () => {
+      _reportModal.step = 2; _renderReportModalStep();
+    });
+
+    // Section checkboxes
+    document.querySelectorAll('[data-section-toggle]').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const key = chk.dataset.sectionToggle;
+        _reportModal.selectedSections[key] = chk.checked;
+        body.innerHTML = buildHTML();
+        wireStep3();
+      });
+    });
+
+    // Expand/collapse takeaway panel
+    document.querySelectorAll('[data-section-expand]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const key = btn.dataset.sectionExpand;
+        if (_reportModal._expandedSections.has(key)) {
+          _reportModal._expandedSections.delete(key);
+        } else {
+          _reportModal._expandedSections.add(key);
+        }
+        body.innerHTML = buildHTML();
+        wireStep3();
+      });
+    });
+
+    // Clicking section row (not checkbox, not expand) toggles expand
+    document.querySelectorAll('.report-section-row').forEach(row => {
+      row.addEventListener('click', e => {
+        if (e.target.classList.contains('report-section-checkbox')) return;
+        if (e.target.closest('[data-section-expand]')) return;
+        const key = row.closest('[data-section-key]').dataset.sectionKey;
+        if (_reportModal._expandedSections.has(key)) {
+          _reportModal._expandedSections.delete(key);
+        } else {
+          _reportModal._expandedSections.add(key);
+        }
+        body.innerHTML = buildHTML();
+        wireStep3();
+      });
+    });
+
+    // Individual takeaway checkboxes
+    document.querySelectorAll('[data-section][data-idx]').forEach(chk => {
+      chk.addEventListener('change', () => {
+        const key = chk.dataset.section;
+        const idx = parseInt(chk.dataset.idx, 10);
+        const s   = _reportModal.selectedTakeaways[key] || new Set();
+        chk.checked ? s.add(idx) : s.delete(idx);
+        _reportModal.selectedTakeaways[key] = s;
+        // Update badge count without full re-render
+        const item = document.querySelector(`[data-section-key="${key}"]`);
+        if (item) {
+          const badge = item.querySelector('.report-section-badge');
+          const total = (allTakeaways[key] || []).length;
+          if (badge) badge.textContent = `${s.size}/${total} takeaway${total === 1 ? '' : 's'}`;
+        }
+      });
+    });
+
+    // Select all / Deselect all
+    const selectAllBtn  = document.getElementById('reportSelectAll');
+    const deselectAllBtn = document.getElementById('reportDeselectAll');
+    if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
+      REPORT_SECTION_DEFS.forEach(def => {
+        if (allTakeaways[def.key] && allTakeaways[def.key].length) {
+          _reportModal.selectedSections[def.key]  = true;
+          _reportModal.selectedTakeaways[def.key] = new Set(allTakeaways[def.key].map((_, i) => i));
+        }
+      });
+      body.innerHTML = buildHTML(); wireStep3();
+    });
+    if (deselectAllBtn) deselectAllBtn.addEventListener('click', () => {
+      REPORT_SECTION_DEFS.forEach(def => {
+        _reportModal.selectedSections[def.key]  = false;
+        _reportModal.selectedTakeaways[def.key] = new Set();
+      });
+      body.innerHTML = buildHTML(); wireStep3();
+    });
+
+    // Continue to Step 4
+    const toStep4Btn = document.getElementById('reportToStep4');
+    if (toStep4Btn) toStep4Btn.addEventListener('click', () => {
+      _reportModal.step = 4; _renderReportModalStep();
+    });
+  }
+
+  wireStep3();
+}
+
+// ── Step 4: Confirm & generate ──────────────────────────────
+function _renderReportStep4(body) {
+  const brand   = _reportModal.brand;
+  const season  = _reportModal.season;
+  const selSecs = _reportModal.selectedSections || {};
+
+  const enabledDefs  = REPORT_SECTION_DEFS.filter(d => selSecs[d.key]);
+  const disabledDefs = REPORT_SECTION_DEFS.filter(d => !selSecs[d.key]);
+
+  const enabledTags  = enabledDefs.map(d =>
+    `<div class="report-channel-tag has">${d.icon} ${d.label}</div>`).join('');
+  const disabledTags = disabledDefs.map(d =>
+    `<div class="report-channel-tag missing">${d.icon} ${d.label}</div>`).join('');
 
   body.innerHTML = `
-    <button class="report-back-btn" id="reportBackBtn2">← Back</button>
-    <div class="report-step-label">Step 3 of 3 — Confirm</div>
+    <button class="report-back-btn" id="reportBackBtn3">← Back</button>
+    <div class="report-step-label">Step 4 of 4 — Confirm &amp; generate</div>
     <div class="report-preview-card">
       <div class="report-preview-partner">Partnership Report</div>
       <div class="report-preview-name">${brand}</div>
       <div class="report-preview-season">${season}</div>
-      <div class="report-channel-tags">${channelTagsHTML}</div>
+      <div class="report-channel-tags" style="margin-top:10px;">${enabledTags}</div>
+      ${disabledTags ? `<div class="report-channel-tags" style="margin-top:6px;">${disabledTags}</div>` : ''}
     </div>
     <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">
-      Crossed-out channels have no data loaded for this partner.
-      The report will include only sections with available data.
+      ${enabledDefs.length} section${enabledDefs.length === 1 ? '' : 's'} selected · report will open in a new tab
     </div>
     <button class="report-generate-btn" id="reportGenerateBtn">
       ⬇ Generate Report
     </button>
   `;
 
-  document.getElementById('reportBackBtn2').addEventListener('click', () => {
-    _reportModal.step = 2; _renderReportModalStep();
+  document.getElementById('reportBackBtn3').addEventListener('click', () => {
+    _reportModal.step = 3; _renderReportModalStep();
   });
   document.getElementById('reportGenerateBtn').addEventListener('click', () => {
+    const options = {
+      sections:   { ..._reportModal.selectedSections },
+      takeaways:  Object.fromEntries(
+        Object.entries(_reportModal.selectedTakeaways || {}).map(([k, s]) => [k, [...s]])
+      ),
+    };
     closeReportModal();
-    // Small delay so modal closes before the new window opens
-    setTimeout(() => openPartnerReport(brand), 100);
+    setTimeout(() => openPartnerReport(brand, options), 100);
   });
 }
