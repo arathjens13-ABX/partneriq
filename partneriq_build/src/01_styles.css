@@ -2488,6 +2488,165 @@ header {
 
 .report-back-btn:hover { color: var(--text-dim); }
 
+/* ── Report customizer step (Step 3) ──────────────────────── */
+.report-customize-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.report-customize-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.report-customize-action-btn {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.report-customize-action-btn:hover {
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+
+.report-section-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 370px;
+  overflow-y: auto;
+  margin-bottom: 14px;
+}
+
+.report-section-item {
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  overflow: hidden;
+  transition: border-color 0.12s;
+}
+
+.report-section-item.section-selected {
+  border-color: var(--border);
+  background: var(--bg-elev-2);
+}
+
+.report-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.report-section-checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--brand-red);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.report-section-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+  width: 18px;
+  text-align: center;
+}
+
+.report-section-label {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.report-section-item:not(.section-selected) .report-section-label {
+  color: var(--text-muted);
+}
+
+.report-section-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  background: var(--bg-elev-3);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.report-section-expand-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 9px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.12s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.report-section-expand-btn:hover {
+  color: var(--text-dim);
+  background: var(--bg-elev-3);
+}
+
+.report-section-expand-btn.is-open {
+  transform: rotate(90deg);
+}
+
+.report-takeaway-panel {
+  border-top: 1px solid var(--border-soft);
+  padding: 8px 12px 10px 39px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0,0,0,0.15);
+}
+
+.report-takeaway-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.report-takeaway-checkbox {
+  width: 13px;
+  height: 13px;
+  margin-top: 2px;
+  accent-color: var(--brand-red);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.report-takeaway-text {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+.report-takeaway-text strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* ── In-report takeaway bullets ───────────────────────────── */
+/* (used inside the generated HTML report, not the modal) */
+
 /* v0.25 Survey Research build-out */
 .survey-research-subsection {
   margin: 0 0 22px;

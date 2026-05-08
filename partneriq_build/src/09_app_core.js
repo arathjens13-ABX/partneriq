@@ -222,9 +222,9 @@ function renderApp() {
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn" onclick="openPartnerReport('${currentBrand.replace(/'/g,"\\'")}');"
+          <button class="btn" onclick="openReportModal('${currentBrand.replace(/'/g,"\\'")}');"
             style="background:var(--brand-red);border-color:var(--brand-red);color:#fff;font-weight:600;"
-            title="Export a PDF-ready partnership report for this partner">
+            title="Customize and export a PDF-ready partnership report for this partner">
             ⬇ Export Report
           </button>
         </div>
