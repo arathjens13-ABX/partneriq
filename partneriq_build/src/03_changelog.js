@@ -1,5 +1,23 @@
 const CHANGELOG = [
   {
+    version: 'v0.34',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Links page — external resource quick links',
+    changes: [
+      {
+        category: 'New Page',
+        items: [
+          `Added a new "Links" page accessible from the Reference section of the home page`,
+          `Links are organized into four categories: Web Analytics, Attendance, Digital & Broadcast, and App Data`,
+          `Includes 8 external links: Rose Quarter and Blazers web reports (Looker Studio), RQ Events and Blazers attendance (Tableau), Triple Play Dashboard, TV Ratings Dashboard, Email Report (Tableau), and App Data Partner Metrics (SharePoint)`,
+          `Each link opens in a new browser tab with noopener/noreferrer`,
+          `Links page is accessible even before data is loaded (like Glossary and Data Health)`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.33',
     date: 'May 2026',
     source: 'Claude',
