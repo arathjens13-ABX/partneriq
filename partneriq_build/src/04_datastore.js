@@ -180,6 +180,7 @@ const DataStore = {
   webBlazersBanners: [],            // Blazers.com display banner delivery rows
   webRQBanners: [],                 // RoseQuarter.com display banner delivery rows
   webPreRoll: [],                   // Pre-Roll video delivery rows
+  tvRatings: [],                    // Nielsen TV broadcast viewership data (game-level ratings, not partner data)
   brands: new Set(),
   channelsByBrand: {},
 
@@ -207,6 +208,7 @@ const DataStore = {
     this.webBlazersBanners = [];
     this.webRQBanners = [];
     this.webPreRoll = [];
+    this.tvRatings = [];
     this.brands = new Set();
     this.channelsByBrand = {};
   },
@@ -234,7 +236,8 @@ const DataStore = {
     const surveyPrograms = Array.isArray(this.surveyPrograms) ? this.surveyPrograms.length : 0;
     const vsSchedule     = Array.isArray(this.virtualSignageSchedule) ? this.virtualSignageSchedule.length : 0;
     const webDisplay     = (this.webBlazersBanners||[]).length + (this.webRQBanners||[]).length + (this.webPreRoll||[]).length;
-    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay > 0;
+    const tvRatings      = Array.isArray(this.tvRatings) ? this.tvRatings.length : 0;
+    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay + tvRatings > 0;
   }
 };
 
@@ -253,7 +256,8 @@ function hasPreloadedData() {
     (Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners.length : 0) +
     (Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners.length : 0) +
     (Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll.length : 0);
-  return tv + organic + paid + surveys + webDisplay > 0;
+  const tvRatings = Array.isArray(PRELOADED_DATA.tvRatings) ? PRELOADED_DATA.tvRatings.length : 0;
+  return tv + organic + paid + surveys + webDisplay + tvRatings > 0;
 }
 
 function normalizeLoadedRows() {
@@ -562,6 +566,7 @@ function loadPreloadedData() {
   DataStore.webBlazersBanners = Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners : [];
   DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
   DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
+  DataStore.tvRatings = Array.isArray(PRELOADED_DATA.tvRatings) ? PRELOADED_DATA.tvRatings : [];
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
   DataStore.brandNameChanges = new Set(Array.isArray(PRELOADED_DATA.brandNameChanges) ? PRELOADED_DATA.brandNameChanges : []);
   normalizeLoadedRows();
@@ -676,6 +681,7 @@ function getSerializableDataStore() {
     webBlazersBanners: DataStore.webBlazersBanners || [],
     webRQBanners: DataStore.webRQBanners || [],
     webPreRoll: DataStore.webPreRoll || [],
+    tvRatings: DataStore.tvRatings || [],
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
     brandNameChanges: [...(DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : [])],
     userPresets: getCurrentUserPresets()
