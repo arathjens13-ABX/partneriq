@@ -59,6 +59,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`vsConservativeEstimate`, `computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
+| `22_tv_ratings_section.js` | TV Ratings Dashboard — Nielsen broadcast viewership data; `DataStore.tvRatings[]`; **file format WILL change** — detection is column-schema-based (`HH Rtg` + `Demo` + `Opponent`), ingest and normalize logic is in `14_organic_section.js`; data source: DW > vw_viewership > vw_nielsen_tv_metrics |
 | `shell.html` | Static HTML shell — `<header>`, `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), footer; concatenated with the JS/CSS files at export time |
 
 ---
@@ -498,8 +499,10 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
-| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) |
 | `ingestFile(file, rows, fileType)` | Routes a parsed file to the correct channel ingest function |
+| `normalizeTVRatingsRow(row)` | Coerces a raw Nielsen TV metrics row into a typed ratings row; derives segment from Program column and season from Custom Year column |
+| `ingestTVRatingsFile(rows)` | Normalizes and deduplicates Nielsen rows into `DataStore.tvRatings`; safe to re-ingest the same export |
 | `normalizeZoomphRow(row, fileType)` | Coerces a raw organic row into a typed object |
 | `extractZoomphBrand(name)` | Strips date/suffix noise from a Zoomph filename to extract brand name |
 | `filterZoomphRowsByPartnerDate(rows)` | Applies active date filter to organic rows |
@@ -623,6 +626,31 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |
 | `parseWebNum(v)` / `parseWebPct(v)` | Web & Digital numeric parsers (support K/M/B suffixes and `%`-formatted CTR) |
 | `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix (bypasses PapaParse's header issues with date-row exports) |
+
+---
+
+### `22_tv_ratings_section.js` — TV Ratings Dashboard (Nielsen Viewership)
+
+**⚠️ This file format will change.** Detection is column-schema-based; ingest/normalize lives in `14_organic_section.js`. Update `normalizeTVRatingsRow()` when columns change.
+
+| Function | What it does |
+|----------|-------------|
+| `openTVRatingsPage()` | Navigation helper: sets `currentPage='tv-ratings'` and calls `renderApp()` |
+| `renderTVRatingsPage(main)` | Main page renderer — season selector, KPI cards, all sub-sections |
+| `getTVRatingsSeasons()` | Returns sorted distinct season strings from `DataStore.tvRatings` |
+| `getTVRatingsActiveSeason()` | Returns the currently selected season, resolving `'latest'` to the most recent |
+| `getTVRatingsRows(season)` | Returns all rows for a season string, or all rows when `season='all'` |
+| `getTVRatingsGameDates(season)` | Returns sorted unique game dates for the Game segment in a season |
+| `avgTVMetric(rows, key)` | Average of a numeric field across rows (skips zeros) |
+| `maxTVMetric(rows, key)` | Max of a numeric field across rows |
+| `renderTVRatingsLineChart(season, priorSeason)` | SVG season trend chart; game-only; togglable metric; optional YoY overlay aligned by game number |
+| `renderTVRatingsSegmentComparison(rows)` | Pre/Game/Post avg HH and P2+ rating horizontal bar chart + summary table |
+| `renderTVRatingsOpponentTable(season)` | Sortable opponent breakdown — avg HH Rtg/Imp, P2+ Rtg/Imp, peak HH Rtg, avg HH Share |
+| `renderTVRatingsAdDemoChart(gameRows)` | Avg game rating/impressions bar chart for P18-49, M18-49, P25-54, M25-54 (HH and P2+ excluded intentionally) |
+| `renderTVRatingsGamesTable(season)` | Sortable full game log — date, opponent, HH and P2+ metrics |
+| `wireTVRatingsPage()` | Wires season selector, metric toggle, YoY toggle, opponent sort, games sort |
+
+**State variables declared here:** `tvRatingsSeasonFilter`, `tvRatingsChartMetric`, `tvRatingsYoY`, `tvRatingsOpponentSort`, `tvRatingsGamesSort`
 
 ---
 

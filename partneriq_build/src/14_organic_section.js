@@ -718,6 +718,12 @@ function detectFileType(filename, rows = []) {
     return 'zoomphBrand';
   }
 
+  // Nielsen TV Ratings (viewership): schema-based, checked BEFORE the generic 'tv' filename match
+  // because this file often contains 'tv' in the name. Identify by column shape.
+  // NOTE: This file format will change. If detection breaks, look for 'hh rtg' + 'demo' + 'opponent'
+  // in the column headers. Source: DW > vw_viewership > vw_nielsen_tv_metrics
+  if (cols.includes('hh rtg') && cols.includes('demo') && cols.includes('opponent')) return 'tvRatings';
+
   if (lower.includes('tv') || lower.includes('signage') || lower.includes('visible')) return 'tv';
   if (lower.includes('paid') || lower.includes('facebook') || lower.includes('meta') || lower.includes('admanager') || lower.includes('ads manager')) return 'paid';
   if (cols.includes('amount spent (usd)') && cols.includes('campaign name')) return 'paid';
@@ -745,6 +751,80 @@ function parseXLSX(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: 'array' });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { defval: null });
+}
+
+// ============================================================
+// TV RATINGS (NIELSEN VIEWERSHIP) — ingest
+// ============================================================
+// Source: DW > vw_viewership > vw_nielsen_tv_metrics
+// Each row = one demographic × one game segment (Game / Pre Game / Post Game).
+// This is broadcast viewership data — it has NO partner/brand associations.
+// Detected by column schema (hh rtg + demo + opponent), NOT by filename,
+// so it survives any future filename/export-path changes.
+// When the file format changes, update normalizeTVRatingsRow() to remap columns.
+
+function normalizeTVRatingsRow(row) {
+  const parseNum = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+
+  // Derive segment from Program column — more reliable than the duplicate Segment columns
+  const program = String(row['Program'] || '').toUpperCase().trim();
+  const segment = program.includes('POST') ? 'Post Game'
+                : (program.includes('PRE') || program.includes('PREGAME')) ? 'Pre Game'
+                : 'Game';
+
+  // Derive basketball season from Custom Year field ("1/1/2025" → "2024-25")
+  const customYearRaw = row['Custom Year'] || row['custom year'] || '';
+  let fiscalYear = 0;
+  if (customYearRaw instanceof Date) {
+    fiscalYear = customYearRaw.getFullYear();
+  } else {
+    const parts = String(customYearRaw).split('/');
+    fiscalYear = parseInt(parts[parts.length - 1]) || parseInt(parts[0]) || 0;
+  }
+  const season = fiscalYear >= 2000
+    ? `${fiscalYear - 1}-${String(fiscalYear).slice(-2)}`
+    : '';
+
+  // Normalize date — keep as string in M/D/YYYY format
+  const dateRaw = row['Dates'] || '';
+  const date = dateRaw instanceof Date
+    ? `${dateRaw.getMonth() + 1}/${dateRaw.getDate()}/${dateRaw.getFullYear()}`
+    : String(dateRaw).trim();
+
+  return {
+    date,
+    season,
+    demo:     String(row['Demo']           || '').trim(),
+    segment,
+    opponent: String(row['Opponent']       || '').trim().toUpperCase(),
+    station:  String(row['Viewing Source'] || '').trim(),
+    imp:      parseNum(row['IMP']),
+    rtg:      parseNum(row['Rtg % (X.X)']),
+    shr:      parseNum(row['Shr %']),
+    hhImp:    parseNum(row['HH Imp']) || parseNum(row['HH Imps']),
+    hhRtg:    parseNum(row['HH Rtg']),
+    hhShr:    parseNum(row['HH SHR']) || parseNum(row['HHR Shr %']),
+  };
+}
+
+function ingestTVRatingsFile(rows) {
+  const normalized = rows
+    .map(r => normalizeTVRatingsRow(r))
+    .filter(r => r.date && r.demo && r.segment && r.season);
+
+  // Deduplicate on natural key — safe to re-ingest the same export
+  const existing = new Set(
+    (DataStore.tvRatings || []).map(r => `${r.date}|${r.demo}|${r.segment}|${r.opponent}|${r.station}`)
+  );
+  const newRows = normalized.filter(r => {
+    const key = `${r.date}|${r.demo}|${r.segment}|${r.opponent}|${r.station}`;
+    if (existing.has(key)) return false;
+    existing.add(key);
+    return true;
+  });
+
+  DataStore.tvRatings = (DataStore.tvRatings || []).concat(newRows);
+  return newRows;
 }
 
 async function ingestFile(file) {
@@ -831,6 +911,12 @@ async function ingestFile(file) {
     const waves = [...new Set(normalized.map(r => r.Survey).filter(Boolean))];
     const sponsored = normalized.filter(r => r.Sponsor).length;
     return { success: true, type: 'programSurvey', rows: normalized.length, programs: programs.length, waves: waves.length, sponsored, filename: file.name };
+
+  } else if (type === 'tvRatings') {
+    const ingested = ingestTVRatingsFile(rows);
+    const seasons = [...new Set(ingested.map(r => r.season).filter(Boolean))];
+    const games   = [...new Set(ingested.filter(r => r.segment === 'Game').map(r => r.date))].length;
+    return { success: true, type: 'tvRatings', rows: ingested.length, games, seasons: seasons.join(', '), filename: file.name };
 
   } else if (type === 'blazersWebDisplay') {
     return ingestBlazersBannersFile(file, ext);
@@ -939,6 +1025,8 @@ function renderFileLog() {
           ? `Web & Digital · RoseQuarter.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`
         : r.type === 'webPreRoll'
           ? `Web & Digital · Pre-Roll Video · ${r.brands || 'unknown brands'} · ${r.rows} rows`
+        : r.type === 'tvRatings'
+          ? `TV Ratings · ${r.games} games · ${r.seasons} · ${r.rows} demo rows`
         : `Organic Social · ${r.brand} · ${r.rows} posts`;
       return `<div class="file-item success">
         <span class="file-item-name">${r.filename}</span>

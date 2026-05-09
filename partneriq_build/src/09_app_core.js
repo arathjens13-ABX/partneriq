@@ -155,6 +155,7 @@ function renderApp() {
 
   if (!currentBrand) {
     if (currentPage === 'tv') renderTVPortfolioPage(main);
+    else if (currentPage === 'tv-ratings') renderTVRatingsPage(main);
     else if (currentPage === 'virtual-signage') renderVirtualSignagePage(main);
     else if (currentPage === 'survey') renderSurveyPortfolioPage(main);
     else if (currentPage === 'paid') renderPaidPortfolioPage(main);
