@@ -1,5 +1,26 @@
 const CHANGELOG = [
   {
+    version: 'v0.33',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Customizable multi-page Export Report',
+    changes: [
+      {
+        category: 'Export Report',
+        items: [
+          `Expanded report modal from 3 to 4 steps, adding a new "Customize Report" step between season selection and confirmation`,
+          `New Step 3 lets Activation Managers select which sections appear in the report (TV Visible Signage, Organic Social, Brand Awareness Survey, Paid Social, ANC LED, TV/Radio Affidavits, On-Court Virtual Signage, Web & Digital)`,
+          `Each section panel expands to show its computed takeaway bullets as individually toggleable checkboxes`,
+          `"Select all" / "Deselect all" quick-action buttons for rapid section configuration`,
+          `Selected takeaway indices are passed into the report as a \`takeaways\` options object; each section renders only its chosen bullets as a "Key Takeaways" strip`,
+          `Report now flows across multiple PDF pages — removed the single-page height cap (\`min-height:820px\` / \`min-height:100vh\`)`,
+          `Each section card uses \`break-inside:avoid\` so cards are never split across a page break`,
+          `Export Report button on partner pages now routes through the full customization modal instead of generating immediately`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.32',
     date: 'May 2026',
     source: 'Claude',
