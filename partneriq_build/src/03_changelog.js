@@ -1,5 +1,36 @@
 const CHANGELOG = [
   {
+    version: 'v0.36',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'TV Ratings Dashboard — Nielsen viewership data',
+    changes: [
+      {
+        category: 'New Page',
+        items: [
+          `Added "TV Ratings Dashboard" to the Portfolio pages group on the home page`,
+          `New page renders Nielsen broadcast viewership data: game ratings, impressions, and demographic breakdowns`,
+          `Data source: DW > vw_viewership > vw_nielsen_tv_metrics — file is detected by column schema (HH Rtg + Demo + Opponent), not by filename, so it survives format/path changes`,
+          `Season selector with All Seasons support; KPI cards show game-segment-only averages for HH Rating, HH Impressions, P2+ Rating, and Peak HH Rating`,
+          `Season trend line chart with four metric toggles (HH Rating, P2+ Rating, HH Impressions, P2+ Impressions) and optional season-over-season overlay aligned by game number`,
+          `Pre/Game/Post segment comparison section shows avg HH and P2+ ratings as horizontal bars plus a summary table — Pre and Post data intentionally separated from game-only top-line metrics`,
+          `Opponent Ratings Breakdown — sortable table of avg HH Rating, HH Impressions, P2+ Rating, P2+ Impressions, Peak HH Rating, and Avg HH Share per opponent`,
+          `Advertiser Demo Spotlight shows avg game rating/impressions for P18-49, M18-49, P25-54, and M25-54 only — HH and P2+ are excluded because they are not comparable targeted sub-demos`,
+          `Game Log — sortable full game-by-game table with date, opponent, HH Rating/Impressions/Share, and P2+ Rating/Impressions/Share`,
+        ]
+      },
+      {
+        category: 'Data Infrastructure',
+        items: [
+          `Added tvRatings[] array to DataStore with full serialize/hydrate/reset coverage`,
+          `ingestTVRatingsFile() in 14_organic_section.js normalizes each row to: date, season, demo, segment, opponent, station, imp, rtg, shr, hhImp, hhRtg, hhShr`,
+          `Segment derived from Program column (most reliable); season derived from Custom Year column (1/1/2025 → 2024-25)`,
+          `Deduplication on date+demo+segment+opponent+station — safe to re-upload the same export`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.35',
     date: 'May 2026',
     source: 'Claude',
