@@ -175,11 +175,6 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">📺 TV Visible Signage</div>
           <div class="home-action-copy">Portfolio snapshot, top partners and locations, season trends, and per-asset leaderboards.</div>
         </div>
-        <div class="home-action" onclick="openTVRatingsPage();">
-          <div class="home-action-kicker">TV Ratings</div>
-          <div class="home-action-title">📡 TV Ratings Dashboard</div>
-          <div class="home-action-copy">Nielsen game ratings and impressions — season trend, opponent breakdown, pre/game/post comparison, and key advertiser demos.</div>
-        </div>
         <div class="home-action" onclick="openVirtualSignagePage();">
           <div class="home-action-kicker">Virtual Signage</div>
           <div class="home-action-title">🏀 On-Court Virtual Signage</div>
@@ -253,10 +248,10 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">🏟️ Attendance</div>
           <div class="home-action-copy">Attendance trends, capacity utilization, gate volume, and game-by-game context.</div>
         </div>
-        <div class="home-action disabled">
-          <div class="home-action-kicker">Future channel</div>
-          <div class="home-action-title">📡 TV Viewership &amp; Ratings</div>
-          <div class="home-action-copy">Broadcast reach, rating trends, game/event rankings, and audience composition.</div>
+        <div class="home-action" onclick="openTVRatingsPage();">
+          <div class="home-action-kicker">Nielsen data</div>
+          <div class="home-action-title">📡 TV Ratings Dashboard</div>
+          <div class="home-action-copy">Nielsen game ratings and impressions — season trend, opponent breakdown, pre/game/post comparison, and key advertiser demos.</div>
         </div>
       </div>
     </section>

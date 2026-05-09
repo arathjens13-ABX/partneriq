@@ -809,7 +809,7 @@ function normalizeTVRatingsRow(row) {
       const vals = Object.entries(row)
         .filter(([k]) => /^segment/i.test(String(k).trim()))
         .map(([, v]) => String(v || '').trim().toLowerCase());
-      return vals.some(v => v === 'pre season' || v === 'preseason' || v === 'pre-season' || v === 'exhibition')
+      return vals.some(v => v.includes('pre season') || v.includes('preseason') || v.includes('pre-season') || v.includes('exhibition'))
         ? 'Pre Season'
         : 'Regular Game';
     })(),

@@ -374,7 +374,7 @@ function renderTVRatingsRecentGames(gameDates, allRows) {
   if (!recent.length) return '';
 
   const byDate = {};
-  allRows.filter(r => r.segment === 'Game').forEach(r => {
+  allRows.filter(r => r.segment === 'Game' && isRegularSeason(r)).forEach(r => {
     if (!byDate[r.date]) byDate[r.date] = {};
     byDate[r.date][r.demo] = r;
   });
@@ -384,14 +384,13 @@ function renderTVRatingsRecentGames(gameDates, allRows) {
     const hh  = byDemo['HH']  || {};
     const p2  = byDemo['P2+'] || {};
     const opp = Object.values(byDemo)[0]?.opponent || '—';
-    const isPre = Object.values(byDemo)[0]?.gameType === 'Pre Season';
     return `
       <div style="flex:1;min-width:140px;max-width:220px;background:var(--bg-elev);border:1px solid var(--border);
         border-radius:8px;padding:14px 16px;">
         <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
           color:var(--text-muted);margin-bottom:2px;">${formatTVDate(date)}</div>
         <div style="font-size:18px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.06em;
-          color:var(--text);margin-bottom:10px;">vs ${opp}${isPre ? '<span style="font-size:9px;margin-left:6px;color:var(--text-muted);">PRE</span>' : ''}</div>
+          color:var(--text);margin-bottom:10px;">vs ${opp}</div>
         <div style="display:flex;flex-direction:column;gap:5px;">
           <div style="display:flex;justify-content:space-between;align-items:baseline;">
             <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">HH RTG</span>
@@ -803,8 +802,7 @@ function renderTVRatingsGamesTable(season) {
   const dates = getTVRatingsGameDates(season); // regular season only
   if (!dates.length) return '<div style="padding:16px;color:var(--text-muted);">No game data available.</div>';
 
-  // Include all game rows (regular + preseason) so preseason can be shown but distinguished
-  const allGameRows = getTVRatingsRows(season).filter(r => r.segment === 'Game');
+  const allGameRows = getTVRatingsRows(season).filter(r => r.segment === 'Game' && isRegularSeason(r));
   const rowsByDate  = {};
   allGameRows.forEach(r => {
     if (!rowsByDate[r.date]) rowsByDate[r.date] = {};
@@ -818,7 +816,6 @@ function renderTVRatingsGamesTable(season) {
     const first  = Object.values(byDemo)[0] || {};
     return {
       date, opponent: first.opponent || '', season: first.season || '',
-      isPreseason: first.gameType === 'Pre Season',
       hhRtg: hh.hhRtg||0, hhImp: hh.hhImp||0, hhShr: hh.hhShr||0,
       p2Rtg: p2.rtg||0,   p2Imp: p2.imp||0,   p2Shr: p2.shr||0,
     };
@@ -855,9 +852,9 @@ function renderTVRatingsGamesTable(season) {
       </tr></thead>
       <tbody>
         ${games.map(g => `
-          <tr style="${g.isPreseason ? 'opacity:0.6;' : ''}">
+          <tr>
             <td style="font-family:var(--font-mono);font-size:12px;white-space:nowrap;">${formatTVDateFull(g.date)}</td>
-            <td style="font-weight:600;font-family:var(--font-mono);letter-spacing:0.05em;">${g.opponent}${g.isPreseason ? '<span style="font-size:9px;margin-left:6px;color:var(--text-muted);font-weight:400;">PRE</span>' : ''}</td>
+            <td style="font-weight:600;font-family:var(--font-mono);letter-spacing:0.05em;">${g.opponent}</td>
             ${season === 'all' ? `<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${g.season}</td>` : ''}
             <td class="num">${fmtRtg(g.hhRtg  || null)}</td>
             <td class="num">${fmtImp(g.hhImp  || null)}</td>
