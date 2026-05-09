@@ -27,6 +27,12 @@ let tvRatingsYoY          = false;    // overlay prior season on line chart
 let tvRatingsOpponentSort = { key: 'avgHHRtg', dir: 'desc' };
 let tvRatingsGamesSort    = { key: 'date', dir: 'desc' };
 
+// Known preseason game dates per season — fallback for when column-based detection misses them.
+// Update this list each season as needed.
+const TV_RATINGS_KNOWN_PRESEASON = {
+  '2025-26': ['10/8/2025', '10/14/2025'],
+};
+
 // ── Navigation ───────────────────────────────────────────────
 function openTVRatingsPage() {
   currentBrand = null;
@@ -56,7 +62,14 @@ function getTVRatingsRows(season) {
 }
 
 function isRegularSeason(r) {
-  return r.gameType !== 'Pre Season';
+  if (r.gameType === 'Pre Season') return false;
+  // Fallback: check known preseason dates for seasons where column detection failed
+  const knownPreseason = TV_RATINGS_KNOWN_PRESEASON[r.season] || [];
+  if (knownPreseason.length > 0 && r.date) {
+    const rTime = new Date(r.date).getTime();
+    if (!isNaN(rTime) && knownPreseason.some(d => new Date(d).getTime() === rTime)) return false;
+  }
+  return true;
 }
 
 // Returns sorted unique regular-season game dates (segment=Game) for a season
@@ -94,7 +107,7 @@ function formatTVDateFull(dateStr) {
 
 function fmtRtg(v) {
   if (v === null || v === undefined) return '—';
-  return v.toFixed(2);
+  return v.toFixed(1);
 }
 
 function fmtImp(v) {
@@ -104,7 +117,7 @@ function fmtImp(v) {
 
 function fmtShr(v) {
   if (v === null || v === undefined) return '—';
-  return v.toFixed(2) + '%';
+  return v.toFixed(1) + '%';
 }
 
 // ── Main page renderer ────────────────────────────────────────
@@ -385,7 +398,7 @@ function renderTVRatingsRecentGames(gameDates, allRows) {
     const p2  = byDemo['P2+'] || {};
     const opp = Object.values(byDemo)[0]?.opponent || '—';
     return `
-      <div style="flex:1;min-width:140px;max-width:220px;background:var(--bg-elev);border:1px solid var(--border);
+      <div style="background:var(--bg-elev);border:1px solid var(--border);
         border-radius:8px;padding:14px 16px;">
         <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
           color:var(--text-muted);margin-bottom:2px;">${formatTVDate(date)}</div>
@@ -412,7 +425,7 @@ function renderTVRatingsRecentGames(gameDates, allRows) {
     <div style="margin-bottom:24px;">
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
         color:var(--text-muted);margin-bottom:12px;">5 Most Recent Games</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+      <div style="display:grid;grid-template-columns:repeat(${recent.length},1fr);gap:10px;">
         ${cards}
       </div>
     </div>
@@ -422,8 +435,8 @@ function renderTVRatingsRecentGames(gameDates, allRows) {
 // ── Season line chart ─────────────────────────────────────────
 function renderTVRatingsLineChart(season, priorSeason) {
   const cfgMap = {
-    hhRtg: { label: 'HH Rating',       demo: 'HH',  key: 'hhRtg', fmtTip: v => v.toFixed(3) },
-    p2Rtg: { label: 'P2+ Rating',      demo: 'P2+', key: 'rtg',   fmtTip: v => v.toFixed(3) },
+    hhRtg: { label: 'HH Rating',       demo: 'HH',  key: 'hhRtg', fmtTip: v => v.toFixed(1) },
+    p2Rtg: { label: 'P2+ Rating',      demo: 'P2+', key: 'rtg',   fmtTip: v => v.toFixed(1) },
     hhImp: { label: 'HH Impressions',  demo: 'HH',  key: 'hhImp', fmtTip: v => formatNum(Math.round(v)) },
     p2Imp: { label: 'P2+ Impressions', demo: 'P2+', key: 'imp',   fmtTip: v => formatNum(Math.round(v)) },
   };
@@ -477,7 +490,7 @@ function renderTVRatingsLineChart(season, priorSeason) {
   // Gridlines (4 steps)
   const gridLines = Array.from({length: 5}, (_, i) => {
     const v = minVal + (maxVal - minVal) * (i / 4);
-    const label = cfg.key === 'hhRtg' || cfg.key === 'rtg' ? v.toFixed(2) : formatNum(Math.round(v));
+    const label = cfg.key === 'hhRtg' || cfg.key === 'rtg' ? v.toFixed(1) : formatNum(Math.round(v));
     return { y: yScale(v), label };
   });
 
@@ -488,7 +501,7 @@ function renderTVRatingsLineChart(season, priorSeason) {
   const currVals = currPoints.map(p => p.val).filter(v => v !== null && v > 0);
   const avg = currVals.reduce((s, v) => s + v, 0) / currVals.length;
   const avgY = yScale(avg);
-  const avgLabel = cfg.key === 'hhRtg' || cfg.key === 'rtg' ? avg.toFixed(2) : formatNum(Math.round(avg));
+  const avgLabel = cfg.key === 'hhRtg' || cfg.key === 'rtg' ? avg.toFixed(1) : formatNum(Math.round(avg));
 
   // Align prior points to same game-number index as current (YoY overlay by game #)
   const priorAligned = priorPoints ? priorPoints.map((p, i) => ({
@@ -586,7 +599,7 @@ function renderTVRatingsSegmentComparison(rows) {
     const val = d[metric];
     if (!val) return '';
     const pct = maxVal > 0 ? (val / maxVal) * 100 : 0;
-    const fmt = val.toFixed(2);
+    const fmt = val.toFixed(1);
     return `
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
         <div style="width:80px;font-size:11px;font-family:var(--font-mono);color:var(--text-dim);text-align:right;flex-shrink:0;">${d.label}</div>

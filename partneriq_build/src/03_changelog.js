@@ -1,5 +1,22 @@
 const CHANGELOG = [
   {
+    version: 'v0.37',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'TV Ratings — preseason fix, rounding, wider recent-games cards',
+    changes: [
+      {
+        category: 'TV Ratings Dashboard',
+        items: [
+          `Preseason filtering: added TV_RATINGS_KNOWN_PRESEASON constant listing Oct 8 and Oct 14 2025-26 as preseason dates — isRegularSeason() now uses this as a fallback when column-based detection misses them`,
+          `Ratings now display to one decimal place (e.g. 1.2 instead of 1.23) across all KPI cards, tables, chart gridlines, and tooltips`,
+          `Share now displays to one decimal place (e.g. 4.5% instead of 4.53%) across all tables`,
+          `"5 Most Recent Games" cards now fill the full dashboard width using a CSS grid layout instead of wrapping flex`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.36',
     date: 'May 2026',
     source: 'Claude',
