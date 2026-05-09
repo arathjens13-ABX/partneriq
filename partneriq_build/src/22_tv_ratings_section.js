@@ -16,7 +16,9 @@
 // Data structure after normalization:
 //   Each row = one demographic (HH / P2+ / P18-49 / M18-49 / etc.) × one segment
 //   (Game / Pre Game / Post Game) for a given game date and opponent.
-//   To get a game's HH Rating: filter demo="HH", segment="Game".
+//   gameType = "Regular Game" | "Pre Season" — derived from Segment columns.
+//   All averages and charts exclude Pre Season games (gameType !== "Regular Game").
+//   To get a game's HH Rating: filter demo="HH", segment="Game", gameType="Regular Game".
 // ============================================================
 
 let tvRatingsSeasonFilter = 'latest'; // 'latest' | season string | 'all'
@@ -53,9 +55,13 @@ function getTVRatingsRows(season) {
   return season === 'all' ? rows : rows.filter(r => r.season === season);
 }
 
-// Returns sorted unique game dates (segment=Game) for a season
+function isRegularSeason(r) {
+  return r.gameType !== 'Pre Season';
+}
+
+// Returns sorted unique regular-season game dates (segment=Game) for a season
 function getTVRatingsGameDates(season) {
-  const rows = getTVRatingsRows(season).filter(r => r.segment === 'Game');
+  const rows = getTVRatingsRows(season).filter(r => r.segment === 'Game' && isRegularSeason(r));
   const dates = [...new Set(rows.map(r => r.date).filter(Boolean))];
   return dates.sort((a, b) => new Date(a) - new Date(b));
 }
@@ -125,34 +131,37 @@ function renderTVRatingsPage(main) {
     return;
   }
 
-  const activeSeason = getTVRatingsActiveSeason();
+  const activeSeason  = getTVRatingsActiveSeason();
   const displaySeason = activeSeason === 'all' ? null : activeSeason;
-  const rows = getTVRatingsRows(displaySeason || activeSeason);
-  const gameRows = rows.filter(r => r.segment === 'Game');
-  const hhGameRows  = gameRows.filter(r => r.demo === 'HH');
-  const p2GameRows  = gameRows.filter(r => r.demo === 'P2+');
-  const gameDates   = getTVRatingsGameDates(displaySeason || activeSeason);
-  const gameCount   = gameDates.length;
+  const rows          = getTVRatingsRows(displaySeason || activeSeason);
 
-  const avgHHRtg  = avgTVMetric(hhGameRows,  'hhRtg');
-  const avgHHImp  = avgTVMetric(hhGameRows,  'hhImp');
-  const avgP2Rtg  = avgTVMetric(p2GameRows,  'rtg');
-  const avgP2Imp  = avgTVMetric(p2GameRows,  'imp');
-  const peakHHRtg = maxTVMetric(hhGameRows,  'hhRtg');
+  // Regular-season rows only for all averages and charts
+  const regRows       = rows.filter(r => isRegularSeason(r));
+  const gameRows      = regRows.filter(r => r.segment === 'Game');
+  const hhGameRows    = gameRows.filter(r => r.demo === 'HH');
+  const p2GameRows    = gameRows.filter(r => r.demo === 'P2+');
+  const gameDates     = getTVRatingsGameDates(displaySeason || activeSeason);
+  const gameCount     = gameDates.length;
 
-  // Prior season for YoY (only when a specific season is selected)
+  const avgHHRtg  = avgTVMetric(hhGameRows, 'hhRtg');
+  const avgHHImp  = avgTVMetric(hhGameRows, 'hhImp');
+  const avgP2Rtg  = avgTVMetric(p2GameRows, 'rtg');
+  const avgP2Imp  = avgTVMetric(p2GameRows, 'imp');
+  const peakHHRtg = maxTVMetric(hhGameRows, 'hhRtg');
+
+  // Prior season for YoY
   const seasonIdx    = seasons.indexOf(displaySeason);
   const priorSeason  = seasonIdx > 0 ? seasons[seasonIdx - 1] : null;
-  const priorRows    = priorSeason ? getTVRatingsRows(priorSeason) : null;
+  const priorRows    = priorSeason ? getTVRatingsRows(priorSeason).filter(r => isRegularSeason(r)) : null;
   const priorHHGame  = priorRows ? priorRows.filter(r => r.segment === 'Game' && r.demo === 'HH') : null;
   const priorP2Game  = priorRows ? priorRows.filter(r => r.segment === 'Game' && r.demo === 'P2+') : null;
   const prevAvgHHRtg = priorHHGame ? avgTVMetric(priorHHGame, 'hhRtg') : null;
   const prevAvgP2Rtg = priorP2Game ? avgTVMetric(priorP2Game, 'rtg')   : null;
 
-  const yoyBadge = (curr, prev, invert) => {
+  const yoyBadge = (curr, prev) => {
     if (curr === null || prev === null || prev === 0) return '';
     const chg = pctChangeFromValues(curr, prev);
-    return `<div class="home-card-note" style="color:${(!invert ? chg >= 0 : chg < 0) ? 'var(--positive)' : 'var(--negative)'};">${formatSignedPercent(chg)} vs ${priorSeason}</div>`;
+    return `<div class="home-card-note" style="color:${chg >= 0 ? 'var(--positive)' : 'var(--negative)'};">${formatSignedPercent(chg)} vs ${priorSeason}</div>`;
   };
 
   main.innerHTML = `
@@ -176,45 +185,52 @@ function renderTVRatingsPage(main) {
 
     <div class="data-status">
       <div><span class="data-status-dot"></span> Latest update · <strong>${DASHBOARD_META.latestUpdateLabel}</strong>${DASHBOARD_META.latestUpdateDate ? ` · ${DASHBOARD_META.latestUpdateDate}` : ''}</div>
-      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);letter-spacing:0.04em;">Game segment only · Pre &amp; Post shown separately below</div>
+      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);letter-spacing:0.04em;">Regular season only · pre-season games excluded from all averages</div>
     </div>
 
-    <!-- KPI Cards (Game only) -->
+    <!-- Segment takeaway block -->
+    ${renderTVRatingsSegmentTakeaway(regRows)}
+
+    <!-- 5 most recent games -->
+    ${renderTVRatingsRecentGames(gameDates, rows)}
+
+    <!-- KPI Cards (regular season game only) -->
     <div class="home-grid" style="margin-bottom:24px;">
       <div class="home-card">
         <div class="home-card-label">Games Tracked</div>
         <div class="home-card-value">${gameCount}</div>
-        <div class="home-card-note">${activeSeason === 'all' ? 'All seasons' : activeSeason}</div>
+        <div class="home-card-note">${activeSeason === 'all' ? 'All seasons' : activeSeason} · reg. season</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Avg HH Rating</div>
         <div class="home-card-value">${fmtRtg(avgHHRtg)}</div>
-        ${yoyBadge(avgHHRtg, prevAvgHHRtg, false)}
+        ${yoyBadge(avgHHRtg, prevAvgHHRtg)}
         <div class="home-card-note">Household · game avg</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Avg HH Impressions</div>
         <div class="home-card-value">${fmtImp(avgHHImp)}</div>
+        ${yoyBadge(avgHHImp, avgTVMetric(priorHHGame || [], 'hhImp'))}
         <div class="home-card-note">Household · game avg</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Avg P2+ Rating</div>
         <div class="home-card-value">${fmtRtg(avgP2Rtg)}</div>
-        ${yoyBadge(avgP2Rtg, prevAvgP2Rtg, false)}
+        ${yoyBadge(avgP2Rtg, prevAvgP2Rtg)}
         <div class="home-card-note">Persons 2+ · game avg</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Peak HH Rating</div>
         <div class="home-card-value">${fmtRtg(peakHHRtg)}</div>
-        <div class="home-card-note">Single-game high</div>
+        <div class="home-card-note">Single-game high · reg. season</div>
       </div>
     </div>
 
-    <!-- Line chart -->
+    <!-- Season trend line chart -->
     <div class="card" style="margin-bottom:18px;">
       <div class="card-header">
         <span class="card-title">Season Rating Trend</span>
-        <span class="card-sub">Game segment only · click a metric to switch</span>
+        <span class="card-sub">Regular season games only · click a metric to switch</span>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
         ${[
@@ -238,9 +254,9 @@ function renderTVRatingsPage(main) {
     <div class="card" style="margin-bottom:18px;">
       <div class="card-header">
         <span class="card-title">Pre-Game / Game / Post-Game Comparison</span>
-        <span class="card-sub">Avg HH Rating &amp; P2+ Rating by broadcast segment · ${activeSeason === 'all' ? 'All Seasons' : activeSeason}</span>
+        <span class="card-sub">Avg HH Rating &amp; P2+ Rating by broadcast segment · regular season</span>
       </div>
-      ${renderTVRatingsSegmentComparison(rows)}
+      ${renderTVRatingsSegmentComparison(regRows)}
     </div>
 
     <!-- Opponent table (collapsible) -->
@@ -290,6 +306,120 @@ function renderTVRatingsPage(main) {
   wireSectionToggles();
 }
 
+// ── Segment takeaway block ────────────────────────────────────
+function renderTVRatingsSegmentTakeaway(regRows) {
+  const segs = [
+    { key: 'Pre Game',  label: 'Pre-Game',  bold: false },
+    { key: 'Game',      label: 'Game',      bold: true  },
+    { key: 'Post Game', label: 'Post-Game', bold: false },
+  ];
+
+  const cell = (v, bold) =>
+    `<td style="text-align:right;padding:10px 18px;font-family:var(--font-mono);font-size:${bold ? '15px' : '13px'};
+      font-weight:${bold ? '600' : '400'};color:${bold ? 'var(--text)' : 'var(--text-dim)'};">${v}</td>`;
+
+  const rowHTML = (seg) => {
+    const hhRows = regRows.filter(r => r.segment === seg.key && r.demo === 'HH');
+    const p2Rows = regRows.filter(r => r.segment === seg.key && r.demo === 'P2+');
+    const hhRtg = avgTVMetric(hhRows, 'hhRtg');
+    const hhImp = avgTVMetric(hhRows, 'hhImp');
+    const p2Imp = avgTVMetric(p2Rows, 'imp');
+    const games = [...new Set(hhRows.map(r => r.date))].length;
+    if (!games) return '';
+    const bg = seg.bold ? 'background:var(--bg-elev-2);' : '';
+    return `<tr style="${bg}border-radius:4px;">
+      <td style="padding:10px 18px;font-family:var(--font-mono);font-size:${seg.bold ? '12px' : '11px'};
+        letter-spacing:0.06em;text-transform:uppercase;font-weight:${seg.bold ? '700' : '400'};
+        color:${seg.bold ? 'var(--text)' : 'var(--text-muted)'};white-space:nowrap;">
+        ${seg.label}${seg.bold ? '' : `<span style="font-size:9px;margin-left:6px;opacity:0.6;">${games} games</span>`}
+      </td>
+      ${cell(fmtRtg(hhRtg),  seg.bold)}
+      ${cell(fmtImp(hhImp),  seg.bold)}
+      ${cell(fmtImp(p2Imp),  seg.bold)}
+    </tr>`;
+  };
+
+  return `
+    <div class="card" style="margin-bottom:18px;">
+      <div class="card-header" style="padding-bottom:0;border-bottom:none;">
+        <span class="card-title">Segment Averages</span>
+        <span class="card-sub">HH Rating · HH Impressions · P2+ Impressions · regular season</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border-soft);">
+              <th style="text-align:left;padding:8px 18px;font-family:var(--font-mono);font-size:10px;
+                letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400;">Segment</th>
+              <th style="text-align:right;padding:8px 18px;font-family:var(--font-mono);font-size:10px;
+                letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400;">HH Rating</th>
+              <th style="text-align:right;padding:8px 18px;font-family:var(--font-mono);font-size:10px;
+                letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400;">HH Impressions</th>
+              <th style="text-align:right;padding:8px 18px;font-family:var(--font-mono);font-size:10px;
+                letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);font-weight:400;">P2+ Impressions</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${segs.map(rowHTML).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ── 5 most recent games ───────────────────────────────────────
+function renderTVRatingsRecentGames(gameDates, allRows) {
+  const recent = [...gameDates].sort((a, b) => new Date(b) - new Date(a)).slice(0, 5);
+  if (!recent.length) return '';
+
+  const byDate = {};
+  allRows.filter(r => r.segment === 'Game').forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = {};
+    byDate[r.date][r.demo] = r;
+  });
+
+  const cards = recent.map(date => {
+    const byDemo = byDate[date] || {};
+    const hh  = byDemo['HH']  || {};
+    const p2  = byDemo['P2+'] || {};
+    const opp = Object.values(byDemo)[0]?.opponent || '—';
+    const isPre = Object.values(byDemo)[0]?.gameType === 'Pre Season';
+    return `
+      <div style="flex:1;min-width:140px;max-width:220px;background:var(--bg-elev);border:1px solid var(--border);
+        border-radius:8px;padding:14px 16px;">
+        <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;
+          color:var(--text-muted);margin-bottom:2px;">${formatTVDate(date)}</div>
+        <div style="font-size:18px;font-weight:700;font-family:var(--font-mono);letter-spacing:0.06em;
+          color:var(--text);margin-bottom:10px;">vs ${opp}${isPre ? '<span style="font-size:9px;margin-left:6px;color:var(--text-muted);">PRE</span>' : ''}</div>
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">HH RTG</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text);">${fmtRtg(hh.hhRtg || null)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">HH IMP</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text);">${fmtImp(hh.hhImp || null)}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:baseline;">
+            <span style="font-family:var(--font-mono);font-size:9px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">P2+ IMP</span>
+            <span style="font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text);">${fmtImp(p2.imp || null)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:24px;">
+      <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;
+        color:var(--text-muted);margin-bottom:12px;">5 Most Recent Games</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${cards}
+      </div>
+    </div>
+  `;
+}
+
 // ── Season line chart ─────────────────────────────────────────
 function renderTVRatingsLineChart(season, priorSeason) {
   const cfgMap = {
@@ -301,10 +431,10 @@ function renderTVRatingsLineChart(season, priorSeason) {
   const cfg = cfgMap[tvRatingsChartMetric] || cfgMap.hhRtg;
 
   const buildPoints = (seasonStr) => {
-    const dates = getTVRatingsGameDates(seasonStr);
+    const dates = getTVRatingsGameDates(seasonStr); // already excludes preseason
     const rowsByDate = {};
     getTVRatingsRows(seasonStr)
-      .filter(r => r.segment === 'Game' && r.demo === cfg.demo)
+      .filter(r => r.segment === 'Game' && r.demo === cfg.demo && isRegularSeason(r))
       .forEach(r => { rowsByDate[r.date] = r; });
     return dates.map((d, i) => ({
       i, date: d,
@@ -324,7 +454,7 @@ function renderTVRatingsLineChart(season, priorSeason) {
   ];
   if (!allVals.length) return '<div style="padding:24px;color:var(--text-muted);font-size:13px;">No values available for this metric.</div>';
 
-  const W = 780, H = 220, padL = 52, padR = 20, padT = 16, padB = 42;
+  const W = 1080, H = 260, padL = 52, padR = 24, padT = 16, padB = 44;
   const plotW = W - padL - padR;
   const plotH = H - padT - padB;
   const maxVal = Math.max(...allVals) * 1.12;
@@ -371,7 +501,7 @@ function renderTVRatingsLineChart(season, priorSeason) {
 
   return `
     <div style="overflow-x:auto;">
-    <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto;display:block;font-family:var(--font-mono);" role="img">
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;font-family:var(--font-mono);" role="img">
       <!-- gridlines -->
       ${gridLines.map(g => `
         <line x1="${padL}" y1="${g.y.toFixed(1)}" x2="${W - padR}" y2="${g.y.toFixed(1)}" stroke="var(--border-soft)" stroke-width="1"/>
@@ -511,7 +641,7 @@ function renderTVRatingsSegmentComparison(rows) {
 
 // ── Opponent table ────────────────────────────────────────────
 function renderTVRatingsOpponentTable(season) {
-  const gameRows = getTVRatingsRows(season).filter(r => r.segment === 'Game');
+  const gameRows = getTVRatingsRows(season).filter(r => r.segment === 'Game' && isRegularSeason(r));
   if (!gameRows.length) return '<div style="padding:16px;color:var(--text-muted);">No game data available.</div>';
 
   const opponents = [...new Set(gameRows.map(r => r.opponent).filter(Boolean))].sort();
@@ -670,9 +800,10 @@ function renderTVRatingsAdDemoChart(gameRows) {
 
 // ── Game log table ────────────────────────────────────────────
 function renderTVRatingsGamesTable(season) {
-  const dates = getTVRatingsGameDates(season);
+  const dates = getTVRatingsGameDates(season); // regular season only
   if (!dates.length) return '<div style="padding:16px;color:var(--text-muted);">No game data available.</div>';
 
+  // Include all game rows (regular + preseason) so preseason can be shown but distinguished
   const allGameRows = getTVRatingsRows(season).filter(r => r.segment === 'Game');
   const rowsByDate  = {};
   allGameRows.forEach(r => {
@@ -682,11 +813,15 @@ function renderTVRatingsGamesTable(season) {
 
   const games = dates.map(date => {
     const byDemo = rowsByDate[date] || {};
-    const hh  = byDemo['HH']  || {};
-    const p2  = byDemo['P2+'] || {};
-    const opp = Object.values(byDemo)[0]?.opponent || '';
-    const ssn = Object.values(byDemo)[0]?.season   || '';
-    return { date, opponent: opp, season: ssn, hhRtg: hh.hhRtg||0, hhImp: hh.hhImp||0, hhShr: hh.hhShr||0, p2Rtg: p2.rtg||0, p2Imp: p2.imp||0, p2Shr: p2.shr||0 };
+    const hh     = byDemo['HH']  || {};
+    const p2     = byDemo['P2+'] || {};
+    const first  = Object.values(byDemo)[0] || {};
+    return {
+      date, opponent: first.opponent || '', season: first.season || '',
+      isPreseason: first.gameType === 'Pre Season',
+      hhRtg: hh.hhRtg||0, hhImp: hh.hhImp||0, hhShr: hh.hhShr||0,
+      p2Rtg: p2.rtg||0,   p2Imp: p2.imp||0,   p2Shr: p2.shr||0,
+    };
   });
 
   const { key, dir } = tvRatingsGamesSort;
@@ -720,9 +855,9 @@ function renderTVRatingsGamesTable(season) {
       </tr></thead>
       <tbody>
         ${games.map(g => `
-          <tr>
+          <tr style="${g.isPreseason ? 'opacity:0.6;' : ''}">
             <td style="font-family:var(--font-mono);font-size:12px;white-space:nowrap;">${formatTVDateFull(g.date)}</td>
-            <td style="font-weight:600;font-family:var(--font-mono);letter-spacing:0.05em;">${g.opponent}</td>
+            <td style="font-weight:600;font-family:var(--font-mono);letter-spacing:0.05em;">${g.opponent}${g.isPreseason ? '<span style="font-size:9px;margin-left:6px;color:var(--text-muted);font-weight:400;">PRE</span>' : ''}</td>
             ${season === 'all' ? `<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-dim);">${g.season}</td>` : ''}
             <td class="num">${fmtRtg(g.hhRtg  || null)}</td>
             <td class="num">${fmtImp(g.hhImp  || null)}</td>
