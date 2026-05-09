@@ -394,6 +394,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `openTVPortfolioPage()` | Sets `currentPage='tv'` and calls `renderApp()` |
 | `openDataHealthPage()` | Navigates to the data health summary page |
 | `openGlossaryPage()` | Navigates to the metric glossary page |
+| `renderLinksPage(main)` | Renders the Links page — 8 external links grouped into Web Analytics, Attendance, Digital & Broadcast, and App Data; each opens in a new tab |
+| `openLinksPage()` | Sets `currentPage='links'` and calls `renderApp()` |
 
 ---
 
