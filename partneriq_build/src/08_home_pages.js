@@ -233,6 +233,11 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">📘 Glossary</div>
           <div class="home-action-copy">Shared definitions for QIMV, QI Score, SoV, paid media metrics, and survey recall.</div>
         </div>
+        <div class="home-action" onclick="openLinksPage();">
+          <div class="home-action-kicker">External resources</div>
+          <div class="home-action-title">🔗 Links</div>
+          <div class="home-action-copy">Quick access to web reports, attendance dashboards, digital signage, TV ratings, and more — all in one place.</div>
+        </div>
         <div class="home-action disabled">
           <div class="home-action-kicker">Future channel</div>
           <div class="home-action-title">🏟️ Attendance</div>
@@ -279,6 +284,127 @@ function openDataHealthPage() {
 function openGlossaryPage() {
   currentBrand = null;
   currentPage = 'glossary';
+  currentPeriod = null;
+  renderApp();
+}
+
+function renderLinksPage(main) {
+  const groups = [
+    {
+      label: 'Web Analytics',
+      links: [
+        {
+          title: 'Rose Quarter Web Page Report',
+          source: 'Looker Studio',
+          desc: 'Website traffic and page performance metrics for the Rose Quarter.',
+          url: 'https://lookerstudio.google.com/u/0/reporting/c2f3a652-779a-4513-9256-d5f998493ad6/page/p_vttsy1digd'
+        },
+        {
+          title: 'Blazers Web Page Report',
+          source: 'Looker Studio',
+          desc: 'Website traffic and page performance metrics for Blazers.com.',
+          url: 'https://lookerstudio.google.com/u/0/reporting/04b4a1b3-5a5a-40ae-acdc-c3a889697349/page/p_vttsy1digd'
+        },
+      ]
+    },
+    {
+      label: 'Attendance',
+      links: [
+        {
+          title: 'Rose Quarter Events Attendance',
+          source: 'Tableau',
+          desc: 'Ticket count and attendance data by event for the Rose Quarter.',
+          url: 'https://10ay.online.tableau.com/#/site/blazers/views/RQTicketCount_16291417462360/RQTicketCount'
+        },
+        {
+          title: 'Blazers Attendance Report',
+          source: 'Tableau',
+          desc: 'Season attendance summary and trend analysis.',
+          url: 'https://10ay.online.tableau.com/#/site/blazers/views/22-23Attendance/AttendanceSummary?:iid=1'
+        },
+      ]
+    },
+    {
+      label: 'Digital &amp; Broadcast',
+      links: [
+        {
+          title: 'Triple Play Dashboard',
+          source: 'Tableau',
+          desc: 'Tracks digital impact signage across platforms.',
+          url: 'https://10ay.online.tableau.com/#/site/blazers/views/TriplePlayDashboard/FullScreen?:iid=1'
+        },
+        {
+          title: 'TV Ratings Dashboard',
+          source: 'Tableau',
+          desc: 'Broadcast TV ratings and viewership metrics.',
+          url: 'https://10ay.online.tableau.com/#/site/blazers/views/BroadcastTVRatings/BroadcastTVRatings?:iid=1'
+        },
+        {
+          title: 'Email Report',
+          source: 'Tableau',
+          desc: 'Email campaign performance and engagement data.',
+          url: 'https://10ay.online.tableau.com/#/site/blazers/workbooks/3517813'
+        },
+      ]
+    },
+    {
+      label: 'App Data',
+      links: [
+        {
+          title: 'App Data — Partner Metrics',
+          source: 'SharePoint',
+          desc: 'Partner metrics app data and performance report (Excel).',
+          url: 'https://ripcity4-my.sharepoint.com/:x:/r/personal/istark_ripcity_com/_layouts/15/Doc.aspx?%5B%E2%80%A6%5DrtnerMetrics.xlsx&action=default&mobileredirect=true'
+        },
+      ]
+    },
+  ];
+
+  const totalLinks = groups.reduce((n, g) => n + g.links.length, 0);
+
+  function linkCard(l) {
+    const safeUrl = l.url.replace(/&/g, '&amp;');
+    return `
+      <div class="home-action" onclick="window.open('${safeUrl}', '_blank', 'noopener,noreferrer');">
+        <div class="home-action-kicker">${l.source}</div>
+        <div class="home-action-title">${l.title} <span style="font-size:11px;opacity:0.5;">↗</span></div>
+        <div class="home-action-copy">${l.desc}</div>
+      </div>
+    `;
+  }
+
+  const groupsHTML = groups.map((g, i) => `
+    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);${i > 0 ? 'margin-top:28px;' : ''}margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);">${g.label}</div>
+    <div class="home-actions">
+      ${g.links.map(linkCard).join('')}
+    </div>
+  `).join('');
+
+  main.innerHTML = `
+    <div class="brand-header">
+      <div class="brand-title-block">
+        <div class="eyebrow">Reference · Quick Links</div>
+        <h1 class="brand-title">Links</h1>
+        <div class="brand-subtitle">
+          <span class="channel-tag active">${totalLinks} links</span>
+          <span class="channel-tag active">${groups.length} categories</span>
+        </div>
+      </div>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2 class="section-title">External resources</h2>
+        <span class="section-meta">Each link opens in a new tab</span>
+      </div>
+      ${groupsHTML}
+    </section>
+  `;
+}
+
+function openLinksPage() {
+  currentBrand = null;
+  currentPage = 'links';
   currentPeriod = null;
   renderApp();
 }
