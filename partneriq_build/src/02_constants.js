@@ -54,6 +54,107 @@ const DASHBOARD_META = {
 /* DASHBOARD_META_END */
 
 // ============================================================
+// STATS & MARKET DATA — update these values each fiscal year.
+// All percentages are stored as whole numbers (e.g. 42 = 42%).
+// Dollar amounts are stored as raw numbers (e.g. 85000 = $85,000).
+// Zero values render as "—" on the Stats page.
+// ============================================================
+const STATS_DATA = {
+  fiscalYear: '2024-25',
+
+  social: {
+    totalFollowers: {
+      Instagram: 0,
+      Twitter:   0,
+      Facebook:  0,
+      TikTok:    0,
+      YouTube:   0,
+      Threads:   0,
+    },
+    // Age demographics by platform — values are percentages (whole numbers, should sum to ~100)
+    demographics: {
+      Instagram: { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
+      Twitter:   { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
+      Facebook:  { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
+      TikTok:    { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
+    },
+    // Top geographic markets by platform — values are percentages of total following
+    geography: {
+      Instagram: { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
+      Twitter:   { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
+      Facebook:  { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
+      TikTok:    { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
+    },
+  },
+
+  arena: {
+    annualVisitors: 0,  // Total visitors to the arena in the fiscal year
+    totalEvents:    0,  // Total events (all types) held in the fiscal year
+    seatingCapacity: {
+      'Lower Bowl':     0,
+      'Upper Bowl':     0,
+      'Courtside':      0,
+      'Club Level':     0,
+      'Suites':         0,
+      'Total Capacity': 0,
+    },
+  },
+
+  stm: {
+    totalSTMs:          0,  // Total active season ticket member accounts
+    renewalRate:        0,  // Renewal rate (percentage, whole number)
+    avgTenureYears:     0,  // Average tenure of current STMs in years
+    newMembersThisYear: 0,  // Net new STMs added this fiscal year
+  },
+
+  // Percentages (whole numbers) of fan base in each income bracket
+  householdIncome: {
+    'Under $50K':  0,
+    '$50K–$75K':   0,
+    '$75K–$100K':  0,
+    '$100K–$150K': 0,
+    '$150K–$200K': 0,
+    'Over $200K':  0,
+    'Median HHI':  0,  // In dollars (e.g. 95000)
+  },
+
+  portlandMarket: {
+    population:      0,  // Portland DMA total population
+    totalHouseholds: 0,
+    medianAge:       0,
+    medianHHI:       0,  // In dollars
+    collegeEducated: 0,  // % with 4-year degree (whole number)
+    homeownership:   0,  // % who own their home (whole number)
+  },
+
+  broadcast: {
+    avgViewersPerGame:   0,  // Average local TV viewers per game
+    totalSeasonReach:    0,  // Unduplicated unique reach for the full season
+    gamesOnLocalTV:      0,
+    gamesOnNationalTV:   0,
+    avgLocalRating:      0,  // Average local TV rating (e.g. 3.2 for a 3.2 rating)
+    totalBroadcastHours: 0,  // Total hours of live broadcast content
+  },
+
+  appAndDigital: {
+    monthlyActiveUsers:     0,
+    totalAppDownloads:      0,
+    avgSessionsPerUser:     0,  // Per month
+    pushOptInRate:          0,  // % of users opted in to push notifications (whole number)
+    emailSubscribers:       0,
+    websiteMonthlyVisitors: 0,
+  },
+
+  fanSentiment: {
+    npsScore:             0,  // Net Promoter Score (range: -100 to 100)
+    overallSatisfaction:  0,  // % satisfied or very satisfied (whole number)
+    gameExperienceRating: 0,  // Out of 10
+    likelihoodToRenew:    0,  // % likely to renew or purchase (whole number)
+    brandAffinityScore:   0,  // Internal proprietary metric
+  },
+};
+
+// ============================================================
 // PRELOADED DATA / DISTRIBUTION MODE
 // Use the dashboard's "Export preloaded dashboard" button to replace
 // this null placeholder with the currently loaded DataStore.
