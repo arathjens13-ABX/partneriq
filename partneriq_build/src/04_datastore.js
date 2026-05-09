@@ -728,8 +728,9 @@ function exportPreloadedDashboard() {
   const payload = getSerializableDataStore();
   let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 
+  const compressed = LZString.compressToBase64(JSON.stringify(payload));
   html = replaceExportBlock(html, 'PRELOADED_DATA_START', 'PRELOADED_DATA_END',
-    '/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = ' + safeJSONStringify(payload) + ';\n/* PRELOADED_DATA_END */');
+    '/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = JSON.parse(LZString.decompressFromBase64(\'' + compressed + '\'));\n/* PRELOADED_DATA_END */');
   html = replaceExportBlock(html, 'DASHBOARD_META_START', 'DASHBOARD_META_END',
     '/* DASHBOARD_META_START */\nconst DASHBOARD_META = ' + safeJSONStringify(nextMeta, 2) + ';\n/* DASHBOARD_META_END */');
   html = replaceExportBlock(html, 'VIEWER_MODE_START', 'VIEWER_MODE_END',

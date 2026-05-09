@@ -1,5 +1,22 @@
 const CHANGELOG = [
   {
+    version: 'v0.38',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Compressed export — smaller file size, lower RAM for shared dashboards',
+    changes: [
+      {
+        category: 'Export',
+        items: [
+          `Exported preloaded dashboards now compress the embedded data payload using LZ-string (base64 mode) — typical file size drops from ~25 MB to ~3–5 MB`,
+          `LZ-string 1.4.4 (MIT) inlined in vendor shims; no external dependencies added`,
+          `Viewers open the file faster and browsers need less RAM to hold the HTML source — decompressed data is parsed once at load time and temporary strings are eligible for garbage collection`,
+          `Old exports are unaffected — each export bundles its own code and data`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.37',
     date: 'May 2026',
     source: 'Claude',
