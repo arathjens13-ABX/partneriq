@@ -532,10 +532,10 @@ function renderLinksPage(main) {
       label: 'App Data',
       links: [
         {
-          title: 'App Data — Partner Metrics',
+          title: 'Blazers App — Partner Metrics',
           source: 'SharePoint',
           desc: 'Partner metrics app data and performance report (Excel).',
-          url: 'https://ripcity4-my.sharepoint.com/:x:/r/personal/istark_ripcity_com/_layouts/15/Doc.aspx?%5B%E2%80%A6%5DrtnerMetrics.xlsx&action=default&mobileredirect=true'
+          url: 'https://ripcity4-my.sharepoint.com/:x:/r/personal/istark_ripcity_com/_layouts/15/Doc.aspx?sourcedoc=%7B2FB91895-F546-4CF6-B554-0DBD52D46A94%7D&file=Trail%20Blazers%20App%20-%20Partner%20Metrics.xlsx&action=default&mobileredirect=true'
         },
       ]
     },
