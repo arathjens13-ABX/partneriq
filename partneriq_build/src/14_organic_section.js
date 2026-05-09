@@ -804,6 +804,15 @@ function normalizeTVRatingsRow(row) {
     hhImp:    parseNum(row['HH Imp']) || parseNum(row['HH Imps']),
     hhRtg:    parseNum(row['HH Rtg']),
     hhShr:    parseNum(row['HH SHR']) || parseNum(row['HHR Shr %']),
+    // Detect preseason: check all Segment-named columns (PapaParse may alias duplicate headers)
+    gameType: (() => {
+      const vals = Object.entries(row)
+        .filter(([k]) => /^segment/i.test(String(k).trim()))
+        .map(([, v]) => String(v || '').trim().toLowerCase());
+      return vals.some(v => v === 'pre season' || v === 'preseason' || v === 'pre-season' || v === 'exhibition')
+        ? 'Pre Season'
+        : 'Regular Game';
+    })(),
   };
 }
 
