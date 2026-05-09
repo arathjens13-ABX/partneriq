@@ -1,5 +1,30 @@
 const CHANGELOG = [
   {
+    version: 'v0.35',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Stats & Market Data page + home page Links relocation',
+    changes: [
+      {
+        category: 'New Page',
+        items: [
+          `Added "Stats & Market Data" quick link to the Portfolio pages group on the home page`,
+          `New Stats page houses 8 collapsible sections: Social Following, Arena & Attendance, Season Ticket Members, Household Income, Portland Market Demographics, Broadcast, App & Digital, and Fan Sentiment`,
+          `Stats page is accessible before data is loaded (like Glossary, Data Health, and Links)`,
+          `All stats values are stored in a new STATS_DATA config object in 02_constants.js — update the values each fiscal year and rebuild to refresh the page`,
+          `Social Following section displays total followers by platform plus age demographics and geographic distribution tables broken out by platform`,
+          `Arena & Attendance section shows annual visitors, total events, and a seating capacity breakdown by section`,
+        ]
+      },
+      {
+        category: 'Home Page',
+        items: [
+          `Moved the "Links" card from the Reference group into the Portfolio pages group so it appears alongside the other primary dashboard sections`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.34',
     date: 'May 2026',
     source: 'Claude',
