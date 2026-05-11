@@ -60,8 +60,7 @@ const DASHBOARD_META = {
 // Zero values render as "—" on the Stats page.
 // ============================================================
 const STATS_DATA = {
-  fiscalYear: '2024-25',
-
+  fiscalYear: '2025-26',
   social: {
     totalFollowers: {
       Instagram: 2960901,
@@ -69,7 +68,7 @@ const STATS_DATA = {
       Facebook:  2515875,
       TikTok:    1155796,
       YouTube:   134956,
-      Threads:   395627
+      Threads:   395627,
       Snapchat:  224961,
       Weibo:     6405205,
     },
