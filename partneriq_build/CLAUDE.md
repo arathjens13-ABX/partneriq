@@ -591,6 +591,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → TV metrics map for home-game actuals lookup |
 | `getLatestSeasonVSRows()` | Returns virtual branding TV rows for the most recent season only |
 | `getVirtualBrandingTVRows(brand, location)` | Filters TV rows to virtual branding rows, optionally by brand/location |
+| `computeVSQimvYoY(brand)` | YoY for virtual signage QIMV using TV VB rows by season; returns `{ curr, prev, change, basis }` or null when < 2 seasons exist |
 | `computeVSLocationMeans()` | Computes per-position simple means from home-game TV actuals (used for away-game estimates and the averages table) |
 | `vsConservativeEstimate(vals)` | Returns `floor(min(mean, median))` — the estimation strategy for away games |
 | `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates |

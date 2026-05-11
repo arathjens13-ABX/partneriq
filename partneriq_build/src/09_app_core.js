@@ -304,13 +304,20 @@ function renderApp() {
 
 function renderTakeaways(brand, latestSeason, prevSeason) {
   const takeaways = [];
-  const tvAll = getBrandTVData(brand, currentPeriod);
+  const tvAll     = getBrandTVData(brand, currentPeriod);
   const socialAll = getBrandSocialData(brand, currentPeriod);
-  const paidAll = getBrandPaidData(brand, currentPeriod);
+  const paidAll   = getBrandPaidData(brand, currentPeriod);
+
+  // Resolve On-Court virtual signage group for this brand once (used in multiple bullets)
+  const vsGroup = (function() {
+    if (!hasVirtualSignageDataForBrand(brand)) return null;
+    const grouped = groupVSPartnerStats(getVirtualSignagePartnerStats());
+    return grouped.find(g => g.brand === brand || g.members.some(m => m.brand === brand)) || null;
+  })();
 
   if (tvAll.length) {
     const totalImp = sum(tvAll, 'Sponsorship QI Impressions');
-    const totalMV = sum(tvAll, 'QI Media Value ($)');
+    const totalMV  = sum(tvAll, 'QI Media Value ($)');
 
     let qimvYoYText = '', impYoYText = '';
     if (latestSeason && prevSeason) {
@@ -326,7 +333,25 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
       }
     }
 
-    takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${qimvYoYText}.`);
+    if (vsGroup) {
+      // Combined QIMV: TV visible + On-Court virtual signage
+      const combinedMV = totalMV + vsGroup.qimv;
+      const vsYoY = computeVSQimvYoY(brand);
+      let vsYoYText = '';
+      if (vsYoY !== null) {
+        const cls = vsYoY.change >= 0 ? 'up' : 'down';
+        vsYoYText = ` (<span class="${cls}">${vsYoY.change >= 0 ? '↑' : '↓'} ${Math.abs(vsYoY.change * 100).toFixed(1)}%</span> YoY)`;
+      }
+      takeaways.push(
+        `<strong>Total QIMV —</strong> Generated <strong>${formatCurrency(combinedMV)}</strong> in combined QI media value ` +
+        `(TV visible: <strong>${formatCurrency(totalMV)}</strong>${qimvYoYText} · ` +
+        `On-Court virtual: <strong>${formatCurrency(vsGroup.qimv)}</strong>${vsYoYText}). ` +
+        `<span style="color:var(--text-muted);font-size:12px;">On-Court virtual signage is reported separately in the section below.</span>`
+      );
+    } else {
+      takeaways.push(`<strong>QIMV —</strong> Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${qimvYoYText}.`);
+    }
+
     takeaways.push(`<strong>QI Impressions —</strong> Delivered <strong>${formatNum(totalImp)}</strong> QI sponsorship impressions across <strong>${tvAll.length}</strong> broadcast exposures${impYoYText}.`);
   }
 
@@ -376,8 +401,12 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
   }
 
   if (tvAll.length && socialAll.length) {
-    const totalValue = sum(tvAll, 'QI Media Value ($)') + sum(socialAll, 'BrandExposureValue');
-    takeaways.push(`Combined TV + organic social value totals <strong>${formatCurrency(totalValue)}</strong> for this period.`);
+    const tvMV      = sum(tvAll, 'QI Media Value ($)');
+    const socialBEV = sum(socialAll, 'BrandExposureValue');
+    const vsMV      = vsGroup ? vsGroup.qimv : 0;
+    const totalValue = tvMV + socialBEV + vsMV;
+    const vsLabel = vsMV > 0 ? ' + On-Court virtual' : '';
+    takeaways.push(`Combined TV${vsLabel} + organic social value totals <strong>${formatCurrency(totalValue)}</strong> for this period.`);
   }
 
   if (!takeaways.length) takeaways.push(`No data available for ${brand} in the selected period.`);
