@@ -87,6 +87,16 @@ header {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.org-logo-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .logo-button:hover .logo-mark {

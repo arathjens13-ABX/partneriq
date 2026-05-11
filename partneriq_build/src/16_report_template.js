@@ -26,23 +26,30 @@ const REPORT_BG_B64 = '/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIA
 const REPORT_ORG_LOGO      = null;   // ← replace with base64 string or SVG string
 const REPORT_ORG_LOGO_TYPE = 'img';  // 'img' or 'svg'
 
-// Helper: renders either a real logo or the "TB" placeholder circle
+// Helper: renders either a real logo or the "TB" placeholder circle.
+// Resolution order: REPORT_ORG_LOGO (explicit override) → PARTNER_LOGOS["TrailBlazers"] → TB placeholder
 function renderOrgLogo(size = 52) {
-  if (!REPORT_ORG_LOGO) {
+  let src  = REPORT_ORG_LOGO;
+  let type = REPORT_ORG_LOGO_TYPE;
+  if (!src && typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS['TrailBlazers']) {
+    src  = PARTNER_LOGOS['TrailBlazers'].data;
+    type = PARTNER_LOGOS['TrailBlazers'].type; // 'img' for PNG/JPG
+  }
+  if (!src) {
     // Placeholder — red circle with TB initials
     return `<div style="width:${size}px;height:${size}px;background:var(--brand-red, #C8102E);
       border-radius:50%;display:flex;align-items:center;justify-content:center;
       font-family:'Barlow Condensed',sans-serif;font-weight:800;font-size:${Math.round(size*0.31)}px;
       letter-spacing:-0.05em;color:#fff;flex-shrink:0;">TB</div>`;
   }
-  if (REPORT_ORG_LOGO_TYPE === 'svg') {
+  if (type === 'svg') {
     return `<div style="width:${size}px;height:${size}px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-      ${REPORT_ORG_LOGO}
+      ${src}
     </div>`;
   }
-  // PNG / JPG image
-  return `<img src="${REPORT_ORG_LOGO}" width="${size}" height="${size}"
-    style="border-radius:50%;object-fit:contain;flex-shrink:0;"
+  // PNG / JPG image — no border-radius so the actual logo mark isn't clipped
+  return `<img src="${src}" width="${size}" height="${size}"
+    style="object-fit:contain;flex-shrink:0;"
     alt="Portland Trail Blazers" />`;
 }
 // Helper: renders a partner logo (from logos/ folder or DataStore override)
