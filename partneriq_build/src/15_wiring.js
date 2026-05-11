@@ -95,6 +95,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const loadedPreloaded = loadPreloadedData();
   applyViewerMode();
+
+  // Inject org logo into header from PARTNER_LOGOS["TrailBlazers"] if available
+  const orgLogoImg = document.getElementById('org-logo-img');
+  if (orgLogoImg && typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS['TrailBlazers']) {
+    orgLogoImg.src = PARTNER_LOGOS['TrailBlazers'].data;
+    orgLogoImg.style.display = '';
+  }
+
   renderApp();
   if (loadedPreloaded) updateBrandDropdown('');
 });

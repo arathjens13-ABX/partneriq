@@ -1,5 +1,22 @@
 const CHANGELOG = [
   {
+    version: 'v0.39',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'TrailBlazers logo — dashboard header and exported report',
+    changes: [
+      {
+        category: 'Branding',
+        items: [
+          `TrailBlazers.png added to the logos folder and now appears in the dashboard header next to the PartnerIQ wordmark`,
+          `Exported partner reports now show the TrailBlazers logo in the report header instead of the "TB" placeholder circle`,
+          `renderOrgLogo() auto-resolves from PARTNER_LOGOS["TrailBlazers"] at build time — no manual base64 paste required`,
+          `logos/README.txt updated to document both partner logos and the org logo (TrailBlazers.png)`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.38',
     date: 'May 2026',
     source: 'Claude',
