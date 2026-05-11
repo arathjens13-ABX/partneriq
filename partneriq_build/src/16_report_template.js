@@ -142,10 +142,20 @@ function gatherReportData(brand) {
     ? (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length
     : 0;
 
+  // On-Court Virtual Signage QIMV (combined into total)
+  const vsQimv = (() => {
+    if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
+      const allVS = typeof getVirtualSignagePartnerStats === 'function' ? getVirtualSignagePartnerStats() : [];
+      const vsB = allVS.find(s => s.brand === brand);
+      return vsB ? (vsB.qimv || 0) : 0;
+    }
+    return 0;
+  })();
+
   return {
     brand, channels,
     tv: { season: latestTVSeason, qimv: tvQimv, impressions: tvImpr,
-          yoyPct: tvYoyPct, soV: tvSoV, matches: tvMatches, topAssets },
+          yoyPct: tvYoyPct, soV: tvSoV, matches: tvMatches, topAssets, vsQimv },
     organic: { latest: zLatest, postsYoY: zPostsYoY, imprYoY: zImprYoY, valYoY: zValYoY },
     paid: { season: latestPaidSeason, agg: paidAgg },
     survey: { wave: surveyWave, early: surveyEarly, late: surveyLate, totalInWave },
@@ -193,13 +203,21 @@ function generatePartnerReport(brand, options) {
     if (!idxs || !idxs.length) return [];
     return idxs.map(i => all[i]).filter(Boolean);
   }
-  function renderTakeawayStrip(takeaways) {
-    if (!takeaways || !takeaways.length) return '';
+  function secNote(key) {
+    if (!options || !options.notes) return '';
+    return (options.notes[key] || '').trim();
+  }
+  function renderTakeawayStrip(takeaways, note) {
+    if ((!takeaways || !takeaways.length) && !note) return '';
+    const boxes = (takeaways || []).map((t, i) => `<div class="r-takeaway-box">
+        <span class="r-takeaway-num">${String(i + 1).padStart(2, '0')}</span>
+        <div class="r-takeaway-body">${t}</div>
+      </div>`).join('');
+    const noteHtml = note ? `<div class="r-takeaway-note">${escapeHTML(note)}</div>` : '';
     return `<div class="r-takeaway-strip">
       <div class="r-takeaway-kicker">Key Takeaways</div>
-      <ul class="r-takeaway-list">${takeaways.map(t =>
-        `<li class="r-takeaway-item">${t}</li>`).join('')}
-      </ul>
+      <div class="r-takeaway-grid">${boxes}</div>
+      ${noteHtml}
     </div>`;
   }
 
@@ -208,11 +226,13 @@ function generatePartnerReport(brand, options) {
 
   // Top-line KPIs — pick the 4 most meaningful for enabled sections
   const topKpis = [];
-  if (secEnabled('tv') && d.tv.qimv > 0) topKpis.push({
-    label: 'QI Media Value',
-    value: formatCurrency(d.tv.qimv),
+  const _vsEnabled = secEnabled('virtualSignage') && (d.tv.vsQimv || 0) > 0;
+  const _totalQimv = d.tv.qimv + (_vsEnabled ? (d.tv.vsQimv || 0) : 0);
+  if (secEnabled('tv') && _totalQimv > 0) topKpis.push({
+    label: 'Total QI Media Value',
+    value: formatCurrency(_totalQimv),
     delta: reportDelta(d.tv.yoyPct),
-    sub:   d.tv.season || '',
+    sub:   _vsEnabled ? `TV + On-Court · ${d.tv.season || ''}` : (d.tv.season || ''),
   });
   if (secEnabled('tv') && d.tv.impressions > 0) topKpis.push({
     label: 'QI Impressions',
@@ -275,9 +295,13 @@ function generatePartnerReport(brand, options) {
         </tbody>
       </table>
       <div class="r-totals-row">
-        <span>Total QI Media Value</span>
+        <span>TV Signage QI Media Value</span>
         <span class="r-accent">${formatCurrency(d.tv.qimv)}</span>
       </div>
+      ${(_vsEnabled && d.tv.vsQimv > 0) ? `<div class="r-totals-row" style="border-top:1px solid rgba(200,16,46,0.25);padding-top:7px;margin-top:2px;">
+        <span style="font-weight:800;">Total incl. On-Court Virtual</span>
+        <span class="r-accent">${formatCurrency(_totalQimv)}</span>
+      </div>` : ''}
     ` : `<div class="r-empty">No TV signage data loaded for ${d.tv.season || 'this season'}.</div>`;
 
     sectionBlocks.push(`
@@ -288,7 +312,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">TV Visible Signage</span>
             <span class="r-card-badge">${d.tv.matches} games · ${d.tv.season || ''}</span>
           </div>
-          ${renderTakeawayStrip(secTakeaways('tv'))}
+          ${renderTakeawayStrip(secTakeaways('tv'), secNote('tv'))}
           <div class="r-card-body">${tvTable}</div>
         </div>
       </div>`);
@@ -338,7 +362,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">Organic Social</span>
             ${d.organic.latest ? `<span class="r-card-badge">${d.organic.latest._reportMonth || 'Latest'}</span>` : ''}
           </div>
-          ${renderTakeawayStrip(secTakeaways('organic'))}
+          ${renderTakeawayStrip(secTakeaways('organic'), secNote('organic'))}
           <div class="r-card-body">${organicBody}</div>
         </div>
       </div>`);
@@ -363,7 +387,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">Brand Awareness Survey</span>
             ${d.survey.wave ? `<span class="r-card-badge">${d.survey.wave.Survey}</span>` : ''}
           </div>
-          ${renderTakeawayStrip(secTakeaways('survey'))}
+          ${renderTakeawayStrip(secTakeaways('survey'), secNote('survey'))}
           <div class="r-card-body">${surveyBody}</div>
         </div>
       </div>`);
@@ -379,7 +403,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">Paid Social</span>
             <span class="r-card-badge">${d.paid.season || ''}</span>
           </div>
-          ${renderTakeawayStrip(secTakeaways('paid'))}
+          ${renderTakeawayStrip(secTakeaways('paid'), secNote('paid'))}
           <div class="r-card-body r-paid-grid">
             <div class="r-paid-kpi"><div class="r-paid-label">Spend</div><div class="r-paid-val">${formatCurrency(d.paid.agg.spend)}</div></div>
             <div class="r-paid-kpi"><div class="r-paid-label">Impressions</div><div class="r-paid-val">${formatNum(d.paid.agg.impressions)}</div></div>
@@ -435,7 +459,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">ANC LED Report</span>
             ${ancSummary ? `<span class="r-card-badge">${ancSummary.assetCount} asset${ancSummary.assetCount === 1 ? '' : 's'}</span>` : ''}
           </div>
-          ${renderTakeawayStrip(secTakeaways('ancLED'))}
+          ${renderTakeawayStrip(secTakeaways('ancLED'), secNote('ancLED'))}
           <div class="r-card-body">${ancBody}</div>
         </div>
       </div>`);
@@ -506,7 +530,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-title">TV / Radio Affidavits</span>
             ${affSummary ? `<span class="r-card-badge">${formatNum(affSummary.totalSpots)} total spots</span>` : ''}
           </div>
-          ${renderTakeawayStrip(secTakeaways('affidavit'))}
+          ${renderTakeawayStrip(secTakeaways('affidavit'), secNote('affidavit'))}
           <div class="r-card-body">${affBody}</div>
         </div>
       </div>`);
@@ -542,7 +566,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-icon">🏀</span>
             <span class="r-card-title">On-Court Virtual Signage</span>
           </div>
-          ${renderTakeawayStrip(secTakeaways('virtualSignage'))}
+          ${renderTakeawayStrip(secTakeaways('virtualSignage'), secNote('virtualSignage'))}
           <div class="r-card-body">${vsBody}</div>
         </div>
       </div>`);
@@ -578,7 +602,7 @@ function generatePartnerReport(brand, options) {
             <span class="r-card-icon">🌐</span>
             <span class="r-card-title">Web &amp; Digital</span>
           </div>
-          ${renderTakeawayStrip(secTakeaways('webDisplay'))}
+          ${renderTakeawayStrip(secTakeaways('webDisplay'), secNote('webDisplay'))}
           <div class="r-card-body">${webBody}</div>
         </div>
       </div>`);
@@ -722,13 +746,21 @@ body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-fon
 .r-survey-meta{font-size:0.92rem;color:var(--muted);margin-top:12px;padding-top:10px;border-top:1px solid var(--border);}
 
 /* ── Takeaway strip ──────────────────────────────────────── */
-.r-takeaway-strip{border-bottom:1px solid var(--border);padding:12px 20px 10px;
+.r-takeaway-strip{border-bottom:1px solid var(--border);padding:14px 20px 12px;
   background:rgba(200,16,46,0.03);}
 .r-takeaway-kicker{font-family:var(--fd);font-size:0.78rem;letter-spacing:0.18em;
-  text-transform:uppercase;color:var(--red);margin-bottom:6px;font-weight:700;}
-.r-takeaway-list{margin:0;padding-left:14px;display:flex;flex-direction:column;gap:4px;}
-.r-takeaway-item{font-size:1.05rem;color:var(--dim);line-height:1.5;}
-.r-takeaway-item strong{color:var(--text);}
+  text-transform:uppercase;color:var(--red);margin-bottom:10px;font-weight:700;}
+.r-takeaway-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;}
+.r-takeaway-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);
+  border-radius:5px;padding:10px 13px;display:flex;gap:10px;align-items:flex-start;}
+.r-takeaway-num{font-family:var(--fd);font-size:0.7rem;font-weight:700;color:var(--red);
+  letter-spacing:0.08em;min-width:18px;padding-top:3px;flex-shrink:0;}
+.r-takeaway-body{font-size:1.0rem;color:var(--dim);line-height:1.5;}
+.r-takeaway-body strong{color:var(--text);}
+.r-takeaway-body .delta-up{color:#5dba73;font-weight:600;}
+.r-takeaway-body .delta-down{color:#d95f5f;font-weight:600;}
+.r-takeaway-note{font-size:0.88rem;color:var(--muted);font-style:italic;
+  margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.05);line-height:1.5;}
 
 /* ── Paid grid ───────────────────────────────────────────── */
 .r-paid-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
@@ -849,6 +881,7 @@ const _reportModal = {
   searchQuery: '',
   selectedSections: null,   // { tv: bool, organic: bool, ... } — null = not yet initialized
   selectedTakeaways: null,  // { tv: Set<index>, organic: Set<index>, ... }
+  sectionNotes: {},         // { tv: 'note text', ... }
   _expandedSections: new Set(), // which section panels are open in the customizer UI
 };
 
@@ -859,6 +892,7 @@ function openReportModal(prefilledBrand = null) {
   _reportModal.searchQuery = '';
   _reportModal.selectedSections = null;
   _reportModal.selectedTakeaways = null;
+  _reportModal.sectionNotes = {};
   _reportModal._expandedSections = new Set();
 
   document.getElementById('reportModalBackdrop').classList.add('active');
@@ -1047,9 +1081,18 @@ function _computeSectionTakeaways(brand, season) {
       assetMap[loc] += Number(r['QI Media Value ($)']) || 0;
     });
     const topAsset = Object.entries(assetMap).sort((a, b) => b[1] - a[1])[0];
+
+    const tvYoYQimv = computeYoYForMetric(brand, season, 'QI Media Value ($)');
+    const tvYoYImp  = computeYoYForMetric(brand, season, 'Sponsorship QI Impressions');
+    const _yoyBadge = (yoy) => {
+      if (!yoy || yoy.change === null || yoy.change === undefined) return '';
+      const up = yoy.change >= 0;
+      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(0)}% YoY</span>`;
+    };
+
     const t = [];
-    if (totalMV  > 0) t.push(`Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value`);
-    if (totalImp > 0) t.push(`Delivered <strong>${formatNum(totalImp)}</strong> QI impressions across <strong>${matches}</strong> games`);
+    if (totalMV  > 0) t.push(`Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${_yoyBadge(tvYoYQimv)}`);
+    if (totalImp > 0) t.push(`Delivered <strong>${formatNum(totalImp)}</strong> QI impressions across <strong>${matches}</strong> games${_yoyBadge(tvYoYImp)}`);
     if (soV !== null && soV > 0) t.push(`<strong>${soV.toFixed(1)}%</strong> average share of voice`);
     if (topAsset && topAsset[1] > 0) t.push(`Top asset: <strong>${topAsset[0]}</strong> — ${formatCurrency(topAsset[1])}`);
     out.tv = t;
@@ -1059,10 +1102,17 @@ function _computeSectionTakeaways(brand, season) {
   const zRows = getBrandZoomphPerf(brand);
   if (zRows.length) {
     const latest = zRows[zRows.length - 1];
+    const zYoYImpr = getZoomphYoY(brand, 'ViewsImpressions');
+    const zYoYVal  = getZoomphYoY(brand, 'BrandValue');
+    const _zBadge = (yoy) => {
+      if (!yoy || yoy.change === null || yoy.change === undefined) return '';
+      const up = yoy.change >= 0;
+      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(0)}% YoY</span>`;
+    };
     const t = [];
-    if (latest.ViewsImpressions) t.push(`<strong>${formatNum(latest.ViewsImpressions)}</strong> views & impressions`);
+    if (latest.ViewsImpressions) t.push(`<strong>${formatNum(latest.ViewsImpressions)}</strong> views & impressions${_zBadge(zYoYImpr)}`);
     if (latest.Engagements)      t.push(`<strong>${formatNum(latest.Engagements)}</strong> total engagements`);
-    if (latest.BrandValue)       t.push(`<strong>${formatCurrency(latest.BrandValue)}</strong> brand exposure value`);
+    if (latest.BrandValue)       t.push(`<strong>${formatCurrency(latest.BrandValue)}</strong> brand exposure value${_zBadge(zYoYVal)}`);
     if (latest.OrganicPosts)     t.push(`<strong>${formatNum(latest.OrganicPosts)}</strong> organic posts published`);
     out.organic = t;
   }
@@ -1071,13 +1121,20 @@ function _computeSectionTakeaways(brand, season) {
   const surveyWave = getSurveyLatestWave(brand, 'Late') || getSurveyLatestWave(brand, 'Early');
   if (surveyWave) {
     const total = (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length;
+    const priorWave = getSurveyPriorWave(brand, 'all');
+    const _ppBadge = (curr, priorKey) => {
+      if (!priorWave || priorWave[priorKey] == null || curr == null) return '';
+      const pp = (curr - priorWave[priorKey]) * 100;
+      const up = pp >= 0;
+      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}pp YoY</span>`;
+    };
     const t = [];
     if (surveyWave.UnaidedPct != null)
-      t.push(`<strong>${Math.round(surveyWave.UnaidedPct * 100)}%</strong> unaided brand recall (#${surveyWave.UnaidedRecallRank || '—'} of ${total})`);
+      t.push(`<strong>${Math.round(surveyWave.UnaidedPct * 100)}%</strong> unaided brand recall (#${surveyWave.UnaidedRecallRank || '—'} of ${total})${_ppBadge(surveyWave.UnaidedPct, 'UnaidedPct')}`);
     if (surveyWave.AidedPct != null)
-      t.push(`<strong>${Math.round(surveyWave.AidedPct * 100)}%</strong> aided brand recall (#${surveyWave.AidedRecallRank || '—'} of ${total})`);
+      t.push(`<strong>${Math.round(surveyWave.AidedPct * 100)}%</strong> aided brand recall (#${surveyWave.AidedRecallRank || '—'} of ${total})${_ppBadge(surveyWave.AidedPct, 'AidedPct')}`);
     if (surveyWave.LocalHQPct != null)
-      t.push(`<strong>${Math.round(surveyWave.LocalHQPct * 100)}%</strong> local HQ awareness (#${surveyWave.LocalHQRecallRank || '—'} of ${total})`);
+      t.push(`<strong>${Math.round(surveyWave.LocalHQPct * 100)}%</strong> local HQ awareness (#${surveyWave.LocalHQRecallRank || '—'} of ${total})${_ppBadge(surveyWave.LocalHQPct, 'LocalHQPct')}`);
     out.survey = t;
   }
 
@@ -1186,8 +1243,13 @@ function _renderReportStep3(body) {
         </label>`;
       }).join('');
 
+      const noteVal = (_reportModal.sectionNotes || {})[def.key] || '';
       const takeawayPanel = `<div class="report-takeaway-panel" id="tp-${def.key}"
-        style="display:${isExpanded ? 'flex' : 'none'}">${takeawayRows}</div>`;
+        style="display:${isExpanded ? 'flex' : 'none'}">${takeawayRows}<div class="report-section-notes-wrap">
+          <label class="report-section-notes-label">Section note (optional — shown below takeaways in PDF)</label>
+          <textarea class="report-section-notes-input" data-section-notes="${def.key}" rows="2"
+            placeholder="E.g., TV Visible Signage uses local broadcast only — national broadcast not included.">${escapeHTML(noteVal)}</textarea>
+        </div></div>`;
 
       return `<div class="report-section-item ${isSelected ? 'section-selected' : ''}" data-section-key="${def.key}">
         <div class="report-section-row">
@@ -1295,6 +1357,14 @@ function _renderReportStep3(body) {
       });
     });
 
+    // Section notes textareas
+    document.querySelectorAll('[data-section-notes]').forEach(ta => {
+      ta.addEventListener('input', () => {
+        if (!_reportModal.sectionNotes) _reportModal.sectionNotes = {};
+        _reportModal.sectionNotes[ta.dataset.sectionNotes] = ta.value;
+      });
+    });
+
     // Select all / Deselect all
     const selectAllBtn  = document.getElementById('reportSelectAll');
     const deselectAllBtn = document.getElementById('reportDeselectAll');
@@ -1366,6 +1436,7 @@ function _renderReportStep4(body) {
       takeaways:  Object.fromEntries(
         Object.entries(_reportModal.selectedTakeaways || {}).map(([k, s]) => [k, [...s]])
       ),
+      notes: { ...(_reportModal.sectionNotes || {}) },
     };
     closeReportModal();
     setTimeout(() => openPartnerReport(brand, options), 100);
