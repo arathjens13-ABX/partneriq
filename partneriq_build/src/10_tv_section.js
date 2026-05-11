@@ -17,6 +17,7 @@ function renderTVSection(brand) {
 
   // Summary strip for collapsed header
   const matchCount = getUniqueMatchdates(rows).length;
+  const hasVSForBrand = getVirtualBrandingTVRows(brand).length > 0;
   const comparisonLabel = comparisonMode === 'auto-match' ? 'YoY / GOG QIMV' : 'YoY QIMV';
   const summaryHTML = `
     <div class="section-summary-stat">
@@ -24,7 +25,7 @@ function renderTVSection(brand) {
       <span class="value">${formatNum(qiImp)}</span>
     </div>
     <div class="section-summary-stat">
-      <span class="label">Total QIMV</span>
+      <span class="label">Total QIMV${hasVSForBrand ? ' <small style="color:var(--text-muted);font-weight:400;">(TV only)</small>' : ''}</span>
       <span class="value">${formatCurrency(qiMV)}</span>
     </div>
     <div class="section-summary-stat">
@@ -42,7 +43,7 @@ function renderTVSection(brand) {
         <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>
         <div>
           <div class="section-title">TV Visible Signage</div>
-          <div class="section-meta" style="margin-top: 2px;">${matchCount} Game${matchCount === 1 ? '' : 's'} · ${currentPeriod === 'all' ? 'All Seasons' : currentPeriod}</div>
+          <div class="section-meta" style="margin-top: 2px;">${matchCount} Game${matchCount === 1 ? '' : 's'} · ${currentPeriod === 'all' ? 'All Seasons' : currentPeriod}${hasVSForBrand ? ' · On-Court tracked separately' : ''}</div>
         </div>
         <div class="section-toggle-meta">${summaryHTML}</div>
       </button>
@@ -56,7 +57,7 @@ function renderTVSection(brand) {
             <div class="comparison-basis block" style="margin-bottom: 16px; line-height: 1.6;">
               <strong>Note:</strong> On-Court Virtual Signage rows (Center + 3-Point Line) have been
               excluded from these TV figures and are reported separately in the
-              <strong>On-Court Virtual Signage</strong> tab above.
+              <strong>On-Court Virtual Signage</strong> section below.
             </div>
           ` : '';
         })()}

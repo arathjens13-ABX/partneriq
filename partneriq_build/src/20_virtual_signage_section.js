@@ -117,6 +117,32 @@ function getVirtualBrandingTVRows(brand, location) {
   return rows;
 }
 
+// YoY for virtual signage QIMV, based on TV virtual branding rows (home-game actuals).
+// Returns { curr, prev, change, basis } or null when < 2 seasons of VB TV data exist.
+function computeVSQimvYoY(brand) {
+  const allVBRows = getVirtualBrandingTVRows(brand);
+  if (!allVBRows.length) return null;
+
+  const seasons = [...new Set(
+    allVBRows.map(r => normalizeSeasonLabel(r.Season || '')).filter(Boolean)
+  )].sort();
+  if (seasons.length < 2) return null;
+
+  const currSeason  = seasons[seasons.length - 1];
+  const priorSeason = seasons[seasons.length - 2];
+  const currRows  = allVBRows.filter(r => normalizeSeasonLabel(r.Season || '') === currSeason);
+  const priorRows = allVBRows.filter(r => normalizeSeasonLabel(r.Season || '') === priorSeason);
+  if (!currRows.length || !priorRows.length) return null;
+
+  const curr   = sum(currRows,  'QI Media Value ($)');
+  const prev   = sum(priorRows, 'QI Media Value ($)');
+  const change = pctChange(curr, prev);
+  return change === null ? null : {
+    change, curr, prev,
+    basis: `${currSeason} vs ${priorSeason} · home-game TV actuals`,
+  };
+}
+
 // Returns virtual branding TV rows restricted to the most recent season only.
 // Estimation and averages use this so that older seasons don't dilute the
 // current-season benchmark — if only one season of data exists it returns all rows.

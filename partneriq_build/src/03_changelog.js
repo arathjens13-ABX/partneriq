@@ -1,5 +1,29 @@
 const CHANGELOG = [
   {
+    version: 'v0.40',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'QIMV takeaways include On-Court virtual signage; YoY tracking for VS partners',
+    changes: [
+      {
+        category: 'Takeaways',
+        items: [
+          `Portfolio top takeaways now report combined Total QIMV (TV visible + On-Court virtual signage) when VS data is loaded, with a TV/On-Court breakdown in the bullet`,
+          `Partner-page takeaways now show a combined Total QIMV bullet (TV + On-Court) with separate YoY deltas for each channel when the partner has virtual signage data`,
+          `Combined TV + organic social value bullet now includes On-Court virtual signage QIMV when applicable`,
+        ]
+      },
+      {
+        category: 'Virtual Signage',
+        items: [
+          `New computeVSQimvYoY(brand) helper computes season-over-season QIMV change from TV virtual branding rows (home-game actuals), enabling YoY tracking in takeaways for VS partners`,
+          `TV Visible Signage section header now annotates Total QIMV as "(TV only)" and section meta shows "On-Court tracked separately" when the partner has virtual signage data`,
+          `Fixed TV section body note: corrected "tab above" to "section below" for the On-Court exclusion callout`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.39',
     date: 'May 2026',
     source: 'Claude',

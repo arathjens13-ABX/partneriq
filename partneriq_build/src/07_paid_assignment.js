@@ -373,14 +373,31 @@ function getTopTakeaways(period) {
   const yoySets = period !== 'all' ? getPortfolioYoYRowSets(period) : null;
   const totalQimv = sum(tvRows, 'QI Media Value ($)');
 
+  // On-Court virtual signage portfolio total (schedule-based, includes away estimates)
+  const vsPartnerStats  = getVirtualSignagePartnerStats();
+  const vsTotals        = getVirtualSignagePortfolioTotals(vsPartnerStats);
+  const vsQimv          = vsTotals && vsTotals.totalQimv > 0 ? vsTotals.totalQimv : 0;
+  const hasVSData       = vsQimv > 0;
+
   if (tvRows.length) {
     let qimvGrowthText = '';
     if (yoySets) {
       const prevQimv = sum(yoySets.priorRows, 'QI Media Value ($)');
       const qimvChg  = pctChangeFromValues(totalQimv, prevQimv);
-      if (qimvChg !== null) qimvGrowthText = ` (${formatSignedPercent(qimvChg)} vs ${yoySets.priorSeason})`;
+      if (qimvChg !== null) qimvGrowthText = ` (${formatSignedPercent(qimvChg)} YoY vs ${yoySets.priorSeason})`;
     }
-    takeaways.push(`<strong>QIMV —</strong> TV visible signage generated <strong>${formatCurrency(totalQimv)}</strong> in QI Media Value${qimvGrowthText}.`);
+
+    if (hasVSData) {
+      const combinedQimv = totalQimv + vsQimv;
+      takeaways.push(
+        `<strong>Total QIMV —</strong> TV visible and On-Court virtual signage generated a combined ` +
+        `<strong>${formatCurrency(combinedQimv)}</strong> in QI Media Value ` +
+        `(TV visible: <strong>${formatCurrency(totalQimv)}</strong>${qimvGrowthText} · ` +
+        `On-Court virtual: <strong>${formatCurrency(vsQimv)}</strong>).`
+      );
+    } else {
+      takeaways.push(`<strong>QIMV —</strong> TV visible signage generated <strong>${formatCurrency(totalQimv)}</strong> in QI Media Value${qimvGrowthText}.`);
+    }
   }
 
   const partners = addPartnerYoY(aggregateBy(tvRows, 'Brand'), period).sort((a, b) => b.qimv - a.qimv);
