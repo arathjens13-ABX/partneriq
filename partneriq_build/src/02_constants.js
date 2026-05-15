@@ -89,7 +89,7 @@ const STATS_DATA = {
   },
 
   arena: {
-    annualVisitors: 2000000,  // Total visitors to the arena in the fiscal year
+    annualVisitors: 1253484,  // Total visitors to the arena in the fiscal year not including 
     totalEvents:    151,  // Total events (all types) held in the fiscal year
     seatingCapacity: {
       'Legends':        24,
