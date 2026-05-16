@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CP Stats Sheet</title>
   <style>
 /* ============================================================
@@ -733,48 +732,106 @@ const STATS_DATA = {
       Facebook:  { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
       TikTok:    { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
     },
-    // Per-platform performance breakdowns — fill in values as strings (e.g. '3.2%', '1.2M')
+    // Per-platform performance breakdowns — season-to-date (Jul '25–Mar '26), source: NBA Monthly Social Dashboard
     breakdown: {
       Instagram: {
-        title: 'Performance',
+        title: 'Season-to-Date',
         rows: [
-          ['Avg Engagement Rate', '—'],
-          ['Monthly Reach',       '—'],
-          ['Monthly Impressions', '—'],
-          ['Posts / Month',       '—'],
+          ['Engagements / 1K Followers', '395'],
+          ['Impressions / 1K Followers', '10,004'],
+          ['ASR Rank',                   '14 / 30'],
         ],
       },
       Twitter: {
-        title: 'Performance',
+        title: 'Season-to-Date',
         rows: [
-          ['Avg Engagement Rate', '—'],
-          ['Monthly Impressions', '—'],
-          ['Posts / Month',       '—'],
+          ['Engagements / 1K Followers', '62'],
+          ['Impressions / 1K Followers', '3,858'],
+          ['ASR Rank',                   '15 / 30'],
         ],
       },
       Facebook: {
-        title: 'Performance',
+        title: 'Season-to-Date',
         rows: [
-          ['Avg Engagement Rate', '—'],
-          ['Monthly Reach',       '—'],
-          ['Posts / Month',       '—'],
+          ['Engagements / 1K Followers', '121'],
+          ['Impressions / 1K Followers', '5,126'],
+          ['ASR Rank',                   '16 / 30'],
         ],
       },
       TikTok: {
-        title: 'Performance',
+        title: 'Season-to-Date',
         rows: [
-          ['Avg Views / Video', '—'],
-          ['Avg Engagement',    '—'],
-          ['Posts / Month',     '—'],
+          ['Engagements / 1K Followers', '105'],
+          ['Impressions / 1K Followers', '1,949'],
+          ['ASR Rank',                   '28 / 30'],
         ],
       },
       YouTube: {
-        title: 'Performance',
+        title: 'Season-to-Date',
         rows: [
-          ['Avg Views / Video', '—'],
-          ['Watch Time (hrs)',  '—'],
-          ['Videos / Month',   '—'],
+          ['ASR Rank', '17 / 30'],
         ],
+      },
+      Weibo: {
+        title: 'Season-to-Date',
+        rows: [
+          ['Engagements / 1K Followers', '2'],
+          ['Impressions / 1K Followers', '3,215'],
+          ['ASR Rank',                   '1 / 30'],
+        ],
+      },
+      Threads: {
+        title: 'Season-to-Date',
+        rows: [
+          ['Engagements / 1K Followers', '19'],
+          ['Impressions / 1K Followers', '529'],
+          ['ASR Rank',                   '21 / 30'],
+        ],
+      },
+      Snapchat: {
+        title: 'Season-to-Date',
+        rows: [
+          ['ASR Rank', '22 / 30'],
+        ],
+      },
+    },
+
+    // Aggregated Social Ranking — NBA composite rank across all platforms, season-to-date
+    asrRank:               16,  // out of 30
+    totalCombinedFollowers: 15268156,
+
+    // NBA league rank by platform (out of 30), season-to-date
+    platformRankings: {
+      Facebook:  16,
+      Instagram: 14,
+      Twitter:   15,
+      TikTok:    28,
+      YouTube:   17,
+      Snapchat:  22,
+      Weibo:     1,
+      Threads:   21,
+    },
+
+    // Known-follower domestic vs. international split (%) — source: NBA International Dashboard
+    domesticIntl: {
+      Facebook:  { 'Domestic': 34, 'International': 66 },
+      Instagram: { 'Domestic': 35, 'International': 65 },
+      Threads:   { 'Domestic': 40, 'International': 60 },
+    },
+
+    // Posts published by NBA accounts featuring POR — NOT Blazers-owned channels
+    // Source: NBA Platform Insights, season-to-date Jul '25–Mar '26
+    nbaContent: {
+      totalEngagements:      24718799,
+      totalImpressions:      1144753643,
+      totalPosts:            1395,
+      overallEngagementRate: 2.16,
+      byPlatform: {
+        Facebook:  { engagements: 18353262, impressions: 266453490, posts: 306, engagementRate: 1.26 },
+        Instagram: { engagements:  3357005, impressions: 708616353, posts: 246, engagementRate: 2.59 },
+        Twitter:   { engagements:  1907613, impressions:  36888874, posts: 486, engagementRate: 0.61 },
+        TikTok:    { engagements:   578544, impressions:  95207610, posts: 120, engagementRate: 5.17 },
+        YouTube:   { engagements:   522375, impressions:  37587316, posts: 237, engagementRate: 1.39 },
       },
     },
   },
@@ -904,14 +961,14 @@ const PRIOR_YEAR_DATA = {
   fiscalYear: '2024-25',
   social: {
     totalFollowers: {
-      Instagram: 0,
-      Twitter:   0,
-      Facebook:  0,
-      TikTok:    0,
-      YouTube:   0,
-      Threads:   0,
-      Snapchat:  0,
-      Weibo:     0,
+      Instagram: 2931585,
+      Twitter:   1552647,
+      Facebook:  2490965,
+      TikTok:    1070181,
+      YouTube:   116341,
+      Threads:   359661,
+      Snapchat:  229552,
+      Weibo:     4105785,
     },
   },
   arena: {
@@ -965,6 +1022,8 @@ const PRIOR_YEAR_DATA = {
 // Key names match the field names in STATS_DATA.
 // ============================================================
 const METRIC_NOTES = {
+  totalCombinedFollowers: 'Combined followers across all active Blazers social platforms (Mar \'26).',
+  asrRank:                'Aggregated Social Ranking (ASR) — NBA composite rank across all platforms season-to-date. Lower number = better rank.',
   totalSTMs:              'Full-season and partial-plan holders combined. Excludes group sales.',
   renewalRate:            'Percentage of eligible prior-year STMs who renewed for the current season.',
   avgTenureYears:         'Average number of consecutive seasons a current STM has held a plan.',
@@ -994,55 +1053,55 @@ const TREND_DATA = {
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 2931585 },
         { fy: '2025-26', value: 2960901 },
       ],
       Twitter: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 1552647 },
         { fy: '2025-26', value: 1475015 },
       ],
       Facebook: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 2490965 },
         { fy: '2025-26', value: 2515875 },
       ],
       TikTok: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 1070181 },
         { fy: '2025-26', value: 1155796 },
       ],
       YouTube: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 116341 },
         { fy: '2025-26', value: 134956 },
       ],
       Threads: [
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 359661 },
         { fy: '2025-26', value: 395627 },
       ],
       Snapchat: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
+        { fy: '2024-25', value: 229552 },
         { fy: '2025-26', value: 224961 },
       ],
       Weibo: [
         { fy: '2021-22', value: 0 },
         { fy: '2022-23', value: 0 },
         { fy: '2023-24', value: 0 },
-        { fy: '2024-25', value: 0 },
-        { fy: '2025-26', value: 6405205 },
+        { fy: '2024-25', value: 4105785 },
+        { fy: '2025-26', value: 6405025 },
       ],
     },
   },
@@ -1171,6 +1230,7 @@ const TREND_DATA = {
 function formatNum(n) {
   if (n === null || n === undefined || isNaN(n)) return '—';
   const abs = Math.abs(n);
+  if (abs >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
   if (abs >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
   if (abs >= 10000) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
   return n.toLocaleString('en-US');
@@ -1483,7 +1543,15 @@ function renderStatsPage(main) {
 
   // ---- Section content ----
 
+  var nba = s.social.nbaContent || {};
+
   var socialContent =
+    '<div class="home-grid" style="margin-bottom:20px;">' +
+    kpiCard('Total Social Followers', numVal(s.social.totalCombinedFollowers), { note: mn.totalCombinedFollowers }) +
+    kpiCard('ASR Rank', s.social.asrRank ? s.social.asrRank + ' / 30' : '—', { note: mn.asrRank }) +
+    '</div>' +
+
+    subLabel('Followers by Platform') +
     '<div class="home-grid" style="margin-bottom:20px;">' +
     Object.entries(s.social.totalFollowers).map(function(e) {
       var platform  = e[0];
@@ -1498,10 +1566,30 @@ function renderStatsPage(main) {
       });
     }).join('') +
     '</div>' +
+
     subLabel('Age Demographics by Platform (%)') +
     platformTable(s.social.demographics, pctVal) +
-    subLabel('Top Geographic Markets by Platform (% of Following)') +
-    platformTable(s.social.geography, pctVal);
+
+    subLabel('Domestic vs. International Followers (%)') +
+    platformTable(s.social.domesticIntl, pctVal) +
+
+    subLabel('NBA League Ranking by Platform') +
+    kvTable(Object.entries(s.social.platformRankings).map(function(e) {
+      return [e[0], e[1] + ' / 30'];
+    })) +
+
+    subLabel('NBA Content Featuring POR — Season-to-Date') +
+    '<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">Posts published by NBA accounts &middot; Jul \'25–Mar \'26 &middot; Separate from Blazers-owned channels.</div>' +
+    '<div class="home-grid" style="margin-bottom:16px;">' +
+    kpiCard('Engagements', numVal(nba.totalEngagements)) +
+    kpiCard('Impressions', numVal(nba.totalImpressions)) +
+    kpiCard('Posts Published', rawVal(nba.totalPosts)) +
+    kpiCard('Engagement Rate', nba.overallEngagementRate ? nba.overallEngagementRate + '%' : '—') +
+    '</div>' +
+    (nba.byPlatform ? kvTable(Object.entries(nba.byPlatform).map(function(e) {
+      var d = e[1];
+      return [e[0], d.engagementRate + '% eng · ' + formatNum(d.engagements) + ' eng · ' + d.posts + ' posts'];
+    })) : '');
 
   var arenaContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +

@@ -206,7 +206,15 @@ function renderStatsPage(main) {
 
   // ---- Section content ----
 
+  var nba = s.social.nbaContent || {};
+
   var socialContent =
+    '<div class="home-grid" style="margin-bottom:20px;">' +
+    kpiCard('Total Social Followers', numVal(s.social.totalCombinedFollowers), { note: mn.totalCombinedFollowers }) +
+    kpiCard('ASR Rank', s.social.asrRank ? s.social.asrRank + ' / 30' : '—', { note: mn.asrRank }) +
+    '</div>' +
+
+    subLabel('Followers by Platform') +
     '<div class="home-grid" style="margin-bottom:20px;">' +
     Object.entries(s.social.totalFollowers).map(function(e) {
       var platform  = e[0];
@@ -221,10 +229,30 @@ function renderStatsPage(main) {
       });
     }).join('') +
     '</div>' +
+
     subLabel('Age Demographics by Platform (%)') +
     platformTable(s.social.demographics, pctVal) +
-    subLabel('Top Geographic Markets by Platform (% of Following)') +
-    platformTable(s.social.geography, pctVal);
+
+    subLabel('Domestic vs. International Followers (%)') +
+    platformTable(s.social.domesticIntl, pctVal) +
+
+    subLabel('NBA League Ranking by Platform') +
+    kvTable(Object.entries(s.social.platformRankings).map(function(e) {
+      return [e[0], e[1] + ' / 30'];
+    })) +
+
+    subLabel('NBA Content Featuring POR — Season-to-Date') +
+    '<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);margin-bottom:14px;line-height:1.6;">Posts published by NBA accounts &middot; Jul \'25–Mar \'26 &middot; Separate from Blazers-owned channels.</div>' +
+    '<div class="home-grid" style="margin-bottom:16px;">' +
+    kpiCard('Engagements', numVal(nba.totalEngagements)) +
+    kpiCard('Impressions', numVal(nba.totalImpressions)) +
+    kpiCard('Posts Published', rawVal(nba.totalPosts)) +
+    kpiCard('Engagement Rate', nba.overallEngagementRate ? nba.overallEngagementRate + '%' : '—') +
+    '</div>' +
+    (nba.byPlatform ? kvTable(Object.entries(nba.byPlatform).map(function(e) {
+      var d = e[1];
+      return [e[0], d.engagementRate + '% eng · ' + formatNum(d.engagements) + ' eng · ' + d.posts + ' posts'];
+    })) : '');
 
   var arenaContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
