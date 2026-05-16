@@ -428,6 +428,117 @@ footer {
 }
 
 /* ============================================================
+   DELTA BADGE
+   ============================================================ */
+.delta-badge {
+  display: inline-block;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-weight: 500;
+}
+.delta-badge.positive {
+  background: rgba(111, 207, 151, 0.12);
+  color: var(--positive);
+}
+.delta-badge.negative {
+  background: rgba(255, 122, 138, 0.12);
+  color: var(--negative);
+}
+.delta-badge.neutral {
+  background: var(--bg-elev-3);
+  color: var(--text-muted);
+}
+[data-theme="light"] .delta-badge.positive { background: rgba(26, 138, 74, 0.10); }
+[data-theme="light"] .delta-badge.negative { background: rgba(214, 48, 64, 0.10); }
+
+/* ============================================================
+   NOTE INDICATOR  (ⓘ tooltip trigger on KPI cards)
+   ============================================================ */
+.home-card.has-note { cursor: help; }
+.note-indicator {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--text-muted);
+  vertical-align: middle;
+  margin-left: 3px;
+  opacity: 0.6;
+  transition: opacity 0.1s;
+}
+.home-card.has-note:hover .note-indicator { opacity: 1; color: var(--accent-soft); }
+
+/* ============================================================
+   SECTION NAV  (jump-to pill strip)
+   ============================================================ */
+.section-nav {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 18px;
+  margin-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.section-nav::-webkit-scrollbar { display: none; }
+
+.section-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-elev);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+.section-nav-pill:hover {
+  border-color: var(--accent-line);
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+/* ============================================================
+   SEARCH BAR
+   ============================================================ */
+.search-wrap {
+  position: relative;
+  margin-bottom: 18px;
+}
+.search-wrap svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.section-search {
+  width: 100%;
+  max-width: 400px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 9px 12px 9px 36px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.section-search::placeholder { color: var(--text-muted); }
+.section-search:focus { border-color: var(--text-dim); }
+
+/* ============================================================
    RESPONSIVE
    ============================================================ */
 @media (max-width: 860px) {

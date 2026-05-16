@@ -2,19 +2,53 @@
 // GLOBAL STATE
 // ============================================================
 var openSections = {};
+var searchQuery  = '';
 
 // ============================================================
-// APP ROUTER — single-page, just renders the stats page
+// SECTION NAV  (jump-to pill strip)
 // ============================================================
-function renderApp() {
-  const main = document.getElementById('main');
-  if (!main) return;
-  renderStatsPage(main);
-  wireSectionToggles();
+function renderSectionNav() {
+  var items = [
+    { id: 'stats-social',    label: '📱 Social' },
+    { id: 'stats-arena',     label: '🏟️ Arena' },
+    { id: 'stats-stm',       label: '🎟️ STM' },
+    { id: 'stats-hhi',       label: '💵 Income' },
+    { id: 'stats-portland',  label: '🌲 Portland' },
+    { id: 'stats-broadcast', label: '📡 Broadcast' },
+    { id: 'stats-digital',   label: '📲 Digital' },
+    { id: 'stats-sentiment', label: '💬 Sentiment' },
+  ];
+  return '<nav class="section-nav" id="section-nav">' +
+    items.map(function(item) {
+      return '<a class="section-nav-pill" href="#' + item.id + '" data-nav-section="' + item.id + '">' + item.label + '</a>';
+    }).join('') +
+    '</nav>';
 }
 
 // ============================================================
-// SECTION TOGGLE WIRING
+// SEARCH BAR
+// ============================================================
+function renderSearchBar() {
+  var escaped = searchQuery.replace(/"/g, '&quot;');
+  return '<div class="search-wrap">' +
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>' +
+    '<input class="section-search" id="section-search" type="text" placeholder="Search sections and metrics…" autocomplete="off" value="' + escaped + '">' +
+    '</div>';
+}
+
+// ============================================================
+// APP ROUTER — single-page, renders stats + applies search filter
+// ============================================================
+function renderApp() {
+  var main = document.getElementById('main');
+  if (!main) return;
+  renderStatsPage(main);
+  wireSectionToggles();
+  if (typeof applySearchFilter === 'function') applySearchFilter();
+}
+
+// ============================================================
+// SECTION TOGGLE & NAV WIRING
 // ============================================================
 function wireSectionToggles() {
   document.querySelectorAll('[data-section-toggle]').forEach(function(el) {
@@ -26,6 +60,27 @@ function wireSectionToggles() {
       renderApp();
     });
   });
+
+  document.querySelectorAll('[data-nav-section]').forEach(function(pill) {
+    if (pill.dataset.navWired) return;
+    pill.dataset.navWired = '1';
+    pill.addEventListener('click', function(e) {
+      e.preventDefault();
+      var id = pill.dataset.navSection;
+      // clear search so the target section is always visible
+      searchQuery = '';
+      var searchInput = document.getElementById('section-search');
+      if (searchInput) searchInput.value = '';
+      if (openSections[id] === false) {
+        openSections[id] = true;
+        renderApp();
+      }
+      requestAnimationFrame(function() {
+        var sec = document.getElementById(id);
+        if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+  });
 }
 
 // ============================================================
@@ -34,22 +89,42 @@ function wireSectionToggles() {
 function renderStatsPage(main) {
   var fy = STATS_DATA.fiscalYear || '—';
   var s  = STATS_DATA;
+  var p  = PRIOR_YEAR_DATA;
+  var mn = METRIC_NOTES;
 
-  function numVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : formatNum(n);
+  function numVal(v) {
+    return (!v && v !== 0) || v === 0 ? '—' : formatNum(v);
   }
-  function pctVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : n + '%';
+  function pctVal(v) {
+    return (!v && v !== 0) || v === 0 ? '—' : v + '%';
   }
-  function dollarVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : formatCurrency(n);
+  function dollarVal(v) {
+    return (!v && v !== 0) || v === 0 ? '—' : formatCurrency(v);
   }
-  function rawVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : n;
+  function rawVal(v) {
+    return (!v && v !== 0) || v === 0 ? '—' : v;
   }
 
-  function kpiCard(label, value) {
-    return '<div class="home-card"><div class="home-card-label">' + label + '</div><div class="home-card-value">' + value + '</div></div>';
+  // opts: { delta, note, size }
+  // size: 'full' spans all columns, 'half' spans 2 columns, default = auto
+  function kpiCard(label, value, opts) {
+    opts = opts || {};
+    var delta = opts.delta;
+    var note  = opts.note;
+    var size  = opts.size;
+    var sizeStyle = size === 'full' ? ' style="grid-column:1/-1;"'
+                  : size === 'half' ? ' style="grid-column:span 2;"'
+                  : '';
+    var deltaHtml = delta
+      ? '<div class="delta-badge ' + delta.dir + '">' + delta.label + ' YOY</div>'
+      : '';
+    var noteAttr  = note ? ' data-note="' + note.replace(/"/g, '&quot;') + '"' : '';
+    var noteTick  = note ? ' <span class="note-indicator">&#9432;</span>' : '';
+    return '<div class="home-card' + (note ? ' has-note' : '') + '"' + noteAttr + sizeStyle + '>' +
+      '<div class="home-card-label">' + label + noteTick + '</div>' +
+      '<div class="home-card-value">' + value + '</div>' +
+      deltaHtml +
+      '</div>';
   }
 
   function subLabel(text) {
@@ -79,11 +154,11 @@ function renderStatsPage(main) {
       }).join('') +
       '</tr></thead>' +
       '<tbody>' +
-      platforms.map(function(p) {
+      platforms.map(function(platform) {
         return '<tr style="border-bottom:1px solid var(--border-soft);">' +
-          '<td style="padding:8px 0;font-size:12px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.04em;">' + p + '</td>' +
+          '<td style="padding:8px 0;font-size:12px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.04em;">' + platform + '</td>' +
           keys.map(function(k) {
-            return '<td style="padding:8px 8px;text-align:right;font-size:13px;color:var(--text);">' + valueFormatter(platformData[p][k]) + '</td>';
+            return '<td style="padding:8px 8px;text-align:right;font-size:13px;color:var(--text);">' + valueFormatter(platformData[platform][k]) + '</td>';
           }).join('') +
           '</tr>';
       }).join('') +
@@ -105,7 +180,10 @@ function renderStatsPage(main) {
 
   var socialContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
-    Object.entries(s.social.totalFollowers).map(function(e) { return kpiCard(e[0], numVal(e[1])); }).join('') +
+    Object.entries(s.social.totalFollowers).map(function(e) {
+      var prior = p.social && p.social.totalFollowers ? p.social.totalFollowers[e[0]] : 0;
+      return kpiCard(e[0], numVal(e[1]), { delta: yoyDelta(e[1], prior) });
+    }).join('') +
     '</div>' +
     subLabel('Age Demographics by Platform (%)') +
     platformTable(s.social.demographics, pctVal) +
@@ -114,23 +192,24 @@ function renderStatsPage(main) {
 
   var arenaContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
-    kpiCard('Annual Visitors', numVal(s.arena.annualVisitors)) +
-    kpiCard('Total Events', numVal(s.arena.totalEvents)) +
+    kpiCard('Annual Visitors', numVal(s.arena.annualVisitors), { delta: yoyDelta(s.arena.annualVisitors, p.arena.annualVisitors), note: mn.annualVisitors }) +
+    kpiCard('Total Events',    numVal(s.arena.totalEvents),    { delta: yoyDelta(s.arena.totalEvents, p.arena.totalEvents) }) +
     '</div>' +
     subLabel('Seating Capacity by Section') +
     kvTable(Object.entries(s.arena.seatingCapacity).map(function(e) { return [e[0], numVal(e[1])]; }));
 
   var stmContent =
     '<div class="home-grid">' +
-    kpiCard('Total STMs', numVal(s.stm.totalSTMs)) +
-    kpiCard('Renewal Rate', pctVal(s.stm.renewalRate)) +
-    kpiCard('Avg Tenure', s.stm.avgTenureYears ? s.stm.avgTenureYears + ' yrs' : '—') +
-    kpiCard('New Members', numVal(s.stm.newMembersThisYear)) +
+    kpiCard('Total STMs',    numVal(s.stm.totalSTMs),          { delta: yoyDelta(s.stm.totalSTMs, p.stm.totalSTMs),                     note: mn.totalSTMs }) +
+    kpiCard('Renewal Rate',  pctVal(s.stm.renewalRate),        { delta: yoyDelta(s.stm.renewalRate, p.stm.renewalRate, { pp: true }),    note: mn.renewalRate }) +
+    kpiCard('Avg Tenure',    s.stm.avgTenureYears ? s.stm.avgTenureYears + ' yrs' : '—',
+                                                               { delta: yoyDelta(s.stm.avgTenureYears, p.stm.avgTenureYears),           note: mn.avgTenureYears }) +
+    kpiCard('New Members',   numVal(s.stm.newMembersThisYear), { delta: yoyDelta(s.stm.newMembersThisYear, p.stm.newMembersThisYear),    note: mn.newMembersThisYear }) +
     '</div>';
 
   var hhiContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
-    kpiCard('Median HHI', dollarVal(s.householdIncome['Median HHI'])) +
+    kpiCard('Median HHI', dollarVal(s.householdIncome['Median HHI']), { delta: yoyDelta(s.householdIncome['Median HHI'], p.householdIncome['Median HHI']) }) +
     '</div>' +
     kvTable(
       Object.entries(s.householdIncome)
@@ -140,41 +219,42 @@ function renderStatsPage(main) {
 
   var portlandContent =
     '<div class="home-grid">' +
-    kpiCard('DMA Population', numVal(s.portlandMarket.population)) +
-    kpiCard('Total Households', numVal(s.portlandMarket.totalHouseholds)) +
-    kpiCard('Median Age', rawVal(s.portlandMarket.medianAge)) +
-    kpiCard('Median HHI', dollarVal(s.portlandMarket.medianHHI)) +
-    kpiCard('College Educated', pctVal(s.portlandMarket.collegeEducated)) +
-    kpiCard('Homeownership', pctVal(s.portlandMarket.homeownership)) +
+    kpiCard('DMA Population',    numVal(s.portlandMarket.population),       { delta: yoyDelta(s.portlandMarket.population, p.portlandMarket.population) }) +
+    kpiCard('Total Households',  numVal(s.portlandMarket.totalHouseholds),  { delta: yoyDelta(s.portlandMarket.totalHouseholds, p.portlandMarket.totalHouseholds) }) +
+    kpiCard('Median Age',        rawVal(s.portlandMarket.medianAge),        { delta: yoyDelta(s.portlandMarket.medianAge, p.portlandMarket.medianAge) }) +
+    kpiCard('Median HHI',        dollarVal(s.portlandMarket.medianHHI),     { delta: yoyDelta(s.portlandMarket.medianHHI, p.portlandMarket.medianHHI) }) +
+    kpiCard('College Educated',  pctVal(s.portlandMarket.collegeEducated),  { delta: yoyDelta(s.portlandMarket.collegeEducated, p.portlandMarket.collegeEducated, { pp: true }) }) +
+    kpiCard('Homeownership',     pctVal(s.portlandMarket.homeownership),    { delta: yoyDelta(s.portlandMarket.homeownership, p.portlandMarket.homeownership, { pp: true }) }) +
     '</div>';
 
   var broadcastContent =
     '<div class="home-grid">' +
-    kpiCard('Avg Viewers / Game', numVal(s.broadcast.avgViewersPerGame)) +
-    kpiCard('Season Reach', numVal(s.broadcast.totalSeasonReach)) +
-    kpiCard('Local TV Games', rawVal(s.broadcast.gamesOnLocalTV)) +
-    kpiCard('National TV Games', rawVal(s.broadcast.gamesOnNationalTV)) +
-    kpiCard('Avg Local Rating', rawVal(s.broadcast.avgLocalRating)) +
-    kpiCard('Broadcast Hours', rawVal(s.broadcast.totalBroadcastHours)) +
+    kpiCard('Avg Viewers / Game',  numVal(s.broadcast.avgViewersPerGame),   { delta: yoyDelta(s.broadcast.avgViewersPerGame, p.broadcast.avgViewersPerGame),     note: mn.avgViewersPerGame }) +
+    kpiCard('Season Reach',        numVal(s.broadcast.totalSeasonReach),    { delta: yoyDelta(s.broadcast.totalSeasonReach, p.broadcast.totalSeasonReach),       note: mn.totalSeasonReach }) +
+    kpiCard('Local TV Games',      rawVal(s.broadcast.gamesOnLocalTV),      { delta: yoyDelta(s.broadcast.gamesOnLocalTV, p.broadcast.gamesOnLocalTV) }) +
+    kpiCard('National TV Games',   rawVal(s.broadcast.gamesOnNationalTV),   { delta: yoyDelta(s.broadcast.gamesOnNationalTV, p.broadcast.gamesOnNationalTV) }) +
+    kpiCard('Avg Local Rating',    rawVal(s.broadcast.avgLocalRating),      { delta: yoyDelta(s.broadcast.avgLocalRating, p.broadcast.avgLocalRating) }) +
+    kpiCard('Broadcast Hours',     rawVal(s.broadcast.totalBroadcastHours), { delta: yoyDelta(s.broadcast.totalBroadcastHours, p.broadcast.totalBroadcastHours) }) +
     '</div>';
 
   var digitalContent =
     '<div class="home-grid">' +
-    kpiCard('Monthly Active Users', numVal(s.appAndDigital.monthlyActiveUsers)) +
-    kpiCard('Total App Downloads', numVal(s.appAndDigital.totalAppDownloads)) +
-    kpiCard('Avg Sessions / User', rawVal(s.appAndDigital.avgSessionsPerUser)) +
-    kpiCard('Push Opt-In Rate', pctVal(s.appAndDigital.pushOptInRate)) +
-    kpiCard('Email Subscribers', numVal(s.appAndDigital.emailSubscribers)) +
-    kpiCard('Monthly Web Visitors', numVal(s.appAndDigital.websiteMonthlyVisitors)) +
+    kpiCard('Monthly Active Users',  numVal(s.appAndDigital.monthlyActiveUsers),     { delta: yoyDelta(s.appAndDigital.monthlyActiveUsers, p.appAndDigital.monthlyActiveUsers),         note: mn.monthlyActiveUsers }) +
+    kpiCard('Total App Downloads',   numVal(s.appAndDigital.totalAppDownloads),      { delta: yoyDelta(s.appAndDigital.totalAppDownloads, p.appAndDigital.totalAppDownloads),           note: mn.totalAppDownloads }) +
+    kpiCard('Avg Sessions / User',   rawVal(s.appAndDigital.avgSessionsPerUser),     { delta: yoyDelta(s.appAndDigital.avgSessionsPerUser, p.appAndDigital.avgSessionsPerUser) }) +
+    kpiCard('Push Opt-In Rate',      pctVal(s.appAndDigital.pushOptInRate),          { delta: yoyDelta(s.appAndDigital.pushOptInRate, p.appAndDigital.pushOptInRate, { pp: true }) }) +
+    kpiCard('Email Subscribers',     numVal(s.appAndDigital.emailSubscribers),       { delta: yoyDelta(s.appAndDigital.emailSubscribers, p.appAndDigital.emailSubscribers) }) +
+    kpiCard('Monthly Web Visitors',  numVal(s.appAndDigital.websiteMonthlyVisitors), { delta: yoyDelta(s.appAndDigital.websiteMonthlyVisitors, p.appAndDigital.websiteMonthlyVisitors), note: mn.websiteMonthlyVisitors }) +
     '</div>';
 
   var sentimentContent =
     '<div class="home-grid">' +
-    kpiCard('NPS Score', rawVal(s.fanSentiment.npsScore)) +
-    kpiCard('Overall Satisfaction', pctVal(s.fanSentiment.overallSatisfaction)) +
-    kpiCard('Game Experience', s.fanSentiment.gameExperienceRating ? s.fanSentiment.gameExperienceRating + ' / 10' : '—') +
-    kpiCard('Likelihood to Renew', pctVal(s.fanSentiment.likelihoodToRenew)) +
-    kpiCard('Brand Affinity Score', rawVal(s.fanSentiment.brandAffinityScore)) +
+    kpiCard('NPS Score',            rawVal(s.fanSentiment.npsScore),             { delta: yoyDelta(s.fanSentiment.npsScore, p.fanSentiment.npsScore),                             note: mn.npsScore }) +
+    kpiCard('Overall Satisfaction', pctVal(s.fanSentiment.overallSatisfaction),  { delta: yoyDelta(s.fanSentiment.overallSatisfaction, p.fanSentiment.overallSatisfaction, { pp: true }), note: mn.overallSatisfaction }) +
+    kpiCard('Game Experience',      s.fanSentiment.gameExperienceRating ? s.fanSentiment.gameExperienceRating + ' / 10' : '—',
+                                                                                 { delta: yoyDelta(s.fanSentiment.gameExperienceRating, p.fanSentiment.gameExperienceRating) }) +
+    kpiCard('Likelihood to Renew',  pctVal(s.fanSentiment.likelihoodToRenew),    { delta: yoyDelta(s.fanSentiment.likelihoodToRenew, p.fanSentiment.likelihoodToRenew, { pp: true }) }) +
+    kpiCard('Brand Affinity Score', rawVal(s.fanSentiment.brandAffinityScore),   { delta: yoyDelta(s.fanSentiment.brandAffinityScore, p.fanSentiment.brandAffinityScore) }) +
     '</div>';
 
   // ---- Assemble the full page ----
@@ -199,6 +279,9 @@ function renderStatsPage(main) {
         ' · Update STATS_DATA in 02_constants.js each fiscal year' +
       '</div>' +
     '</div>' +
+
+    renderSearchBar() +
+    renderSectionNav() +
 
     collapsible('stats-social',    '📱 Social Following',        socialContent) +
     collapsible('stats-arena',     '🏟️ Arena &amp; Attendance',  arenaContent) +
