@@ -18,6 +18,35 @@ function formatCurrency(n) {
 }
 
 // ============================================================
+// SPARKLINE — inline SVG trend line for KPI cards.
+// Accepts an array of { fy, value } pairs (oldest → newest).
+// Entries with value === 0 are treated as missing and skipped.
+// Returns '' if fewer than 2 non-zero points exist.
+// ============================================================
+function renderSparkline(dataPoints) {
+  if (!dataPoints || !dataPoints.length) return '';
+  var nonZero = dataPoints.filter(function(d) { return d.value; });
+  if (nonZero.length < 2) return '';
+  var values = nonZero.map(function(d) { return d.value; });
+  var min = Math.min.apply(null, values);
+  var max = Math.max.apply(null, values);
+  var range = max - min || 1;
+  var W = 64, H = 28, pad = 3;
+  var n = values.length;
+  function sx(i) { return pad + (i / (n - 1)) * (W - 2 * pad); }
+  function sy(v) { return pad + (1 - (v - min) / range) * (H - 2 * pad); }
+  var pts = values.map(function(v, i) { return sx(i).toFixed(1) + ',' + sy(v).toFixed(1); }).join(' ');
+  var lx  = sx(n - 1).toFixed(1);
+  var ly  = sy(values[n - 1]).toFixed(1);
+  var up  = values[n - 1] >= values[0];
+  var clr = up ? 'var(--positive)' : 'var(--negative)';
+  return '<svg class="sparkline" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + ' ' + H + '" fill="none" aria-hidden="true">' +
+    '<polyline points="' + pts + '" stroke="' + clr + '" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round" opacity="0.65"/>' +
+    '<circle cx="' + lx + '" cy="' + ly + '" r="2.5" fill="' + clr + '"/>' +
+    '</svg>';
+}
+
+// ============================================================
 // YOY DELTA
 // opts.pp   = true  → show absolute percentage-point change (e.g. "+3pp")
 //                     use for metrics already expressed as percentages

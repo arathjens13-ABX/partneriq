@@ -45,6 +45,50 @@ const STATS_DATA = {
       Facebook:  { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
       TikTok:    { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
     },
+    // Per-platform performance breakdowns — fill in values as strings (e.g. '3.2%', '1.2M')
+    breakdown: {
+      Instagram: {
+        title: 'Performance',
+        rows: [
+          ['Avg Engagement Rate', '—'],
+          ['Monthly Reach',       '—'],
+          ['Monthly Impressions', '—'],
+          ['Posts / Month',       '—'],
+        ],
+      },
+      Twitter: {
+        title: 'Performance',
+        rows: [
+          ['Avg Engagement Rate', '—'],
+          ['Monthly Impressions', '—'],
+          ['Posts / Month',       '—'],
+        ],
+      },
+      Facebook: {
+        title: 'Performance',
+        rows: [
+          ['Avg Engagement Rate', '—'],
+          ['Monthly Reach',       '—'],
+          ['Posts / Month',       '—'],
+        ],
+      },
+      TikTok: {
+        title: 'Performance',
+        rows: [
+          ['Avg Views / Video', '—'],
+          ['Avg Engagement',    '—'],
+          ['Posts / Month',     '—'],
+        ],
+      },
+      YouTube: {
+        title: 'Performance',
+        rows: [
+          ['Avg Views / Video', '—'],
+          ['Watch Time (hrs)',  '—'],
+          ['Videos / Month',   '—'],
+        ],
+      },
+    },
   },
 
   arena: {
@@ -61,6 +105,26 @@ const STATS_DATA = {
       '300 Level':      7645,
       'Total Capacity': 19451,
     },
+    breakdown: {
+      annualVisitors: {
+        title: 'Visitors by Event Type',
+        rows: [
+          ['NBA Games',    '—'],
+          ['Concerts',     '—'],
+          ['Family Shows', '—'],
+          ['Other Events', '—'],
+        ],
+      },
+      totalEvents: {
+        title: 'Events by Type',
+        rows: [
+          ['NBA Games',    '82'],
+          ['Concerts',     '—'],
+          ['Family Shows', '—'],
+          ['Other Events', '—'],
+        ],
+      },
+    },
   },
 
   stm: {
@@ -68,6 +132,33 @@ const STATS_DATA = {
     renewalRate:        91,   // percentage, whole number
     avgTenureYears:     5,
     newMembersThisYear: 168,
+    breakdown: {
+      totalSTMs: {
+        title: 'By Plan Type',
+        rows: [
+          ['Full Season',  '—'],
+          ['Half Season',  '—'],
+          ['Partial Plan', '—'],
+        ],
+      },
+      renewalRate: {
+        title: 'Renewal Detail',
+        rows: [
+          ['Eligible Members', '—'],
+          ['Renewed',          '—'],
+          ['Non-Renewals',     '—'],
+        ],
+      },
+      avgTenureYears: {
+        title: 'Tenure Distribution',
+        rows: [
+          ['1 Year',    '—'],
+          ['2–4 Years', '—'],
+          ['5–9 Years', '—'],
+          ['10+ Years', '—'],
+        ],
+      },
+    },
   },
 
   // Percentages (whole numbers) of fan base in each income bracket
@@ -198,4 +289,188 @@ const METRIC_NOTES = {
   websiteMonthlyVisitors: 'Average monthly unique visitors across the season (GA4 data).',
   monthlyActiveUsers:     'Average monthly active users of the official Blazers mobile app.',
   totalAppDownloads:      'Cumulative all-time app downloads across iOS and Android.',
+};
+
+// ============================================================
+// TREND DATA — historical values for sparklines.
+// Each field is an array of { fy, value } ordered oldest → newest.
+// The final entry should match the current-year value in STATS_DATA.
+// Zero = missing data for that year; those entries are skipped by
+// the sparkline renderer (so you can safely leave gaps).
+// Add more years by prepending additional { fy, value } objects.
+// ============================================================
+const TREND_DATA = {
+  social: {
+    totalFollowers: {
+      Instagram: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 2960901 },
+      ],
+      Twitter: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 1475015 },
+      ],
+      Facebook: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 2515875 },
+      ],
+      TikTok: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 1155796 },
+      ],
+      YouTube: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 134956 },
+      ],
+      Threads: [
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 395627 },
+      ],
+      Snapchat: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 224961 },
+      ],
+      Weibo: [
+        { fy: '2021-22', value: 0 },
+        { fy: '2022-23', value: 0 },
+        { fy: '2023-24', value: 0 },
+        { fy: '2024-25', value: 0 },
+        { fy: '2025-26', value: 6405205 },
+      ],
+    },
+  },
+  arena: {
+    annualVisitors: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 1253484 },
+    ],
+    totalEvents: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 151 },
+    ],
+  },
+  stm: {
+    totalSTMs: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 2722 },
+    ],
+    renewalRate: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 91 },
+    ],
+    avgTenureYears: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 5 },
+    ],
+    newMembersThisYear: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 168 },
+    ],
+  },
+  broadcast: {
+    avgViewersPerGame: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 28238 },
+    ],
+    totalSeasonReach: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 3200000 },
+    ],
+    avgLocalRating: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 2.2 },
+    ],
+    gamesOnLocalTV: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 76 },
+    ],
+  },
+  appAndDigital: {
+    monthlyActiveUsers: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 40623 },
+    ],
+    websiteMonthlyVisitors: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 740000 },
+    ],
+    totalAppDownloads: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 412737 },
+    ],
+  },
+  fanSentiment: {
+    npsScore: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 57 },
+    ],
+    overallSatisfaction: [
+      { fy: '2021-22', value: 0 },
+      { fy: '2022-23', value: 0 },
+      { fy: '2023-24', value: 0 },
+      { fy: '2024-25', value: 0 },
+      { fy: '2025-26', value: 95 },
+    ],
+  },
 };
