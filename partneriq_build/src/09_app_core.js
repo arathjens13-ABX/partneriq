@@ -139,7 +139,7 @@ function renderApp() {
   destroyCharts();
   hideTooltip();
 
-  if (!DataStore.hasAnyData() && currentPage !== 'glossary' && currentPage !== 'data-health' && currentPage !== 'links' && currentPage !== 'stats') {
+  if (!DataStore.hasAnyData() && currentPage !== 'glossary' && currentPage !== 'data-health' && currentPage !== 'links') {
     main.innerHTML = `
       <div class="empty-state">
         <h1>A single pane of glass for brand performance.</h1>
@@ -164,7 +164,6 @@ function renderApp() {
     else if (currentPage === 'data-health') renderDataHealthPage(main);
     else if (currentPage === 'glossary') renderGlossaryPage(main);
     else if (currentPage === 'changelog') renderChangelogPage(main);
-    else if (currentPage === 'stats') renderStatsPage(main);
     else if (currentPage === 'links') renderLinksPage(main);
     else renderPortfolioHome(main);
     wireSortableTables();
