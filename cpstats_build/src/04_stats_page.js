@@ -91,6 +91,7 @@ function renderStatsPage(main) {
   var s  = STATS_DATA;
   var p  = PRIOR_YEAR_DATA;
   var mn = METRIC_NOTES;
+  var td = TREND_DATA;
 
   function numVal(v) {
     return (!v && v !== 0) || v === 0 ? '—' : formatNum(v);
@@ -105,25 +106,52 @@ function renderStatsPage(main) {
     return (!v && v !== 0) || v === 0 ? '—' : v;
   }
 
-  // opts: { delta, note, size }
-  // size: 'full' spans all columns, 'half' spans 2 columns, default = auto
+  // opts: { delta, note, size, sparkline, breakdown }
+  // size:      'full' spans all columns, 'half' spans 2 columns, default = auto
+  // sparkline: array of { fy, value } — passed to renderSparkline()
+  // breakdown: { title?, rows: [[label, valueStr], ...] }
   function kpiCard(label, value, opts) {
     opts = opts || {};
-    var delta = opts.delta;
-    var note  = opts.note;
-    var size  = opts.size;
+    var delta     = opts.delta;
+    var note      = opts.note;
+    var size      = opts.size;
+    var sparkData = opts.sparkline;
+    var breakdown = opts.breakdown;
+
     var sizeStyle = size === 'full' ? ' style="grid-column:1/-1;"'
                   : size === 'half' ? ' style="grid-column:span 2;"'
                   : '';
     var deltaHtml = delta
       ? '<div class="delta-badge ' + delta.dir + '">' + delta.label + ' YOY</div>'
       : '';
-    var noteAttr  = note ? ' data-note="' + note.replace(/"/g, '&quot;') + '"' : '';
-    var noteTick  = note ? ' <span class="note-indicator">&#9432;</span>' : '';
-    return '<div class="home-card' + (note ? ' has-note' : '') + '"' + noteAttr + sizeStyle + '>' +
+    var noteAttr = note ? ' data-note="' + note.replace(/"/g, '&quot;') + '"' : '';
+    var noteTick = note ? ' <span class="note-indicator">&#9432;</span>' : '';
+    var sparkHtml = sparkData ? renderSparkline(sparkData) : '';
+
+    var breakdownHtml = '';
+    if (breakdown && breakdown.rows && breakdown.rows.length) {
+      var titleHtml = breakdown.title
+        ? '<tr><td class="bd-title" colspan="2">' + breakdown.title + '</td></tr>'
+        : '';
+      var rowsHtml = breakdown.rows.map(function(row) {
+        return '<tr><td class="bd-label">' + row[0] + '</td><td class="bd-val">' + row[1] + '</td></tr>';
+      }).join('');
+      breakdownHtml =
+        '<div class="card-breakdown">' +
+        '<table class="bd-table">' + titleHtml + rowsHtml + '</table>' +
+        '</div>' +
+        '<button class="card-expand-btn" type="button">+ details</button>';
+    }
+
+    var classes = 'home-card' + (note ? ' has-note' : '') + (breakdown ? ' has-breakdown' : '');
+    return '<div class="' + classes + '"' + noteAttr + sizeStyle + '>' +
+      '<div class="home-card-header">' +
       '<div class="home-card-label">' + label + noteTick + '</div>' +
+      sparkHtml +
+      '</div>' +
       '<div class="home-card-value">' + value + '</div>' +
       deltaHtml +
+      breakdownHtml +
       '</div>';
   }
 
@@ -181,8 +209,16 @@ function renderStatsPage(main) {
   var socialContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
     Object.entries(s.social.totalFollowers).map(function(e) {
-      var prior = p.social && p.social.totalFollowers ? p.social.totalFollowers[e[0]] : 0;
-      return kpiCard(e[0], numVal(e[1]), { delta: yoyDelta(e[1], prior) });
+      var platform  = e[0];
+      var followers = e[1];
+      var prior     = p.social && p.social.totalFollowers ? p.social.totalFollowers[platform] : 0;
+      var sparkData = td.social && td.social.totalFollowers ? td.social.totalFollowers[platform] : null;
+      var breakdown = s.social.breakdown && s.social.breakdown[platform] ? s.social.breakdown[platform] : null;
+      return kpiCard(platform, numVal(followers), {
+        delta:     yoyDelta(followers, prior),
+        sparkline: sparkData,
+        breakdown: breakdown,
+      });
     }).join('') +
     '</div>' +
     subLabel('Age Demographics by Platform (%)') +
@@ -192,24 +228,53 @@ function renderStatsPage(main) {
 
   var arenaContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
-    kpiCard('Annual Visitors', numVal(s.arena.annualVisitors), { delta: yoyDelta(s.arena.annualVisitors, p.arena.annualVisitors), note: mn.annualVisitors }) +
-    kpiCard('Total Events',    numVal(s.arena.totalEvents),    { delta: yoyDelta(s.arena.totalEvents, p.arena.totalEvents) }) +
+    kpiCard('Annual Visitors', numVal(s.arena.annualVisitors), {
+      delta:     yoyDelta(s.arena.annualVisitors, p.arena.annualVisitors),
+      note:      mn.annualVisitors,
+      sparkline: td.arena.annualVisitors,
+      breakdown: s.arena.breakdown.annualVisitors,
+    }) +
+    kpiCard('Total Events', numVal(s.arena.totalEvents), {
+      delta:     yoyDelta(s.arena.totalEvents, p.arena.totalEvents),
+      sparkline: td.arena.totalEvents,
+      breakdown: s.arena.breakdown.totalEvents,
+    }) +
     '</div>' +
     subLabel('Seating Capacity by Section') +
     kvTable(Object.entries(s.arena.seatingCapacity).map(function(e) { return [e[0], numVal(e[1])]; }));
 
   var stmContent =
     '<div class="home-grid">' +
-    kpiCard('Total STMs',    numVal(s.stm.totalSTMs),          { delta: yoyDelta(s.stm.totalSTMs, p.stm.totalSTMs),                     note: mn.totalSTMs }) +
-    kpiCard('Renewal Rate',  pctVal(s.stm.renewalRate),        { delta: yoyDelta(s.stm.renewalRate, p.stm.renewalRate, { pp: true }),    note: mn.renewalRate }) +
-    kpiCard('Avg Tenure',    s.stm.avgTenureYears ? s.stm.avgTenureYears + ' yrs' : '—',
-                                                               { delta: yoyDelta(s.stm.avgTenureYears, p.stm.avgTenureYears),           note: mn.avgTenureYears }) +
-    kpiCard('New Members',   numVal(s.stm.newMembersThisYear), { delta: yoyDelta(s.stm.newMembersThisYear, p.stm.newMembersThisYear),    note: mn.newMembersThisYear }) +
+    kpiCard('Total STMs', numVal(s.stm.totalSTMs), {
+      delta:     yoyDelta(s.stm.totalSTMs, p.stm.totalSTMs),
+      note:      mn.totalSTMs,
+      sparkline: td.stm.totalSTMs,
+      breakdown: s.stm.breakdown.totalSTMs,
+    }) +
+    kpiCard('Renewal Rate', pctVal(s.stm.renewalRate), {
+      delta:     yoyDelta(s.stm.renewalRate, p.stm.renewalRate, { pp: true }),
+      note:      mn.renewalRate,
+      sparkline: td.stm.renewalRate,
+      breakdown: s.stm.breakdown.renewalRate,
+    }) +
+    kpiCard('Avg Tenure', s.stm.avgTenureYears ? s.stm.avgTenureYears + ' yrs' : '—', {
+      delta:     yoyDelta(s.stm.avgTenureYears, p.stm.avgTenureYears),
+      note:      mn.avgTenureYears,
+      sparkline: td.stm.avgTenureYears,
+      breakdown: s.stm.breakdown.avgTenureYears,
+    }) +
+    kpiCard('New Members', numVal(s.stm.newMembersThisYear), {
+      delta:     yoyDelta(s.stm.newMembersThisYear, p.stm.newMembersThisYear),
+      note:      mn.newMembersThisYear,
+      sparkline: td.stm.newMembersThisYear,
+    }) +
     '</div>';
 
   var hhiContent =
     '<div class="home-grid" style="margin-bottom:20px;">' +
-    kpiCard('Median HHI', dollarVal(s.householdIncome['Median HHI']), { delta: yoyDelta(s.householdIncome['Median HHI'], p.householdIncome['Median HHI']) }) +
+    kpiCard('Median HHI', dollarVal(s.householdIncome['Median HHI']), {
+      delta: yoyDelta(s.householdIncome['Median HHI'], p.householdIncome['Median HHI']),
+    }) +
     '</div>' +
     kvTable(
       Object.entries(s.householdIncome)
@@ -219,42 +284,42 @@ function renderStatsPage(main) {
 
   var portlandContent =
     '<div class="home-grid">' +
-    kpiCard('DMA Population',    numVal(s.portlandMarket.population),       { delta: yoyDelta(s.portlandMarket.population, p.portlandMarket.population) }) +
-    kpiCard('Total Households',  numVal(s.portlandMarket.totalHouseholds),  { delta: yoyDelta(s.portlandMarket.totalHouseholds, p.portlandMarket.totalHouseholds) }) +
-    kpiCard('Median Age',        rawVal(s.portlandMarket.medianAge),        { delta: yoyDelta(s.portlandMarket.medianAge, p.portlandMarket.medianAge) }) +
-    kpiCard('Median HHI',        dollarVal(s.portlandMarket.medianHHI),     { delta: yoyDelta(s.portlandMarket.medianHHI, p.portlandMarket.medianHHI) }) +
-    kpiCard('College Educated',  pctVal(s.portlandMarket.collegeEducated),  { delta: yoyDelta(s.portlandMarket.collegeEducated, p.portlandMarket.collegeEducated, { pp: true }) }) +
-    kpiCard('Homeownership',     pctVal(s.portlandMarket.homeownership),    { delta: yoyDelta(s.portlandMarket.homeownership, p.portlandMarket.homeownership, { pp: true }) }) +
+    kpiCard('DMA Population',   numVal(s.portlandMarket.population),      { delta: yoyDelta(s.portlandMarket.population, p.portlandMarket.population) }) +
+    kpiCard('Total Households', numVal(s.portlandMarket.totalHouseholds), { delta: yoyDelta(s.portlandMarket.totalHouseholds, p.portlandMarket.totalHouseholds) }) +
+    kpiCard('Median Age',       rawVal(s.portlandMarket.medianAge),       { delta: yoyDelta(s.portlandMarket.medianAge, p.portlandMarket.medianAge) }) +
+    kpiCard('Median HHI',       dollarVal(s.portlandMarket.medianHHI),    { delta: yoyDelta(s.portlandMarket.medianHHI, p.portlandMarket.medianHHI) }) +
+    kpiCard('College Educated', pctVal(s.portlandMarket.collegeEducated), { delta: yoyDelta(s.portlandMarket.collegeEducated, p.portlandMarket.collegeEducated, { pp: true }) }) +
+    kpiCard('Homeownership',    pctVal(s.portlandMarket.homeownership),   { delta: yoyDelta(s.portlandMarket.homeownership, p.portlandMarket.homeownership, { pp: true }) }) +
     '</div>';
 
   var broadcastContent =
     '<div class="home-grid">' +
-    kpiCard('Avg Viewers / Game',  numVal(s.broadcast.avgViewersPerGame),   { delta: yoyDelta(s.broadcast.avgViewersPerGame, p.broadcast.avgViewersPerGame),     note: mn.avgViewersPerGame }) +
-    kpiCard('Season Reach',        numVal(s.broadcast.totalSeasonReach),    { delta: yoyDelta(s.broadcast.totalSeasonReach, p.broadcast.totalSeasonReach),       note: mn.totalSeasonReach }) +
-    kpiCard('Local TV Games',      rawVal(s.broadcast.gamesOnLocalTV),      { delta: yoyDelta(s.broadcast.gamesOnLocalTV, p.broadcast.gamesOnLocalTV) }) +
-    kpiCard('National TV Games',   rawVal(s.broadcast.gamesOnNationalTV),   { delta: yoyDelta(s.broadcast.gamesOnNationalTV, p.broadcast.gamesOnNationalTV) }) +
-    kpiCard('Avg Local Rating',    rawVal(s.broadcast.avgLocalRating),      { delta: yoyDelta(s.broadcast.avgLocalRating, p.broadcast.avgLocalRating) }) +
-    kpiCard('Broadcast Hours',     rawVal(s.broadcast.totalBroadcastHours), { delta: yoyDelta(s.broadcast.totalBroadcastHours, p.broadcast.totalBroadcastHours) }) +
+    kpiCard('Avg Viewers / Game', numVal(s.broadcast.avgViewersPerGame),   { delta: yoyDelta(s.broadcast.avgViewersPerGame, p.broadcast.avgViewersPerGame),     note: mn.avgViewersPerGame, sparkline: td.broadcast.avgViewersPerGame }) +
+    kpiCard('Season Reach',       numVal(s.broadcast.totalSeasonReach),    { delta: yoyDelta(s.broadcast.totalSeasonReach, p.broadcast.totalSeasonReach),       note: mn.totalSeasonReach,  sparkline: td.broadcast.totalSeasonReach }) +
+    kpiCard('Local TV Games',     rawVal(s.broadcast.gamesOnLocalTV),      { delta: yoyDelta(s.broadcast.gamesOnLocalTV, p.broadcast.gamesOnLocalTV),                                       sparkline: td.broadcast.gamesOnLocalTV }) +
+    kpiCard('National TV Games',  rawVal(s.broadcast.gamesOnNationalTV),   { delta: yoyDelta(s.broadcast.gamesOnNationalTV, p.broadcast.gamesOnNationalTV) }) +
+    kpiCard('Avg Local Rating',   rawVal(s.broadcast.avgLocalRating),      { delta: yoyDelta(s.broadcast.avgLocalRating, p.broadcast.avgLocalRating),                                       sparkline: td.broadcast.avgLocalRating }) +
+    kpiCard('Broadcast Hours',    rawVal(s.broadcast.totalBroadcastHours), { delta: yoyDelta(s.broadcast.totalBroadcastHours, p.broadcast.totalBroadcastHours) }) +
     '</div>';
 
   var digitalContent =
     '<div class="home-grid">' +
-    kpiCard('Monthly Active Users',  numVal(s.appAndDigital.monthlyActiveUsers),     { delta: yoyDelta(s.appAndDigital.monthlyActiveUsers, p.appAndDigital.monthlyActiveUsers),         note: mn.monthlyActiveUsers }) +
-    kpiCard('Total App Downloads',   numVal(s.appAndDigital.totalAppDownloads),      { delta: yoyDelta(s.appAndDigital.totalAppDownloads, p.appAndDigital.totalAppDownloads),           note: mn.totalAppDownloads }) +
-    kpiCard('Avg Sessions / User',   rawVal(s.appAndDigital.avgSessionsPerUser),     { delta: yoyDelta(s.appAndDigital.avgSessionsPerUser, p.appAndDigital.avgSessionsPerUser) }) +
-    kpiCard('Push Opt-In Rate',      pctVal(s.appAndDigital.pushOptInRate),          { delta: yoyDelta(s.appAndDigital.pushOptInRate, p.appAndDigital.pushOptInRate, { pp: true }) }) +
-    kpiCard('Email Subscribers',     numVal(s.appAndDigital.emailSubscribers),       { delta: yoyDelta(s.appAndDigital.emailSubscribers, p.appAndDigital.emailSubscribers) }) +
-    kpiCard('Monthly Web Visitors',  numVal(s.appAndDigital.websiteMonthlyVisitors), { delta: yoyDelta(s.appAndDigital.websiteMonthlyVisitors, p.appAndDigital.websiteMonthlyVisitors), note: mn.websiteMonthlyVisitors }) +
+    kpiCard('Monthly Active Users', numVal(s.appAndDigital.monthlyActiveUsers),     { delta: yoyDelta(s.appAndDigital.monthlyActiveUsers, p.appAndDigital.monthlyActiveUsers),         note: mn.monthlyActiveUsers,     sparkline: td.appAndDigital.monthlyActiveUsers }) +
+    kpiCard('Total App Downloads',  numVal(s.appAndDigital.totalAppDownloads),      { delta: yoyDelta(s.appAndDigital.totalAppDownloads, p.appAndDigital.totalAppDownloads),           note: mn.totalAppDownloads,      sparkline: td.appAndDigital.totalAppDownloads }) +
+    kpiCard('Avg Sessions / User',  rawVal(s.appAndDigital.avgSessionsPerUser),     { delta: yoyDelta(s.appAndDigital.avgSessionsPerUser, p.appAndDigital.avgSessionsPerUser) }) +
+    kpiCard('Push Opt-In Rate',     pctVal(s.appAndDigital.pushOptInRate),          { delta: yoyDelta(s.appAndDigital.pushOptInRate, p.appAndDigital.pushOptInRate, { pp: true }) }) +
+    kpiCard('Email Subscribers',    numVal(s.appAndDigital.emailSubscribers),       { delta: yoyDelta(s.appAndDigital.emailSubscribers, p.appAndDigital.emailSubscribers) }) +
+    kpiCard('Monthly Web Visitors', numVal(s.appAndDigital.websiteMonthlyVisitors), { delta: yoyDelta(s.appAndDigital.websiteMonthlyVisitors, p.appAndDigital.websiteMonthlyVisitors), note: mn.websiteMonthlyVisitors, sparkline: td.appAndDigital.websiteMonthlyVisitors }) +
     '</div>';
 
   var sentimentContent =
     '<div class="home-grid">' +
-    kpiCard('NPS Score',            rawVal(s.fanSentiment.npsScore),             { delta: yoyDelta(s.fanSentiment.npsScore, p.fanSentiment.npsScore),                             note: mn.npsScore }) +
-    kpiCard('Overall Satisfaction', pctVal(s.fanSentiment.overallSatisfaction),  { delta: yoyDelta(s.fanSentiment.overallSatisfaction, p.fanSentiment.overallSatisfaction, { pp: true }), note: mn.overallSatisfaction }) +
+    kpiCard('NPS Score',            rawVal(s.fanSentiment.npsScore),            { delta: yoyDelta(s.fanSentiment.npsScore, p.fanSentiment.npsScore),                                   note: mn.npsScore,            sparkline: td.fanSentiment.npsScore }) +
+    kpiCard('Overall Satisfaction', pctVal(s.fanSentiment.overallSatisfaction), { delta: yoyDelta(s.fanSentiment.overallSatisfaction, p.fanSentiment.overallSatisfaction, { pp: true }), note: mn.overallSatisfaction, sparkline: td.fanSentiment.overallSatisfaction }) +
     kpiCard('Game Experience',      s.fanSentiment.gameExperienceRating ? s.fanSentiment.gameExperienceRating + ' / 10' : '—',
                                                                                  { delta: yoyDelta(s.fanSentiment.gameExperienceRating, p.fanSentiment.gameExperienceRating) }) +
-    kpiCard('Likelihood to Renew',  pctVal(s.fanSentiment.likelihoodToRenew),    { delta: yoyDelta(s.fanSentiment.likelihoodToRenew, p.fanSentiment.likelihoodToRenew, { pp: true }) }) +
-    kpiCard('Brand Affinity Score', rawVal(s.fanSentiment.brandAffinityScore),   { delta: yoyDelta(s.fanSentiment.brandAffinityScore, p.fanSentiment.brandAffinityScore) }) +
+    kpiCard('Likelihood to Renew',  pctVal(s.fanSentiment.likelihoodToRenew),   { delta: yoyDelta(s.fanSentiment.likelihoodToRenew, p.fanSentiment.likelihoodToRenew, { pp: true }) }) +
+    kpiCard('Brand Affinity Score', rawVal(s.fanSentiment.brandAffinityScore),  { delta: yoyDelta(s.fanSentiment.brandAffinityScore, p.fanSentiment.brandAffinityScore) }) +
     '</div>';
 
   // ---- Assemble the full page ----

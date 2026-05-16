@@ -56,6 +56,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // Card breakdown expand/collapse — direct DOM toggle, no re-render
+  document.body.addEventListener('click', function(e) {
+    var btn = e.target.closest('.card-expand-btn');
+    if (!btn) return;
+    e.stopPropagation();
+    var card = btn.closest('.home-card');
+    if (!card) return;
+    var isOpen = card.classList.toggle('breakdown-open');
+    btn.textContent = isOpen ? '− details' : '+ details';
+  });
+
   // Tooltip — delegated on body so it works after any re-render
   document.body.addEventListener('mouseover', function(e) {
     var el = e.target.closest('[data-note]');
