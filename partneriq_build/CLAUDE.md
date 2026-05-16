@@ -39,7 +39,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 |------|---------------|
 | `00_vendor_shims.js` | Vendored libraries (PapaParse, etc.) |
 | `01_styles.css` | All CSS, design tokens, theme variables |
-| `02_constants.js` | Global constants, `DASHBOARD_META`, `STATS_DATA`, `PRELOADED_DATA`, `VIEWER_MODE` |
+| `02_constants.js` | Global constants, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
 | `03_changelog.js` | Full version history array |
 | `04_datastore.js` | `DataStore` object, file ingest, import/export, preloaded data hydration |
 | `05_paid_constants.js` | Paid social campaign parsing constants and alias maps |
@@ -395,8 +395,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `openTVPortfolioPage()` | Sets `currentPage='tv'` and calls `renderApp()` |
 | `openDataHealthPage()` | Navigates to the data health summary page |
 | `openGlossaryPage()` | Navigates to the metric glossary page |
-| `renderStatsPage(main)` | Renders the Stats & Market Data page — 8 collapsible sections (Social Following, Arena & Attendance, STM, HHI, Portland Market, Broadcast, App & Digital, Fan Sentiment) sourced from `STATS_DATA` in `02_constants.js` |
-| `openStatsPage()` | Sets `currentPage='stats'` and calls `renderApp()` |
 | `renderLinksPage(main)` | Renders the Links page — 8 external links grouped into Web Analytics, Attendance, Digital & Broadcast, and App Data; each opens in a new tab |
 | `openLinksPage()` | Sets `currentPage='links'` and calls `renderApp()` |
 

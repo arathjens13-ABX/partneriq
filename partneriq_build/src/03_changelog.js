@@ -1,5 +1,22 @@
 const CHANGELOG = [
   {
+    version: 'v0.41',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Removed Stats & Market Data page — CP stats now lives in its own dedicated dashboard',
+    changes: [
+      {
+        category: 'Cleanup',
+        items: [
+          `Removed the Stats & Market Data quick-link card from the home page — CP stats has been separated into its own dedicated dashboard`,
+          `Deleted renderStatsPage() and openStatsPage() from 08_home_pages.js`,
+          `Removed STATS_DATA constant from 02_constants.js`,
+          `Removed currentPage==='stats' routing branch from renderApp() and the no-data guard in 09_app_core.js`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.40',
     date: 'May 2026',
     source: 'Claude',
