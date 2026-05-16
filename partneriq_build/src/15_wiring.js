@@ -6,7 +6,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const search = document.getElementById('brandSearch');
   const dropdown = document.getElementById('brandDropdown');
   search.addEventListener('focus', () => updateBrandDropdown(search.value));
-  search.addEventListener('input', () => updateBrandDropdown(search.value));
+  // Debounce input so the dropdown filter/render work doesn't block keystroke painting.
+  let brandSearchDebounce = null;
+  search.addEventListener('input', () => {
+    if (brandSearchDebounce) clearTimeout(brandSearchDebounce);
+    brandSearchDebounce = setTimeout(() => updateBrandDropdown(search.value), 120);
+  });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.brand-selector-wrapper')) dropdown.classList.remove('active');
   });
