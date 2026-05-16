@@ -18,6 +18,49 @@ function formatCurrency(n) {
 }
 
 // ============================================================
+// YOY DELTA
+// opts.pp   = true  → show absolute percentage-point change (e.g. "+3pp")
+//                     use for metrics already expressed as percentages
+// default         → relative % change (e.g. "+8.5%")
+// ============================================================
+function yoyDelta(curr, prior, opts) {
+  if (!prior) return null;
+  if (curr === null || curr === undefined) return null;
+  opts = opts || {};
+  var diff = curr - prior;
+  if (opts.pp) {
+    var diffRounded = Math.round(diff * 10) / 10;
+    return {
+      label: (diffRounded >= 0 ? '+' : '') + diffRounded + 'pp',
+      dir: diffRounded > 0.5 ? 'positive' : diffRounded < -0.5 ? 'negative' : 'neutral',
+    };
+  }
+  var pct = (diff / prior) * 100;
+  var pctRounded = Math.round(pct * 10) / 10;
+  return {
+    label: (pctRounded >= 0 ? '+' : '') + pctRounded + '%',
+    dir: pctRounded > 0.5 ? 'positive' : pctRounded < -0.5 ? 'negative' : 'neutral',
+  };
+}
+
+// ============================================================
+// TOOLTIP
+// ============================================================
+function showTooltip(e, text) {
+  var t = document.getElementById('tooltip');
+  if (!t) return;
+  t.innerHTML = text;
+  t.style.left = (e.clientX + 14) + 'px';
+  t.style.top  = (e.clientY - 8) + 'px';
+  t.classList.add('visible');
+}
+
+function hideTooltip() {
+  var t = document.getElementById('tooltip');
+  if (t) t.classList.remove('visible');
+}
+
+// ============================================================
 // ERROR TOAST
 // ============================================================
 function showErrorToast(msg) {
