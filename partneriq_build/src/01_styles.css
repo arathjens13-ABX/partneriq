@@ -35,6 +35,31 @@
   --brand-red-tint-strong: rgba(200, 16, 46, 0.18);
 }
 
+[data-theme="light"] {
+  --bg: #F4F5F7;
+  --bg-elev: #FFFFFF;
+  --bg-elev-2: #ECEEF2;
+  --bg-elev-3: #E3E6EB;
+  --border: #D5D8DF;
+  --border-soft: #E6E9EE;
+  --text: #0E0F12;
+  --text-dim: #3B3E45;
+  --text-muted: #6E7178;
+  --accent-line: rgba(200, 16, 46, 0.30);
+  --positive: #1A8A4A;
+  --negative: #D63040;
+  --chart-3: #7A7C7F;
+  --chart-6: #3B3E45;
+  --brand-red-tint: rgba(200, 16, 46, 0.07);
+  --brand-red-tint-strong: rgba(200, 16, 46, 0.13);
+}
+
+/* Theme toggle icon visibility */
+#themeIconSun { display: block; }
+#themeIconMoon { display: none; }
+[data-theme="light"] #themeIconSun { display: none; }
+[data-theme="light"] #themeIconMoon { display: block; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {

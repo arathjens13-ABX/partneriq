@@ -375,19 +375,25 @@ function renderTopMatchesTable(rows) {
 }
 
 function chartDefaults() {
+  var isLight = document.documentElement.dataset.theme === 'light';
+  var gridColor   = isLight ? '#E3E6EB' : '#1f2125';
+  var tickColor   = isLight ? '#6E7178' : '#a0a2a5';
+  var tooltipBg   = isLight ? '#FFFFFF' : '#000';
+  var tooltipBdr  = isLight ? '#D5D8DF' : '#2a2d32';
+  var tooltipText = isLight ? '#0E0F12' : '#eaebec';
   return {
     responsive: true, maintainAspectRatio: false,
     plugins: {
-      legend: { labels: { color: '#a0a2a5', font: { family: 'system-ui', size: 11 }, boxWidth: 12 } },
+      legend: { labels: { color: tickColor, font: { family: 'system-ui', size: 11 }, boxWidth: 12 } },
       tooltip: {
-        backgroundColor: '#000', borderColor: '#2a2d32', borderWidth: 1,
-        titleColor: '#eaebec', bodyColor: '#eaebec', titleFont: { family: 'Geist Mono', size: 11 },
+        backgroundColor: tooltipBg, borderColor: tooltipBdr, borderWidth: 1,
+        titleColor: tooltipText, bodyColor: tooltipText, titleFont: { family: 'Geist Mono', size: 11 },
         bodyFont: { family: 'Geist', size: 12 }, padding: 10, boxPadding: 4,
       }
     },
     scales: {
-      x: { grid: { color: '#1f2125', drawBorder: false }, ticks: { color: '#a0a2a5', font: { family: 'ui-monospace', size: 10 } } },
-      y: { grid: { color: '#1f2125', drawBorder: false }, ticks: { color: '#a0a2a5', font: { family: 'ui-monospace', size: 10 }, callback: v => formatNum(v) } }
+      x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: tickColor, font: { family: 'ui-monospace', size: 10 } } },
+      y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: tickColor, font: { family: 'ui-monospace', size: 10 }, callback: v => formatNum(v) } }
     }
   };
 }
