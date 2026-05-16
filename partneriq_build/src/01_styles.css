@@ -737,7 +737,7 @@ main {
 .tooltip {
   position: fixed;
   z-index: 9999;
-  background: #000;
+  background: var(--bg-elev);
   border: 1px solid var(--border);
   color: var(--text);
   padding: 12px 14px;
@@ -1608,7 +1608,7 @@ main {
 .pace-hover {
   position: absolute;
   pointer-events: none;
-  background: #000;
+  background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 5px;
   padding: 8px 10px;
@@ -3047,4 +3047,34 @@ header {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   pointer-events: auto;
+}
+
+/* === Light mode overrides === */
+
+/* Page and header backgrounds */
+html[data-theme="light"],
+[data-theme="light"] body {
+  background: var(--bg);
+}
+
+[data-theme="light"] header {
+  background: rgba(244, 245, 247, 0.94);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Titles and large values that were hardcoded white */
+[data-theme="light"] .section-title,
+[data-theme="light"] .card-title,
+[data-theme="light"] .modal-title,
+[data-theme="light"] .brand-title,
+[data-theme="light"] .kpi-value,
+[data-theme="light"] .home-card-value {
+  color: var(--text);
+}
+
+/* Active/selected tag/button text on light red-tint backgrounds */
+[data-theme="light"] .channel-tag.active,
+[data-theme="light"] .period-btn.active,
+[data-theme="light"] .comparison-toggle button.active {
+  color: var(--brand-red);
 }
