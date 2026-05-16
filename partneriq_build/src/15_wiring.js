@@ -29,6 +29,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const homeNavBtn2 = document.getElementById('homeNavBtn');
   if (homeNavBtn2) homeNavBtn2.addEventListener('click', goHome);
 
+  document.getElementById('themeToggleBtn').addEventListener('click', function() {
+    var isLight = document.documentElement.dataset.theme === 'light';
+    if (isLight) {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = 'light';
+    }
+    renderApp();
+  });
+
 
   document.getElementById('dataBtn').addEventListener('click', () => { if (!VIEWER_MODE) modal.classList.add('active'); });
   document.getElementById('modalClose').addEventListener('click', () => modal.classList.remove('active'));
