@@ -367,7 +367,10 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
       chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct';
     }
     if (chosenPct !== null) {
-      const priorWave = getSurveyPriorWave(brand, 'all');
+      // Phase-matched YoY: Late→Late, Early→Early. Calling with 'all' would return the
+      // 2nd-most-recent wave regardless of phase, which in practice is the opposite-phase
+      // wave of the same season — an intra-season comparison, not YoY.
+      const priorWave = getSurveyPriorWave(brand, latestWave.Phase);
       let yoyText = '';
       if (priorWave) {
         const priorPct = priorWave[chosenPriorKey];

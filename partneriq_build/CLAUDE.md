@@ -320,7 +320,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `pctChange(curr, prev)` | Returns a signed ratio `(curr - prev) / prev` or `null` |
 | `escapeHTML(value)` | HTML-escapes a string for safe DOM injection |
 | `normalizePartnerName(value)` | Lowercases and strips punctuation for partner name matching |
-| `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string |
+| `parseFlexibleSeasonToken(token)` | Recognizes a season token in canonical (2023-24), FY shorthand (FY24 / FY2024), long (2023-2024), or slash form (2024/25) and returns the canonical YYYY-YY form, or '' if not a season |
+| `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string. Tolerant of `_`, `-`, and space separators; embedded brand prefixes match case- and punctuation-insensitively |
 | `findRuleMatchInCampaign(campaignName)` | Checks saved assignment rules before heuristic parsing |
 | `normalizePaidRow(row, fallbackBrand)` | Coerces a raw paid CSV row into a standardized paid row object |
 | `getBrandTVData(brand, season)` | Returns TV signage rows for a brand/season (excludes virtual branding rows) |
@@ -328,7 +329,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getBrandPaidData(brand, season)` | Returns aggregated paid social rows for a brand/season |
 | `getBrandPaidDailyRows(brand, season)` | Returns daily-granularity paid rows for pacing charts |
 | `getPaidSeasons(brand)` | Returns distinct seasons present in paid data for a brand |
-| `getPaidYoY(brand, period, key)` | Computes YoY delta for a paid metric key |
 
 ---
 
@@ -424,7 +424,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPaceChart(brand, period)` | Season-pace SVG line chart overlaying current vs prior season |
 | `renderPaidEfficiencyScatter(partnerAggs, resultFilter)` | Portfolio-level paid efficiency scatter plot |
 | `renderTopMatchesTable(rows)` | Renders the top-games table inside the TV section |
-| `renderYoYChange(yoy)` | Returns a formatted YoY badge `<span>` |
+| `renderYoYChange(yoy)` | Returns a formatted YoY badge `<span>`. Falls back to a muted "small sample" style when either side of the comparison logged under `TV_ASSET_SMALL_SAMPLE_MIN_MINUTES` (1 minute) of on-screen time |
 | `aggregateAssetRows(rows)` | Sums TV rows by asset location |
 | `assetStatsFromAggregate(byAsset)` | Converts aggregated map to a sorted stats array |
 | `getAssetYoYChange(brand, assetName, period)` | YoY delta for one named asset |

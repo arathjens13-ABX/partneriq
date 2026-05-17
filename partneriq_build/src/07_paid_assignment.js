@@ -25,7 +25,7 @@ const sessionLoadedFiles = []; // persists across modal open/close
 let paidPortfolioSortKey = 'impressions';
 let paidPortfolioSortDir = 'desc';
 let paidPortfolioTableTab   = 'partners'; // 'partners' | 'campaigns'
-let paidPortfolioKpiMode    = 'yoy';      // 'yoy' | 'mom'
+let paidPortfolioKpiMode    = 'mom';      // 'mom' only — YoY removed as paid comparisons are too creative-dependent to be meaningful at this level
 let paidPortfolioChartPeriod = 'latest';  // independent period for chart cards
 // Date-range filter for the Paid Social Portfolio page (mirrors the Organic page).
 // Operates on r.DailyDate. When dateMode is 'all', no date filter is applied.

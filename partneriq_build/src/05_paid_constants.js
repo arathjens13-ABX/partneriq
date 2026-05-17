@@ -105,6 +105,24 @@ function findRuleMatchInCampaign(campaignName) {
   const matches = Object.entries(rules).filter(([needle]) => needle && lower.includes(compactToken(needle))).sort((a, b) => compactToken(b[0]).length - compactToken(a[0]).length);
   return matches.length ? { token: matches[0][0], partner: resolveCanonicalBrandName(matches[0][1]) } : null;
 }
+// Recognizes the season token in any of these shapes and returns the canonical YYYY-YY form,
+// or '' if the input isn't a season. Fiscal-year shorthand (FY24 / FY2024) is interpreted as
+// the season ENDING in that year — matches fiscalSeasonFromDate() in 04_datastore.js.
+function parseFlexibleSeasonToken(token) {
+  if (!token) return '';
+  const t = String(token).trim();
+  if (/^20\d{2}-\d{2}$/.test(t)) return t;
+  const fy = t.match(/^FY[\s_-]?(\d{2}|\d{4})$/i);
+  if (fy) {
+    const endYr = fy[1].length === 2 ? 2000 + Number(fy[1]) : Number(fy[1]);
+    const start = endYr - 1;
+    return `${start}-${String(endYr).slice(-2)}`;
+  }
+  const long = t.match(/^(20\d{2})[\s\/_-]+(20)?(\d{2})$/);
+  if (long) return `${long[1]}-${long[3]}`;
+  return '';
+}
+
 function parsePaidCampaignName(campaignName, explicitPartner = '') {
   const name = String(campaignName || '').trim();
   const result = {
@@ -125,10 +143,21 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
   const dnd = /^DND[_\s-]/i.test(name);
   const copy = /copy/i.test(name);
   let working = name.replace(/^DND[_\s-]*/i, '').trim();
-  const parts = working.split('_').map(p => p.trim()).filter(p => p !== '');
-  const seasonIdx = parts.findIndex(p => /^20\d{2}-\d{2}$/.test(p));
+  // Tokenize on underscore, space, or hyphen — but protect "YYYY-YY" season ranges (and FY shorthand)
+  // so they aren't shattered by the hyphen split. Placeholder uses no split chars so it survives.
+  const seasonPlaceholders = [];
+  const protectedWorking = working.replace(/(FY[\s_-]?\d{2,4}|20\d{2}[\s\/_-]+(?:20)?\d{2})/gi, m => {
+    seasonPlaceholders.push(m);
+    return `SEASONTOKEN${seasonPlaceholders.length - 1}END`;
+  });
+  const parts = protectedWorking
+    .split(/[_\s-]+/)
+    .map(p => p.trim())
+    .filter(p => p !== '')
+    .map(p => p.replace(/SEASONTOKEN(\d+)END/g, (_, i) => seasonPlaceholders[Number(i)]));
+  const seasonIdx = parts.findIndex(p => parseFlexibleSeasonToken(p) !== '');
   const objIdx = parts.findIndex(p => PAID_OBJECTIVE_LABELS[p.toUpperCase()]);
-  if (seasonIdx !== -1) result.parsedSeason = parts[seasonIdx];
+  if (seasonIdx !== -1) result.parsedSeason = parseFlexibleSeasonToken(parts[seasonIdx]) || parts[seasonIdx];
   if (seasonIdx !== -1 && parts[seasonIdx + 1]) {
     result.categoryCode = parts[seasonIdx + 1];
     result.category = PAID_CATEGORY_LABELS[result.categoryCode] || result.categoryCode;
@@ -152,15 +181,28 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
         result.activation = titleFromToken(between.slice(0, -1).join(' '));
       } else if (isCp && between.length === 1) {
         // Single-token CP: partner may be embedded as a prefix in the activation token.
-        // e.g. "AlaskaDOTM" -> prefix "Alaska" -> Alaska Airlines
-        // e.g. "XfinityBlindRanking" -> prefix "Xfinity" -> Xfinity
+        // e.g. "AlaskaDOTM" / "alaskaDOTM" / "ALASKA-DOTM" -> prefix "Alaska" -> Alaska Airlines
+        // Match via compactToken() so case and punctuation differences don't block resolution.
         const token = between[0];
+        const tokenCompact = compactToken(token);
         const allAliases = { ...PAID_SOCIAL_PARTNER_ALIASES, ...(DataStore.paidAssignmentRules || {}) };
-        const sortedKeys = Object.keys(allAliases).sort((a, b) => b.length - a.length);
-        const prefixKey = sortedKeys.find(k => k.length >= 4 && token.toLowerCase().startsWith(k.toLowerCase()));
+        const sortedKeys = Object.keys(allAliases).sort((a, b) => compactToken(b).length - compactToken(a).length);
+        const prefixKey = sortedKeys.find(k => {
+          const kc = compactToken(k);
+          return kc.length >= 4 && tokenCompact.startsWith(kc);
+        });
         if (prefixKey) {
           result.partnerRaw = prefixKey;
-          const suffix = token.slice(prefixKey.length);
+          // Walk the original token character-by-character until we've consumed the same number
+          // of alphanumeric characters as the matched prefix, so the suffix preserves the
+          // original casing/punctuation of whatever followed the brand name.
+          const targetLen = compactToken(prefixKey).length;
+          let consumed = 0, splitAt = 0;
+          for (let i = 0; i < token.length; i++) {
+            if (/[a-z0-9]/i.test(token[i])) consumed++;
+            if (consumed >= targetLen) { splitAt = i + 1; break; }
+          }
+          const suffix = token.slice(splitAt).replace(/^[-_\s]+/, '');
           result.activation = titleFromToken(suffix || token);
           result.parseNotes.push('Partner "' + prefixKey + '" extracted as prefix from compound token "' + token + '".');
         } else {
@@ -194,7 +236,7 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
       result.parseNotes.push('Matched known partner token "' + rule.token + '" in campaign name.');
     }
   }
-  if (!result.activation) result.activation = titleFromToken(working.replace(/^20\d{2}-\d{2}_?/, '').replace(/_/g, ' '));
+  if (!result.activation) result.activation = titleFromToken(working.replace(/^(?:FY[\s_-]?\d{2,4}|20\d{2}[\s\/_-]+(?:20)?\d{2})[_\s-]?/i, '').replace(/[_]+/g, ' '));
   if (dnd) result.parseNotes.push('Campaign name begins with DND.');
   if (copy) result.parseNotes.push('Campaign name contains Copy.');
   if (!result.partner) result.parseNotes.push('No partner could be confidently parsed.');
@@ -320,22 +362,6 @@ function getPaidDailyRowsForPeriod(period) {
 
 function getPaidSeasons(brand) {
   return [...new Set(getBrandPaidData(brand).map(r => normalizeSeasonLabel(r.Season)).filter(Boolean))].sort();
-}
-
-function getPaidYoY(brand, period, key) {
-  const seasons = getPaidSeasons(brand);
-  if (seasons.length < 2) return null;
-  const currSeason = period === 'all' ? seasons[seasons.length - 1] : period;
-  const idx = seasons.indexOf(currSeason);
-  if (idx <= 0) return null;
-  const prevSeason = seasons[idx - 1];
-  const currRows = getBrandPaidData(brand, currSeason);
-  const prevRows = getBrandPaidData(brand, prevSeason);
-  if (!currRows.length || !prevRows.length) return null;
-  const curr = key === 'CTR' ? paidAggregate(currRows).ctr : sum(currRows, key);
-  const prev = key === 'CTR' ? paidAggregate(prevRows).ctr : sum(prevRows, key);
-  const change = pctChange(curr, prev);
-  return change === null ? null : { change, curr, prev, currSeason, prevSeason, basis: `${currSeason} vs ${prevSeason}` };
 }
 
 function paidAggregate(rows) {

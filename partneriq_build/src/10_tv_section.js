@@ -204,6 +204,8 @@ function getAssetYoYChange(brand, assetName, period) {
     change,
     curr,
     prev,
+    currMinutes,
+    prevMinutes,
     compareSeason: sets.currSeason,
     previousSeason: sets.priorSeason,
     basis: sets.basis,
@@ -211,8 +213,23 @@ function getAssetYoYChange(brand, assetName, period) {
   };
 }
 
+// Sub-1-minute total on-screen exposure (either side) is too thin to read as a real YoY signal —
+// a single mis-attributed clip can swing the rate wildly. Render the badge in a muted style
+// and explain why in the tooltip rather than suppressing the number outright.
+const TV_ASSET_SMALL_SAMPLE_MIN_MINUTES = 1;
+
 function renderYoYChange(yoy) {
   if (!yoy) return '<span class="yoy-change neutral">—</span>';
+  const smallSample = (yoy.currMinutes !== undefined && yoy.currMinutes < TV_ASSET_SMALL_SAMPLE_MIN_MINUTES)
+                   || (yoy.prevMinutes !== undefined && yoy.prevMinutes < TV_ASSET_SMALL_SAMPLE_MIN_MINUTES);
+  if (smallSample) {
+    const arrow = yoy.change >= 0 ? '▲' : '▼';
+    const minSide = Math.min(yoy.currMinutes ?? Infinity, yoy.prevMinutes ?? Infinity);
+    const minSec = Math.round(minSide * 60);
+    const baseTitle = yoy.basis || `${yoy.previousSeason} to ${yoy.compareSeason}`;
+    const title = `${baseTitle} — small sample (under 1 min of on-screen time: ${minSec}s). Treat this YoY as directional only.`;
+    return `<span class="yoy-change small-sample" title="${title}">${arrow} ${Math.abs(yoy.change * 100).toFixed(1)}% <span class="small-sample-flag">⚠</span></span>`;
+  }
   const cls = yoy.change >= 0 ? 'up' : 'down';
   const arrow = yoy.change >= 0 ? '▲' : '▼';
   const title = yoy.basis || `${yoy.previousSeason} to ${yoy.compareSeason}`;

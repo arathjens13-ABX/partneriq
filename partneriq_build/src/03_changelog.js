@@ -1,5 +1,69 @@
 const CHANGELOG = [
   {
+    version: 'v0.44',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Paid YoY removed, small-sample guards on TV asset and survey question deltas, more respondent counts (but not in the PDF)',
+    changes: [
+      {
+        category: 'Paid Social',
+        items: [
+          `Removed YoY indicators from the Paid Social partner section — Impressions and CTR KPI cards no longer carry a YoY badge. Paid performance shifts too much with creative and objective changes for year-over-year comparisons to be meaningful at this level`,
+          `Removed the YoY option from the Paid Social Portfolio page's comparison toggle. KPI badges on that page now always compare to the prior month; the toggle UI is dropped since there's only one mode left. paidPortfolioKpiMode now defaults to 'mom' and is preserved as a serialized field for export/import compatibility`,
+          `Deleted getPaidYoY() in 05_paid_constants.js — no remaining callers after the badge removal`,
+        ]
+      },
+      {
+        category: 'Small-sample guards',
+        items: [
+          `TV Visible Signage asset breakdown YoY badge now shows in a muted "small sample" style when either the current or prior period had under 1 minute of total on-screen time on that asset. The number is still shown so the AM can see direction, but the styling and tooltip make clear it shouldn't be read as a real signal — a single mis-attributed clip can swing per-minute QIMV wildly at low totals. Constant TV_ASSET_SMALL_SAMPLE_MIN_MINUTES = 1 in 10_tv_section.js`,
+          `Partner-specific survey question table now applies the same small-sample treatment when either the current or prior wave drew fewer than 5 responses for that question/response combo. New formatSurveyDeltaCell() helper in 13_survey_section.js routes through isSurveyDeltaSmallSample() to decide which formatter to use; getPartnerSpecificRowComparison() now returns currFrequency and priorFrequency so the renderer can inspect both sides. Constant SURVEY_SMALL_SAMPLE_MIN_N = 5`,
+          `Added a shared .yoy-change.small-sample CSS rule in 01_styles.css so the muted style is consistent across TV and survey`,
+        ]
+      },
+      {
+        category: 'Respondent counts',
+        items: [
+          `Survey Research portfolio brand-awareness leaderboard now has a "Respondents" column showing the total survey responses behind each brand's row — useful context for the AM when reading the ranks and recall percentages`,
+          `Partner-page Programs & Community block KPI bar now includes a "Respondents" tile alongside Programs / Latest top program / Average awareness`,
+          `Partner-page Fan Insights block KPI bar now includes a "Respondents" tile alongside Latest mention / Answer options / Waves`,
+          `Stripped the respondents line from the PDF partner report's Brand Awareness Survey card (16_report_template.js) — respondent counts stay in the dashboard for AMs but not in the externally-shared PDF`,
+        ]
+      }
+    ]
+  },
+  {
+    version: 'v0.43',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Phase-matched survey YoY, point-delta math under % labels, and a more forgiving paid-campaign auto-namer',
+    changes: [
+      {
+        category: 'Survey YoY correctness',
+        items: [
+          `Phase-mismatch bug fixed in the partner-page "Key Takeaways" block (09_app_core.js) and the PDF report's survey section (16_report_template.js). Both were calling getSurveyPriorWave(brand, 'all'), which returns the 2nd-most-recent wave regardless of phase — in practice the opposite-phase wave of the same season, so a Late wave was being compared to the Early wave of the same season and labeled "YoY". Now both pass the latest wave's Phase, so the comparison is true Late→Late / Early→Early`,
+          `Survey recall deltas (Unaided / Aided / Local HQ) now compute as a percentage-point change (curr - prev) instead of a relative ratio — a brand moving from 40% to 50% reads "+10.0%", matching what the eye expects when looking at the two numbers. The previous behavior computed (curr-prev)/prev and would have shown "+25.0%" for the same move. The % symbol is preserved on the label since that's what readers recognize; the math underneath is the point delta. Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js; all downstream callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers`,
+          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows the point delta — a CTR move from 2.50% to 3.00% reads "+0.50% YoY" instead of "+20.0% YoY"`,
+          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
+        ]
+      },
+      {
+        category: 'Paid auto-namer',
+        items: [
+          `parsePaidCampaignName() in 05_paid_constants.js now accepts season tokens in five shapes — 2023-24 (canonical), FY24, FY2024, 2023-2024, and 2024/25 — and normalizes them all to YYYY-YY. Added parseFlexibleSeasonToken() helper; FY shorthand is interpreted as the season ending in that fiscal year, matching fiscalSeasonFromDate() convention`,
+          `Tokenization now splits on underscore, space, or hyphen — campaigns named "Toyota-FY24-Awareness" or "Toyota FY24 Awareness" parse identically to the underscored form. Season ranges are protected via a placeholder so the hyphen split doesn't shatter "2023-24" into two tokens`,
+          `Embedded brand-prefix detection (the path that resolves single tokens like "AlaskaDOTM" → Alaska Airlines + DOTM activation) is now case- and punctuation-insensitive via compactToken() — "alaskaDOTM", "ALASKADOTM", and "alaska-dotm" all resolve to Alaska Airlines with a clean activation suffix`,
+        ]
+      },
+      {
+        category: 'Repo',
+        items: [
+          `Removed the cpstats_build/ directory. The CP Stats Sheet split into its own dashboard back in v0.41 and has no shared code, CSS, build scripts, or doc cross-references with PartnerIQ — it now lives in its own repository`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.42',
     date: 'May 2026',
     source: 'Claude',
