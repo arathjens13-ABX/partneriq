@@ -1,5 +1,35 @@
 const CHANGELOG = [
   {
+    version: 'v0.43',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Percentage-point labels for rate-metric YoY, and a more forgiving paid-campaign auto-namer',
+    changes: [
+      {
+        category: 'Numeracy fixes',
+        items: [
+          `Survey recall YoY deltas (Unaided / Aided / Local HQ) are now expressed in percentage points (pp) instead of relative % change — a brand moving from 40% awareness to 50% now reads "+10.0pp YoY" rather than the misleading "+25.0% YoY". Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js to return pp deltas, and formatSurveyPctChangeText() to use the pp suffix; all callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers and now display pp consistently`,
+          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows percentage-point delta — a CTR move from 2.50% to 3.00% reads "+0.50pp YoY" instead of "+20.0% YoY". The "Key Takeaways" survey block in 09_app_core.js was already computing the pp delta correctly but rendering it as %; relabeled to pp`,
+          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) instead of the pp formatter — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
+        ]
+      },
+      {
+        category: 'Paid auto-namer',
+        items: [
+          `parsePaidCampaignName() in 05_paid_constants.js now accepts season tokens in five shapes — 2023-24 (canonical), FY24, FY2024, 2023-2024, and 2024/25 — and normalizes them all to YYYY-YY. Added parseFlexibleSeasonToken() helper; FY shorthand is interpreted as the season ending in that fiscal year, matching fiscalSeasonFromDate() convention`,
+          `Tokenization now splits on underscore, space, or hyphen — campaigns named "Toyota-FY24-Awareness" or "Toyota FY24 Awareness" parse identically to the underscored form. Season ranges are protected via a placeholder so the hyphen split doesn't shatter "2023-24" into two tokens`,
+          `Embedded brand-prefix detection (the path that resolves single tokens like "AlaskaDOTM" → Alaska Airlines + DOTM activation) is now case- and punctuation-insensitive via compactToken() — "alaskaDOTM", "ALASKADOTM", and "alaska-dotm" all resolve to Alaska Airlines with a clean activation suffix`,
+        ]
+      },
+      {
+        category: 'Repo',
+        items: [
+          `Removed the cpstats_build/ directory. The CP Stats Sheet split into its own dashboard back in v0.41 and has no shared code, CSS, build scripts, or doc cross-references with PartnerIQ — it now lives in its own repository`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.42',
     date: 'May 2026',
     source: 'Claude',

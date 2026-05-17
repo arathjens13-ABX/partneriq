@@ -10,8 +10,7 @@
 // ============================================================
 // PapaParse-compatible CSV parser for local/offline CSV uploads.
 // Supports header rows, quoted fields, escaped quotes, CRLF/LF, empty-line skipping,
-// and basic dynamic typing. XLSX uploads require a full spreadsheet parser and are
-// intentionally disabled in this offline-only build; export XLSX sources as CSV first.
+// and basic dynamic typing. CSV is the only supported upload format.
 (function(){
   function dynamicValue(value) {
     if (value === '') return null;
@@ -62,95 +61,6 @@
     }
   };
 
-  function OfflineChart(canvas, config) {
-    this.canvas = canvas;
-    this.ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
-    this.config = config || {};
-    this.destroy = function(){ if (this.ctx) this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height); };
-    this.render();
-  }
-  OfflineChart.prototype._resize = function() {
-    const rect = this.canvas.parentElement ? this.canvas.parentElement.getBoundingClientRect() : { width: 600, height: 260 };
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.max(320, Math.floor(rect.width || 600));
-    const h = Math.max(220, Math.floor(rect.height || 260));
-    this.canvas.width = w * dpr;
-    this.canvas.height = h * dpr;
-    this.canvas.style.width = w + 'px';
-    this.canvas.style.height = h + 'px';
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    return { w, h };
-  };
-  OfflineChart.prototype._fmt = function(v){
-    const n = Number(v) || 0, a = Math.abs(n);
-    if (a >= 1e9) return (n/1e9).toFixed(1)+'B';
-    if (a >= 1e6) return (n/1e6).toFixed(1)+'M';
-    if (a >= 1e3) return (n/1e3).toFixed(1)+'K';
-    return Math.round(n).toLocaleString();
-  };
-  OfflineChart.prototype.render = function() {
-    if (!this.ctx || !this.canvas) return;
-    const ctx = this.ctx;
-    const size = this._resize();
-    const cfg = this.config || {}, data = cfg.data || {}, labels = data.labels || [];
-    const datasets = data.datasets || [];
-    const type = cfg.type || (datasets[0] && datasets[0].type) || 'bar';
-    ctx.clearRect(0, 0, size.w, size.h);
-    ctx.font = '11px system-ui, -apple-system, Segoe UI, sans-serif';
-    ctx.fillStyle = '#a0a2a5';
-    if (!datasets.length || !labels.length) { ctx.fillText('No chart data', 20, 28); return; }
-    if (type === 'doughnut' || type === 'pie') return this._drawDoughnut(ctx, size, labels, datasets[0]);
-    this._drawXY(ctx, size, labels, datasets);
-  };
-  OfflineChart.prototype._drawXY = function(ctx, size, labels, datasets) {
-    const pad = { l: 54, r: 26, t: 22, b: 42 }, w = size.w - pad.l - pad.r, h = size.h - pad.t - pad.b;
-    const allVals = [];
-    datasets.forEach(ds => (ds.data || []).forEach(v => allVals.push(Number(v) || 0)));
-    const max = Math.max(1, ...allVals) * 1.12;
-    const x = i => pad.l + (labels.length === 1 ? w/2 : (i/(labels.length-1))*w);
-    const y = v => pad.t + h - ((Number(v)||0)/max)*h;
-    ctx.strokeStyle = '#1f2125'; ctx.lineWidth = 1;
-    ctx.fillStyle = '#a0a2a5';
-    for (let g=0; g<=4; g++) {
-      const gy = pad.t + (h*g/4); ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(pad.l+w, gy); ctx.stroke();
-      const val = max * (1 - g/4); ctx.fillText(this._fmt(val), 8, gy+4);
-    }
-    ctx.strokeStyle = '#2a2d32'; ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, pad.t+h); ctx.lineTo(pad.l+w, pad.t+h); ctx.stroke();
-    const colors = ['#eaebec','#a0a2a5','#6a6c70','#c4c6c9'];
-    const barSets = datasets.filter(ds => (ds.type || 'bar') === 'bar');
-    const lineSets = datasets.filter(ds => (ds.type || '') === 'line' || (!barSets.length && (ds.type || this.config.type) === 'line'));
-    const groupW = w / Math.max(1, labels.length);
-    barSets.forEach((ds, sidx) => {
-      const barW = Math.max(5, groupW * 0.55 / Math.max(1, barSets.length));
-      ctx.fillStyle = ds.backgroundColor || colors[sidx % colors.length];
-      (ds.data || []).forEach((v, i) => {
-        const bx = pad.l + i*groupW + groupW/2 - (barW*barSets.length)/2 + sidx*barW;
-        const by = y(v); ctx.fillRect(bx, by, barW*0.86, pad.t+h-by);
-      });
-    });
-    lineSets.forEach((ds, sidx) => {
-      const vals = ds.data || [];
-      ctx.strokeStyle = ds.borderColor || colors[(sidx+1)%colors.length]; ctx.lineWidth = 2; ctx.beginPath();
-      vals.forEach((v,i) => { const px=x(i), py=y(v); if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py); }); ctx.stroke();
-      ctx.fillStyle = ds.pointBackgroundColor || ds.borderColor || colors[(sidx+1)%colors.length];
-      vals.forEach((v,i)=>{ ctx.beginPath(); ctx.arc(x(i), y(v), 2.5, 0, Math.PI*2); ctx.fill(); });
-    });
-    ctx.fillStyle = '#a0a2a5'; ctx.font = '10px ui-monospace, SFMono-Regular, Consolas, monospace';
-    const step = Math.max(1, Math.ceil(labels.length / 8));
-    labels.forEach((lab,i)=>{ if(i%step===0 || i===labels.length-1){ const tx=x(i); ctx.save(); ctx.translate(tx, size.h-18); ctx.rotate(labels.length>5 ? -0.25 : 0); ctx.textAlign='center'; ctx.fillText(String(lab),0,0); ctx.restore(); }});
-  };
-  OfflineChart.prototype._drawDoughnut = function(ctx, size, labels, ds) {
-    const vals = (ds.data || []).map(v => Number(v)||0), total = vals.reduce((a,b)=>a+b,0) || 1;
-    const cx = size.w * 0.42, cy = size.h * 0.5, r = Math.min(size.w, size.h) * 0.28, inner = r * 0.62;
-    const colors = ds.backgroundColor || ['#eaebec','#c4c6c9','#a0a2a5','#8a9098','#6a6c70','#4a4d52'];
-    let start = -Math.PI/2;
-    vals.forEach((v,i)=>{ const end = start + (v/total)*Math.PI*2; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,r,start,end); ctx.closePath(); ctx.fillStyle=colors[i%colors.length]; ctx.fill(); start=end; });
-    ctx.globalCompositeOperation = 'destination-out'; ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2); ctx.fill(); ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='#a0a2a5'; ctx.font='11px system-ui, -apple-system, Segoe UI, sans-serif';
-    labels.forEach((lab,i)=>{ const lx = size.w*0.72, ly = 28 + i*18; ctx.fillStyle=colors[i%colors.length]; ctx.fillRect(lx,ly-9,10,10); ctx.fillStyle='#a0a2a5'; ctx.fillText(String(lab), lx+16, ly); });
-  };
-  window.Chart = window.Chart || OfflineChart;
-  window.XLSX_OFFLINE_DISABLED = true;
 })();
 
 // LZ-string 1.5.0 — MIT License — https://github.com/pieroxy/lz-string
@@ -1026,12 +936,6 @@ main {
   text-transform: uppercase;
 }
 
-.chart-container {
-  position: relative;
-  flex: 1;
-  min-height: 240px;
-}
-
 /* Tables */
 .data-table {
   width: 100%;
@@ -1372,24 +1276,6 @@ main {
 .yoy-change.up { color: var(--positive); }
 .yoy-change.down { color: var(--negative); }
 .yoy-change.neutral { color: var(--text-muted); }
-
-.reco-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.reco-badge.scale { color: var(--positive); border-color: var(--positive); background: rgba(156, 207, 156, 0.08); }
-.reco-badge.protect { color: var(--text); border-color: var(--text-dim); background: var(--bg-elev-3); }
-.reco-badge.improve { color: var(--accent-soft); border-color: var(--accent-line); }
-.reco-badge.review { color: var(--negative); border-color: var(--negative); background: rgba(209, 150, 150, 0.08); }
-
 
 /* Leaderboards / portfolio intelligence */
 .control-row {
@@ -1810,15 +1696,6 @@ main {
   color: var(--text);
 }
 
-.mean-diff {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.mean-diff.up { color: var(--positive); }
-.mean-diff.down { color: var(--negative); }
-.mean-diff.neutral { color: var(--text-muted); }
-
 /* Paid Social assignment manager */
 .modal-wide { max-width: 1120px; }
 .assignment-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
@@ -1832,32 +1709,6 @@ main {
 .assignment-input { width: 100%; min-width: 180px; padding: 7px 9px; background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; font-family: var(--font-body); font-size: 12px; }
 .assignment-input:focus { outline: none; border-color: var(--text-dim); }
 .assignment-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-
-/* Sentiment bar */
-.sentiment-bar {
-  display: flex;
-  height: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 14px;
-}
-
-.sentiment-seg { height: 100%; }
-.sentiment-seg.pos { background: var(--positive); }
-.sentiment-seg.neu { background: var(--neutral); }
-.sentiment-seg.neg { background: var(--negative); }
-
-.sentiment-legend {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-.sentiment-legend .label-pos { color: var(--positive); }
-.sentiment-legend .label-neu { color: var(--neutral); }
-.sentiment-legend .label-neg { color: var(--negative); }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -1919,15 +1770,6 @@ footer {
 .phase-badge.early { border-color: var(--positive); color: var(--positive); }
 .phase-badge.late  { border-color: var(--neutral);  color: var(--neutral); }
 
-.rank-change {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
-}
-.rank-change.up   { color: var(--positive); } /* rank improved = lower number */
-.rank-change.down { color: var(--negative); }
-.rank-change.same { color: var(--text-muted); }
-
 /* Survey SVG trend chart */
 .survey-trend-wrap {
   width: 100%;
@@ -1937,8 +1779,6 @@ footer {
 .survey-trend-axis  { stroke: var(--border); stroke-width: 1; }
 .survey-trend-grid  { stroke: var(--border-soft); stroke-width: 1; stroke-dasharray: 2 3; }
 .survey-trend-tick  { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
-.survey-trend-label { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px;
-                      letter-spacing: 0.06em; text-transform: uppercase; }
 .survey-line-unaided { fill: none; stroke: var(--text-dim); stroke-width: 2; stroke-linejoin: round; }
 .survey-line-aided   { fill: none; stroke: var(--text); stroke-width: 2.5; stroke-linejoin: round; }
 .survey-line-localhq { fill: none; stroke: var(--positive); stroke-width: 1.8;
@@ -2433,16 +2273,6 @@ header {
   line-height: 1.5;
   margin-top: 6px;
 }
-.methodology-callout {
-  border: 1px solid rgba(224,58,62,.35);
-  background: linear-gradient(135deg, rgba(224,58,62,.16), rgba(224,58,62,.04));
-  border-radius: 14px;
-  padding: 16px 18px;
-  color: var(--text-dim);
-  line-height: 1.55;
-  font-size: 13px;
-  margin-bottom: 18px;
-}
 .glossary-grid {
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -2459,21 +2289,6 @@ header {
   line-height: 1.55;
   font-size: 12px;
 }
-.placeholder-pill {
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 999px;
-  padding: 5px 9px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-
-
 /* ── Report export modal ───────────────────────────────── */
 .report-step-label {
   font-family: var(--font-mono);
@@ -2904,20 +2719,7 @@ header {
   justify-content: start;
   margin-bottom: 14px;
 }
-.kpi-card.compact .kpi-value { font-size: 24px; }
 .survey-chart-card { margin-bottom: 16px; }
-.survey-chart-expand {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  background: var(--bg-elev-2);
-  cursor: zoom-in;
-  text-align: left;
-  overflow: hidden;
-}
-.survey-chart-expand:hover { border-color: var(--border); }
 .survey-multi-trend-svg { display: block; width: 100%; height: auto; }
 .survey-empty-trend {
   border: 1px dashed var(--border);
@@ -3046,23 +2848,11 @@ header {
   overflow: visible;
 }
 
-.survey-svg-title {
-  font-size: 14px;
-  fill: var(--text);
-  font-weight: 600;
-  font-family: var(--font-sans);
-}
-
-.survey-svg-subtitle,
-.survey-axis-label,
-.survey-legend-label {
+.survey-axis-label {
   fill: var(--text-muted);
   font-family: var(--font-mono);
+  font-size: 10px;
 }
-
-.survey-svg-subtitle { font-size: 10.5px; }
-.survey-axis-label { font-size: 10px; }
-.survey-legend-label { font-size: 10px; }
 
 .survey-chart-gridline {
   stroke: var(--border-soft);
@@ -3324,15 +3114,15 @@ html[data-theme="light"],
       Paid Social: any filename containing "paid", "meta", "facebook", or "admanager". Campaign names are parsed locally; unclear partner assignments can be reviewed manually.<br>
       Brand aliases: use Manage brand aliases to merge naming variants like Daimler Trucks North America into one canonical partner.<br>
       Organic Social: <code>BrandName_DateRange.csv</code> — one file per brand<br>
-      Drop multiple CSV files at once. All processing happens locally in your browser. Offline mode makes no external calls; XLSX files should be saved/exported as CSV first.
+      Drop multiple CSV files at once. All processing happens locally in your browser — offline mode makes no external calls.
     </div>
     <div class="dropzone" id="dropzone">
       <div class="dropzone-icon">⬇</div>
       <div class="dropzone-text">
         <strong>Drop files here</strong> or click to browse<br>
-        <span style="font-size: 11px; color: var(--text-muted);">CSV supported offline · XLSX: save as CSV first</span>
+        <span style="font-size: 11px; color: var(--text-muted);">CSV only · export spreadsheets as CSV before uploading</span>
       </div>
-      <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none;" />
+      <input type="file" id="fileInput" multiple accept=".csv" style="display:none;" />
     </div>
     <div class="file-list" id="fileList"></div>
     <div style="display: flex; justify-content: space-between; margin-top: 18px; gap: 12px; flex-wrap: wrap;">
@@ -3455,109 +3245,6 @@ const DASHBOARD_META = {
 };
 /* DASHBOARD_META_END */
 
-// ============================================================
-// STATS & MARKET DATA — update these values each fiscal year.
-// All percentages are stored as whole numbers (e.g. 42 = 42%).
-// Dollar amounts are stored as raw numbers (e.g. 85000 = $85,000).
-// Zero values render as "—" on the Stats page.
-// ============================================================
-const STATS_DATA = {
-  fiscalYear: '2025-26',
-  social: {
-    totalFollowers: {
-      Instagram: 2960901,
-      Twitter:   1475015,
-      Facebook:  2515875,
-      TikTok:    1155796,
-      YouTube:   134956,
-      Threads:   395627,
-      Snapchat:  224961,
-      Weibo:     6405205,
-    },
-    // Age demographics by platform — values are percentages (whole numbers, should sum to ~100)
-    demographics: {
-      Instagram: { '13–17': 9, '18–24': 39, '25–34': 31, '35–44': 14, '45–54': 5, '55+': 2 },
-      Twitter:   { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
-      Facebook:  { '13–17': 0, '18–24': 23, '25–34': 48, '35–44': 17, '45–54': 8, '55+': 4 },
-      TikTok:    { '13–17': 0, '18–24': 0, '25–34': 0, '35–44': 0, '45–54': 0, '55+': 0 },
-    },
-    // Top geographic markets by platform — values are percentages of total following
-    geography: {
-      Instagram: { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
-      Twitter:   { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
-      Facebook:  { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
-      TikTok:    { Portland: 0, Seattle: 0, 'Los Angeles': 0, 'San Francisco': 0, 'New York': 0 },
-    },
-  },
-
-  arena: {
-    annualVisitors: 2000000,  // Total visitors to the arena in the fiscal year
-    totalEvents:    151,  // Total events (all types) held in the fiscal year
-    seatingCapacity: {
-      'Legends':        24,
-      'Courtside':      628,
-      '100 Level':      6159,
-      'Club Level':     1784,
-      '200 Level':      2733,
-      'Suite Level':    1024,
-      'Blazer Boxes':   96,
-      '300 Level':      7645,
-      'Total Capacity': 19451,
-    },
-  },
-
-  stm: {
-    totalSTMs:          2722,  // Total active season ticket member accounts
-    renewalRate:        91,  // Renewal rate (percentage, whole number)
-    avgTenureYears:     5,  // Average tenure of current STMs in years
-    newMembersThisYear: 168,  // Net new STMs added this fiscal year
-  },
-
-  // Percentages (whole numbers) of fan base in each income bracket
-  householdIncome: {
-    'Under $50K':  15,
-    '$50K–$75K':   13,
-    '$75K–$100K':  13,
-    '$100K–$125K': 12,
-    'Over $125K':  48,
-    'Median HHI':  110000,  // In dollars (e.g. 95000)
-  },
-
-  portlandMarket: {
-    population:      2537070,  // Portland DMA total population
-    totalHouseholds: 1026663,
-    medianAge:       39,
-    medianHHI:       98994,  // In dollars
-    collegeEducated: 44,  // % with 4-year degree (whole number)
-    homeownership:   61,  // % who own their home (whole number)
-  },
-
-  broadcast: {
-    avgViewersPerGame:   28238,  // Average local TV viewers per game
-    totalSeasonReach:    3200000,  // Unduplicated unique reach for the full season
-    gamesOnLocalTV:      76,
-    gamesOnNationalTV:   8,
-    avgLocalRating:      2.2,  // Average local TV rating (e.g. 3.2 for a 3.2 rating)
-    totalBroadcastHours: 11595,  // Total hours of live broadcast content
-  },
-
-  appAndDigital: {
-    monthlyActiveUsers:     40623,
-    totalAppDownloads:      412737,
-    avgSessionsPerUser:     1.4,  // Per month
-    pushOptInRate:          0,  // % of users opted in to push notifications (whole number)
-    emailSubscribers:       0,
-    websiteMonthlyVisitors: 740000,
-  },
-
-  fanSentiment: {
-    npsScore:             57,  // Net Promoter Score (range: -100 to 100)
-    overallSatisfaction:  95,  // % satisfied or very satisfied (whole number)
-    gameExperienceRating: 0,  // Out of 10
-    likelihoodToRenew:    0,  // % likely to renew or purchase (whole number)
-    brandAffinityScore:   0,  // Internal proprietary metric
-  },
-};
 
 // ============================================================
 // PRELOADED DATA / DISTRIBUTION MODE
@@ -3579,6 +3266,87 @@ const VIEWER_MODE = false;
 
 
 const CHANGELOG = [
+  {
+    version: 'v0.43',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Percentage-point labels for rate-metric YoY, and a more forgiving paid-campaign auto-namer',
+    changes: [
+      {
+        category: 'Numeracy fixes',
+        items: [
+          `Survey recall YoY deltas (Unaided / Aided / Local HQ) are now expressed in percentage points (pp) instead of relative % change — a brand moving from 40% awareness to 50% now reads "+10.0pp YoY" rather than the misleading "+25.0% YoY". Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js to return pp deltas, and formatSurveyPctChangeText() to use the pp suffix; all callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers and now display pp consistently`,
+          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows percentage-point delta — a CTR move from 2.50% to 3.00% reads "+0.50pp YoY" instead of "+20.0% YoY". The "Key Takeaways" survey block in 09_app_core.js was already computing the pp delta correctly but rendering it as %; relabeled to pp`,
+          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) instead of the pp formatter — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
+        ]
+      },
+      {
+        category: 'Paid auto-namer',
+        items: [
+          `parsePaidCampaignName() in 05_paid_constants.js now accepts season tokens in five shapes — 2023-24 (canonical), FY24, FY2024, 2023-2024, and 2024/25 — and normalizes them all to YYYY-YY. Added parseFlexibleSeasonToken() helper; FY shorthand is interpreted as the season ending in that fiscal year, matching fiscalSeasonFromDate() convention`,
+          `Tokenization now splits on underscore, space, or hyphen — campaigns named "Toyota-FY24-Awareness" or "Toyota FY24 Awareness" parse identically to the underscored form. Season ranges are protected via a placeholder so the hyphen split doesn't shatter "2023-24" into two tokens`,
+          `Embedded brand-prefix detection (the path that resolves single tokens like "AlaskaDOTM" → Alaska Airlines + DOTM activation) is now case- and punctuation-insensitive via compactToken() — "alaskaDOTM", "ALASKADOTM", and "alaska-dotm" all resolve to Alaska Airlines with a clean activation suffix`,
+        ]
+      },
+      {
+        category: 'Repo',
+        items: [
+          `Removed the cpstats_build/ directory. The CP Stats Sheet split into its own dashboard back in v0.41 and has no shared code, CSS, build scripts, or doc cross-references with PartnerIQ — it now lives in its own repository`,
+        ]
+      }
+    ]
+  },
+  {
+    version: 'v0.42',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Dead-code cleanup — Chart.js shim, unused helpers, stale CSS, XLSX support',
+    changes: [
+      {
+        category: 'Cleanup',
+        items: [
+          `Removed the unused OfflineChart shim (~90 lines) and the window.Chart / window.XLSX_OFFLINE_DISABLED globals from 00_vendor_shims.js — every chart in the dashboard is inline SVG, nothing ever instantiated Chart.js`,
+          `Removed chartDefaults() in 10_tv_section.js, activeCharts + destroyCharts() in 07_paid_assignment.js, and the no-op destroyCharts() call in renderApp() — none had any callers or state`,
+          `Removed getSurveyRankYoY() in 13_survey_section.js — defined but never called`,
+          `Removed parseXLSX() and the .xlsx / .xls ingest branches in 14_organic_section.js and 21_web_digital_section.js, plus orphan helpers _webHasAnyHeaderKey, _webFindKeyFromHeaderValues, _webFindKeyFromKeys — XLSX has never been supported in this offline build`,
+          `Dropped .xlsx and .xls from the file-picker accept attribute in shell.html and updated the helper copy — CSV is the only supported upload format`,
+          `Removed 12 unused CSS selectors from 01_styles.css: .chart-container, .kpi-card, .mean-diff(+variants), .rank-change(+variants), .reco-badge(+variants), .sentiment-bar / .sentiment-seg / .sentiment-legend(+variants), .methodology-callout, .placeholder-pill, .survey-chart-expand, .survey-svg-title, .survey-svg-subtitle, .survey-legend-label, .survey-trend-label`,
+          `Renamed homeNavBtn2 → homeNavBtn in 15_wiring.js — the "2" suffix was a leftover from a partial cleanup; the variable was always a single button reference`,
+        ]
+      },
+      {
+        category: 'Consistency',
+        items: [
+          `Added openPaidPortfolioPage(), openOrganicSocialPortfolioPage(), openSurveyPortfolioPage() helpers in 08_home_pages.js — home-page quick links now use the same navigation pattern as TV / Virtual Signage / Links / etc. instead of inline onclick="currentBrand=null; currentPage='paid'; renderApp();"`,
+        ]
+      },
+      {
+        category: 'Docs',
+        items: [
+          `CLAUDE.md: corrected wireSectionToggles() location (lives in 06_helpers.js, not 07_paid_assignment.js) and wireSortableTables() location (07_paid_assignment.js)`,
+          `CLAUDE.md: KPI card guidance and recipe template updated to use .kpi (the actual class) instead of the unused .kpi-card`,
+          `CLAUDE.md: function map updated to drop removed functions and add the new portfolio openers; web-digital ingest descriptions updated to "CSV" instead of "XLSX or CSV"`,
+        ]
+      }
+    ]
+  },
+  {
+    version: 'v0.41',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Removed Stats & Market Data page — CP stats now lives in its own dedicated dashboard',
+    changes: [
+      {
+        category: 'Cleanup',
+        items: [
+          `Removed the Stats & Market Data quick-link card from the home page — CP stats has been separated into its own dedicated dashboard`,
+          `Deleted renderStatsPage() and openStatsPage() from 08_home_pages.js`,
+          `Removed STATS_DATA constant from 02_constants.js`,
+          `Removed currentPage==='stats' routing branch from renderApp() and the no-data guard in 09_app_core.js`,
+        ]
+      }
+    ]
+  },
   {
     version: 'v0.40',
     date: 'May 2026',
@@ -5903,6 +5671,24 @@ function findRuleMatchInCampaign(campaignName) {
   const matches = Object.entries(rules).filter(([needle]) => needle && lower.includes(compactToken(needle))).sort((a, b) => compactToken(b[0]).length - compactToken(a[0]).length);
   return matches.length ? { token: matches[0][0], partner: resolveCanonicalBrandName(matches[0][1]) } : null;
 }
+// Recognizes the season token in any of these shapes and returns the canonical YYYY-YY form,
+// or '' if the input isn't a season. Fiscal-year shorthand (FY24 / FY2024) is interpreted as
+// the season ENDING in that year — matches fiscalSeasonFromDate() in 04_datastore.js.
+function parseFlexibleSeasonToken(token) {
+  if (!token) return '';
+  const t = String(token).trim();
+  if (/^20\d{2}-\d{2}$/.test(t)) return t;
+  const fy = t.match(/^FY[\s_-]?(\d{2}|\d{4})$/i);
+  if (fy) {
+    const endYr = fy[1].length === 2 ? 2000 + Number(fy[1]) : Number(fy[1]);
+    const start = endYr - 1;
+    return `${start}-${String(endYr).slice(-2)}`;
+  }
+  const long = t.match(/^(20\d{2})[\s\/_-]+(20)?(\d{2})$/);
+  if (long) return `${long[1]}-${long[3]}`;
+  return '';
+}
+
 function parsePaidCampaignName(campaignName, explicitPartner = '') {
   const name = String(campaignName || '').trim();
   const result = {
@@ -5923,10 +5709,21 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
   const dnd = /^DND[_\s-]/i.test(name);
   const copy = /copy/i.test(name);
   let working = name.replace(/^DND[_\s-]*/i, '').trim();
-  const parts = working.split('_').map(p => p.trim()).filter(p => p !== '');
-  const seasonIdx = parts.findIndex(p => /^20\d{2}-\d{2}$/.test(p));
+  // Tokenize on underscore, space, or hyphen — but protect "YYYY-YY" season ranges (and FY shorthand)
+  // so they aren't shattered by the hyphen split. Placeholder uses no split chars so it survives.
+  const seasonPlaceholders = [];
+  const protectedWorking = working.replace(/(FY[\s_-]?\d{2,4}|20\d{2}[\s\/_-]+(?:20)?\d{2})/gi, m => {
+    seasonPlaceholders.push(m);
+    return `SEASONTOKEN${seasonPlaceholders.length - 1}END`;
+  });
+  const parts = protectedWorking
+    .split(/[_\s-]+/)
+    .map(p => p.trim())
+    .filter(p => p !== '')
+    .map(p => p.replace(/SEASONTOKEN(\d+)END/g, (_, i) => seasonPlaceholders[Number(i)]));
+  const seasonIdx = parts.findIndex(p => parseFlexibleSeasonToken(p) !== '');
   const objIdx = parts.findIndex(p => PAID_OBJECTIVE_LABELS[p.toUpperCase()]);
-  if (seasonIdx !== -1) result.parsedSeason = parts[seasonIdx];
+  if (seasonIdx !== -1) result.parsedSeason = parseFlexibleSeasonToken(parts[seasonIdx]) || parts[seasonIdx];
   if (seasonIdx !== -1 && parts[seasonIdx + 1]) {
     result.categoryCode = parts[seasonIdx + 1];
     result.category = PAID_CATEGORY_LABELS[result.categoryCode] || result.categoryCode;
@@ -5950,15 +5747,28 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
         result.activation = titleFromToken(between.slice(0, -1).join(' '));
       } else if (isCp && between.length === 1) {
         // Single-token CP: partner may be embedded as a prefix in the activation token.
-        // e.g. "AlaskaDOTM" -> prefix "Alaska" -> Alaska Airlines
-        // e.g. "XfinityBlindRanking" -> prefix "Xfinity" -> Xfinity
+        // e.g. "AlaskaDOTM" / "alaskaDOTM" / "ALASKA-DOTM" -> prefix "Alaska" -> Alaska Airlines
+        // Match via compactToken() so case and punctuation differences don't block resolution.
         const token = between[0];
+        const tokenCompact = compactToken(token);
         const allAliases = { ...PAID_SOCIAL_PARTNER_ALIASES, ...(DataStore.paidAssignmentRules || {}) };
-        const sortedKeys = Object.keys(allAliases).sort((a, b) => b.length - a.length);
-        const prefixKey = sortedKeys.find(k => k.length >= 4 && token.toLowerCase().startsWith(k.toLowerCase()));
+        const sortedKeys = Object.keys(allAliases).sort((a, b) => compactToken(b).length - compactToken(a).length);
+        const prefixKey = sortedKeys.find(k => {
+          const kc = compactToken(k);
+          return kc.length >= 4 && tokenCompact.startsWith(kc);
+        });
         if (prefixKey) {
           result.partnerRaw = prefixKey;
-          const suffix = token.slice(prefixKey.length);
+          // Walk the original token character-by-character until we've consumed the same number
+          // of alphanumeric characters as the matched prefix, so the suffix preserves the
+          // original casing/punctuation of whatever followed the brand name.
+          const targetLen = compactToken(prefixKey).length;
+          let consumed = 0, splitAt = 0;
+          for (let i = 0; i < token.length; i++) {
+            if (/[a-z0-9]/i.test(token[i])) consumed++;
+            if (consumed >= targetLen) { splitAt = i + 1; break; }
+          }
+          const suffix = token.slice(splitAt).replace(/^[-_\s]+/, '');
           result.activation = titleFromToken(suffix || token);
           result.parseNotes.push('Partner "' + prefixKey + '" extracted as prefix from compound token "' + token + '".');
         } else {
@@ -5992,7 +5802,7 @@ function parsePaidCampaignName(campaignName, explicitPartner = '') {
       result.parseNotes.push('Matched known partner token "' + rule.token + '" in campaign name.');
     }
   }
-  if (!result.activation) result.activation = titleFromToken(working.replace(/^20\d{2}-\d{2}_?/, '').replace(/_/g, ' '));
+  if (!result.activation) result.activation = titleFromToken(working.replace(/^(?:FY[\s_-]?\d{2,4}|20\d{2}[\s\/_-]+(?:20)?\d{2})[_\s-]?/i, '').replace(/[_]+/g, ' '));
   if (dnd) result.parseNotes.push('Campaign name begins with DND.');
   if (copy) result.parseNotes.push('Campaign name contains Copy.');
   if (!result.partner) result.parseNotes.push('No partner could be confidently parsed.');
@@ -6687,7 +6497,6 @@ function reEnableAutoAlias(variantName) {
 let currentBrand = null;
 let currentPeriod = null; // will be set to latest season on brand select
 let currentPage = 'home';
-let activeCharts = [];
 let homeLeaderboardMetric = 'brand_qimv';
 let locationPerformanceMetric = 'qimv';
 let homePeriod = null;
@@ -6720,13 +6529,6 @@ let paidPortfolioEndMonth   = '';         // YYYY-MM
 // Result Indicator filter for the Partner Efficiency scatter. 'all' = no filter.
 let paidPortfolioResultFilter = 'all';
 const TABLE_LIMITS = { homeLeaderboard: 10, locationPerformance: 10, organicPortfolio: 10, paidPortfolio: 10 };
-
-function destroyCharts() {
-  activeCharts.forEach(c => { try { c.destroy(); } catch(e){} });
-  activeCharts = [];
-}
-
-
 
 // Returns only non-virtual-branding TV rows for portfolio-level aggregations.
 // Virtual Branding (Center / 3 Point Line) is handled by the Virtual Signage page.
@@ -7625,25 +7427,20 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">🏀 On-Court Virtual Signage</div>
           <div class="home-action-copy">Center and 3-point line virtual branding — full schedule, partner breakdown, and home/away metrics with away-game estimates.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='paid'; renderApp();">
+        <div class="home-action" onclick="openPaidPortfolioPage();">
           <div class="home-action-kicker">Paid Social</div>
           <div class="home-action-title">💰 Paid Social Portfolio</div>
           <div class="home-action-copy">Total portfolio spend, partner breakdowns, objective mix, and campaign assignment health.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='organic'; renderApp();">
+        <div class="home-action" onclick="openOrganicSocialPortfolioPage();">
           <div class="home-action-kicker">Organic Social</div>
           <div class="home-action-title">📱 Organic Social Portfolio</div>
           <div class="home-action-copy">Brand leaderboard, engagement rankings, brand value, and logo impression data from Zoomph.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='survey'; renderApp();">
+        <div class="home-action" onclick="openSurveyPortfolioPage();">
           <div class="home-action-kicker">Survey Research</div>
           <div class="home-action-title">📊 Survey Research</div>
           <div class="home-action-copy">Brand awareness recall, fan insights, and program awareness — all survey data in one place across three tabs.</div>
-        </div>
-        <div class="home-action" onclick="openStatsPage();">
-          <div class="home-action-kicker">Market Intelligence</div>
-          <div class="home-action-title">📈 Stats &amp; Market Data</div>
-          <div class="home-action-copy">Social following, arena attendance, STM stats, HHI, Portland market demographics, broadcast, app &amp; digital, and fan sentiment.</div>
         </div>
         <div class="home-action" onclick="openLinksPage();">
           <div class="home-action-kicker">External resources</div>
@@ -7712,6 +7509,33 @@ function openTVPortfolioPage() {
   renderApp();
 }
 
+function openPaidPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'paid';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
+function openOrganicSocialPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'organic';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
+function openSurveyPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'survey';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
 
 function openPortfolioHome() {
   currentBrand = null;
@@ -7738,181 +7562,6 @@ function openGlossaryPage() {
   renderApp();
 }
 
-function renderStatsPage(main) {
-  const fy = STATS_DATA.fiscalYear || '—';
-  const s = STATS_DATA;
-
-  function numVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : formatNum(n);
-  }
-  function pctVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : `${n}%`;
-  }
-  function dollarVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : formatCurrency(n);
-  }
-  function rawVal(n) {
-    return (!n && n !== 0) || n === 0 ? '—' : n;
-  }
-
-  function kpiCard(label, value) {
-    return `<div class="home-card"><div class="home-card-label">${label}</div><div class="home-card-value">${value}</div></div>`;
-  }
-
-  function subLabel(text) {
-    return `<div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-top:20px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border-soft);">${text}</div>`;
-  }
-
-  function kvTable(entries) {
-    return `<table style="width:100%;border-collapse:collapse;">${entries.map(([label, value]) => `
-      <tr style="border-bottom:1px solid var(--border-soft);">
-        <td style="padding:8px 0;font-size:12px;color:var(--text-dim);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:0.06em;width:55%;">${label}</td>
-        <td style="padding:8px 0;font-size:13px;color:var(--text);text-align:right;font-weight:500;">${value}</td>
-      </tr>`).join('')}</table>`;
-  }
-
-  function platformTable(platformData, valueFormatter) {
-    const platforms = Object.keys(platformData);
-    if (!platforms.length) return '';
-    const keys = Object.keys(platformData[platforms[0]] || {});
-    return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:480px;">
-      <thead><tr>
-        <th style="text-align:left;padding:6px 0;font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);font-weight:normal;">Platform</th>
-        ${keys.map(k => `<th style="text-align:right;padding:6px 8px;font-family:var(--font-mono);font-size:10px;letter-spacing:0.06em;text-transform:uppercase;color:var(--text-muted);border-bottom:1px solid var(--border);font-weight:normal;">${k}</th>`).join('')}
-      </tr></thead>
-      <tbody>${platforms.map(p => `
-        <tr style="border-bottom:1px solid var(--border-soft);">
-          <td style="padding:8px 0;font-size:12px;color:var(--text-dim);font-family:var(--font-mono);letter-spacing:0.04em;">${p}</td>
-          ${keys.map(k => `<td style="padding:8px 8px;text-align:right;font-size:13px;color:var(--text);">${valueFormatter(platformData[p][k])}</td>`).join('')}
-        </tr>`).join('')}
-      </tbody>
-    </table></div>`;
-  }
-
-  function collapsible(id, title, content) {
-    const open = openSections[id] !== false;
-    return `<section class="section collapsible ${open ? 'open' : ''}" id="${id}" style="margin-bottom:12px;">
-      <div class="section-header" data-toggle="${id}">
-        <h2 class="section-title">${title}</h2>
-        <span class="section-toggle">${open ? '▼' : '▶'}</span>
-      </div>
-      <div class="section-body">${content}</div>
-    </section>`;
-  }
-
-  const socialContent = `
-    <div class="home-grid" style="margin-bottom:20px;">
-      ${Object.entries(s.social.totalFollowers).map(([p, n]) => kpiCard(p, numVal(n))).join('')}
-    </div>
-    ${subLabel('Age Demographics by Platform (%)')}
-    ${platformTable(s.social.demographics, pctVal)}
-    ${subLabel('Top Geographic Markets by Platform (% of Following)')}
-    ${platformTable(s.social.geography, pctVal)}
-  `;
-
-  const arenaContent = `
-    <div class="home-grid" style="margin-bottom:20px;">
-      ${kpiCard('Annual Visitors', numVal(s.arena.annualVisitors))}
-      ${kpiCard('Total Events', numVal(s.arena.totalEvents))}
-    </div>
-    ${subLabel('Seating Capacity by Section')}
-    ${kvTable(Object.entries(s.arena.seatingCapacity).map(([k, v]) => [k, numVal(v)]))}
-  `;
-
-  const stmContent = `
-    <div class="home-grid">
-      ${kpiCard('Total STMs', numVal(s.stm.totalSTMs))}
-      ${kpiCard('Renewal Rate', pctVal(s.stm.renewalRate))}
-      ${kpiCard('Avg Tenure', s.stm.avgTenureYears ? `${s.stm.avgTenureYears} yrs` : '—')}
-      ${kpiCard('New Members', numVal(s.stm.newMembersThisYear))}
-    </div>
-  `;
-
-  const hhiContent = `
-    <div class="home-grid" style="margin-bottom:20px;">
-      ${kpiCard('Median HHI', dollarVal(s.householdIncome['Median HHI']))}
-    </div>
-    ${kvTable(Object.entries(s.householdIncome).filter(([k]) => k !== 'Median HHI').map(([k, v]) => [k, pctVal(v)]))}
-  `;
-
-  const portlandContent = `
-    <div class="home-grid">
-      ${kpiCard('DMA Population', numVal(s.portlandMarket.population))}
-      ${kpiCard('Total Households', numVal(s.portlandMarket.totalHouseholds))}
-      ${kpiCard('Median Age', rawVal(s.portlandMarket.medianAge))}
-      ${kpiCard('Median HHI', dollarVal(s.portlandMarket.medianHHI))}
-      ${kpiCard('College Educated', pctVal(s.portlandMarket.collegeEducated))}
-      ${kpiCard('Homeownership', pctVal(s.portlandMarket.homeownership))}
-    </div>
-  `;
-
-  const broadcastContent = `
-    <div class="home-grid">
-      ${kpiCard('Avg Viewers / Game', numVal(s.broadcast.avgViewersPerGame))}
-      ${kpiCard('Season Reach', numVal(s.broadcast.totalSeasonReach))}
-      ${kpiCard('Local TV Games', rawVal(s.broadcast.gamesOnLocalTV))}
-      ${kpiCard('National TV Games', rawVal(s.broadcast.gamesOnNationalTV))}
-      ${kpiCard('Avg Local Rating', rawVal(s.broadcast.avgLocalRating))}
-      ${kpiCard('Broadcast Hours', rawVal(s.broadcast.totalBroadcastHours))}
-    </div>
-  `;
-
-  const digitalContent = `
-    <div class="home-grid">
-      ${kpiCard('Monthly Active Users', numVal(s.appAndDigital.monthlyActiveUsers))}
-      ${kpiCard('Total App Downloads', numVal(s.appAndDigital.totalAppDownloads))}
-      ${kpiCard('Avg Sessions / User', rawVal(s.appAndDigital.avgSessionsPerUser))}
-      ${kpiCard('Push Opt-In Rate', pctVal(s.appAndDigital.pushOptInRate))}
-      ${kpiCard('Email Subscribers', numVal(s.appAndDigital.emailSubscribers))}
-      ${kpiCard('Monthly Web Visitors', numVal(s.appAndDigital.websiteMonthlyVisitors))}
-    </div>
-  `;
-
-  const sentimentContent = `
-    <div class="home-grid">
-      ${kpiCard('NPS Score', rawVal(s.fanSentiment.npsScore))}
-      ${kpiCard('Overall Satisfaction', pctVal(s.fanSentiment.overallSatisfaction))}
-      ${kpiCard('Game Experience', s.fanSentiment.gameExperienceRating ? `${s.fanSentiment.gameExperienceRating} / 10` : '—')}
-      ${kpiCard('Likelihood to Renew', pctVal(s.fanSentiment.likelihoodToRenew))}
-      ${kpiCard('Brand Affinity Score', rawVal(s.fanSentiment.brandAffinityScore))}
-    </div>
-  `;
-
-  main.innerHTML = `
-    ${renderBreadcrumb([{label:'Home', action:'openPortfolioHome();'}, {label:'Stats & Market Data'}])}
-    <div class="brand-header">
-      <div class="brand-title-block">
-        <div class="eyebrow">Market Intelligence · Reference</div>
-        <h1 class="brand-title">Stats &amp; Market Data</h1>
-        <div class="brand-subtitle">
-          <span class="channel-tag active">FY ${fy}</span>
-          <span class="channel-tag active">8 categories</span>
-        </div>
-      </div>
-    </div>
-    <div class="data-status">
-      <div><span class="data-status-dot"></span> Fiscal year · <strong>${fy}</strong></div>
-      <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted);letter-spacing:0.04em;">Update STATS_DATA in 02_constants.js each year</div>
-    </div>
-    ${collapsible('stats-social',    '📱 Social Following',        socialContent)}
-    ${collapsible('stats-arena',     '🏟️ Arena &amp; Attendance',  arenaContent)}
-    ${collapsible('stats-stm',       '🎟️ Season Ticket Members',   stmContent)}
-    ${collapsible('stats-hhi',       '💵 Household Income',         hhiContent)}
-    ${collapsible('stats-portland',  '🌲 Portland Market',          portlandContent)}
-    ${collapsible('stats-broadcast', '📡 Broadcast',                broadcastContent)}
-    ${collapsible('stats-digital',   '📲 App &amp; Digital',        digitalContent)}
-    ${collapsible('stats-sentiment', '💬 Fan Sentiment',            sentimentContent)}
-  `;
-
-  wireSectionToggles();
-}
-
-function openStatsPage() {
-  currentBrand = null;
-  currentPage = 'stats';
-  currentPeriod = null;
-  renderApp();
-}
 
 function renderLinksPage(main) {
   const groups = [
@@ -8174,10 +7823,9 @@ function renderTVPortfolioPage(main) {
 
 function renderApp() {
   const main = document.getElementById('main');
-  destroyCharts();
   hideTooltip();
 
-  if (!DataStore.hasAnyData() && currentPage !== 'glossary' && currentPage !== 'data-health' && currentPage !== 'links' && currentPage !== 'stats') {
+  if (!DataStore.hasAnyData() && currentPage !== 'glossary' && currentPage !== 'data-health' && currentPage !== 'links') {
     main.innerHTML = `
       <div class="empty-state">
         <h1>A single pane of glass for brand performance.</h1>
@@ -8202,7 +7850,6 @@ function renderApp() {
     else if (currentPage === 'data-health') renderDataHealthPage(main);
     else if (currentPage === 'glossary') renderGlossaryPage(main);
     else if (currentPage === 'changelog') renderChangelogPage(main);
-    else if (currentPage === 'stats') renderStatsPage(main);
     else if (currentPage === 'links') renderLinksPage(main);
     else renderPortfolioHome(main);
     wireSortableTables();
@@ -8414,7 +8061,7 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
         if (priorPct !== null) {
           const ppChange = chosenPct - priorPct;
           const cls = ppChange >= 0 ? 'up' : 'down';
-          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}% YoY</span>)`;
+          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}pp YoY</span>)`;
         }
       }
       takeaways.push(`<strong>${chosenLabel} —</strong> <strong>${(chosenPct * 100).toFixed(1)}%</strong> fan awareness${yoyText} (${latestWave.Season}).`);
@@ -8842,30 +8489,6 @@ function renderTopMatchesTable(rows) {
       </tbody>
     </table>
   `;
-}
-
-function chartDefaults() {
-  var isLight = document.documentElement.dataset.theme === 'light';
-  var gridColor   = isLight ? '#E3E6EB' : '#1f2125';
-  var tickColor   = isLight ? '#6E7178' : '#a0a2a5';
-  var tooltipBg   = isLight ? '#FFFFFF' : '#000';
-  var tooltipBdr  = isLight ? '#D5D8DF' : '#2a2d32';
-  var tooltipText = isLight ? '#0E0F12' : '#eaebec';
-  return {
-    responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { labels: { color: tickColor, font: { family: 'system-ui', size: 11 }, boxWidth: 12 } },
-      tooltip: {
-        backgroundColor: tooltipBg, borderColor: tooltipBdr, borderWidth: 1,
-        titleColor: tooltipText, bodyColor: tooltipText, titleFont: { family: 'Geist Mono', size: 11 },
-        bodyFont: { family: 'Geist', size: 12 }, padding: 10, boxPadding: 4,
-      }
-    },
-    scales: {
-      x: { grid: { color: gridColor, drawBorder: false }, ticks: { color: tickColor, font: { family: 'ui-monospace', size: 10 } } },
-      y: { grid: { color: gridColor, drawBorder: false }, ticks: { color: tickColor, font: { family: 'ui-monospace', size: 10 }, callback: v => formatNum(v) } }
-    }
-  };
 }
 
 // ============================================================
@@ -10595,7 +10218,7 @@ function renderPaidSection(brand) {
           <div class="kpi">
             <span class="kpi-label">CTR ${makeInfoIcon('CTR')}</span>
             <span class="kpi-value">${formatPct(agg.ctr, 2)}</span>
-            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs(ctrYoY.change * 100).toFixed(1)}% YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
+            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs((ctrYoY.curr - ctrYoY.prev) * 100).toFixed(2)}pp YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
           </div>
           <div class="kpi">
             <span class="kpi-label">Results ${makeInfoIcon('Results')}</span>
@@ -10852,25 +10475,16 @@ function getSurveyTrend(brand, phase) {
   return [...getBrandSurveyData(brand, 'all', phase)].sort((a, b) => a.Season.localeCompare(b.Season));
 }
 
-// Recall metric YoY — always same phase
+// Recall metric YoY — always same phase. `change` is a percentage-point delta (curr - prev),
+// expressed as a ratio (e.g. 0.045 means +4.5pp). Survey metrics are themselves rates, so pp is
+// the meaningful unit; a relative % change would obscure whether a brand moved 1pp or 20pp.
 function getSurveyMetricYoY(brand, phase, metric) {
   const latest = getSurveyLatestWave(brand, phase);
   const prior  = getSurveyPriorWave(brand, phase);
   if (!latest || !prior) return null;
   const curr = latest[metric], prev = prior[metric];
-  if (curr === null || prev === null) return null;
-  const change = typeof prev === 'number' && prev !== 0 ? (curr - prev) / Math.abs(prev) : null;
-  return { change, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
-}
-
-// Rank YoY — lower is better, so delta<0 = improved
-function getSurveyRankYoY(brand, phase, rankKey) {
-  const latest = getSurveyLatestWave(brand, phase);
-  const prior  = getSurveyPriorWave(brand, phase);
-  if (!latest || !prior) return null;
-  const curr = latest[rankKey], prev = prior[rankKey];
-  if (!curr || !prev) return null;
-  return { delta: curr - prev, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
+  if (curr === null || prev === null || typeof curr !== 'number' || typeof prev !== 'number') return null;
+  return { change: curr - prev, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
 }
 
 // ---- Partner Roster ----
@@ -11194,7 +10808,7 @@ function renderBrandAwarenessTab(container, main) {
             const fmtYoY = yoy => {
               if (!yoy || yoy.change === null) return '—';
               const cls = yoy.change >= 0 ? 'up' : 'down';
-              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}%</span>`;
+              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}pp</span>`;
             };
             return `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${r.Brand.replace(/'/g,"\'")}')">
               <td class="num" style="color:var(--text-muted);">${idx + 1}</td>
@@ -12265,9 +11879,12 @@ function formatSurveyPctValue(v) {
   return v !== null && v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) + '%' : '—';
 }
 
+// Returns a percentage-point delta (curr - prev) for survey metrics, which are themselves
+// percentages. The output is a ratio (e.g. 0.045 means +4.5pp). For count-based metrics
+// (response frequencies) use pctChange()/formatSignedPercent() instead.
 function surveyPctChangeFromValues(curr, prev) {
-  if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev) || prev === 0) return null;
-  return (curr - prev) / prev;
+  if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev)) return null;
+  return curr - prev;
 }
 
 function surveyPctChangeFromDelta(curr, delta) {
@@ -12286,7 +11903,7 @@ function formatSurveyPctChangeText(change) {
   if (change === null || change === undefined || Number.isNaN(change) || !isFinite(change)) return '—';
   const arrow = change > 0.0005 ? '▲' : change < -0.0005 ? '▼' : '•';
   const sign = change > 0.0005 ? '+' : change < -0.0005 ? '-' : '';
-  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%`;
+  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}pp`;
 }
 
 function formatSurveyPctChangeHTML(change, suffix = '') {
@@ -13184,7 +12801,7 @@ function renderProgramsSurveySection(brand) {
             </div>
             <div style="font-size:11px;color:var(--text-muted);">
               ${latestPct !== null ? Math.round(latestPct * 100) + '% awareness' : 'responses'}
-              ${yoyDelta !== null ? `· ${formatSurveyPctChangeHTML(surveyPctChangeFromValues(latestFreq, priorFreq))}` : ''}
+              ${yoyDelta !== null ? `· ${formatSignedPercent(pctChange(latestFreq, priorFreq))}` : ''}
             </div>
           </div>
         </div>
@@ -14021,15 +13638,6 @@ function parseCSV(text) {
   return Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data;
 }
 
-function parseXLSX(arrayBuffer) {
-  if (!window.XLSX || window.XLSX_OFFLINE_DISABLED) {
-    throw new Error('XLSX parsing is disabled in this offline-only build. Save/export the spreadsheet as CSV, then upload the CSV.');
-  }
-  const wb = XLSX.read(arrayBuffer, { type: 'array' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: null });
-}
-
 // ============================================================
 // TV RATINGS (NIELSEN VIEWERSHIP) — ingest
 // ============================================================
@@ -14119,9 +13727,7 @@ async function ingestFile(file) {
   try {
     if (ext === 'csv') {
       rows = parseCSV(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
-    } else throw new Error('Unsupported file type');
+    } else throw new Error('Unsupported file type — CSV only');
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
   }
@@ -14365,8 +13971,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderApp();
   };
   document.getElementById('homeBtn').addEventListener('click', goHome);
-  const homeNavBtn2 = document.getElementById('homeNavBtn');
-  if (homeNavBtn2) homeNavBtn2.addEventListener('click', goHome);
+  const homeNavBtn = document.getElementById('homeNavBtn');
+  if (homeNavBtn) homeNavBtn.addEventListener('click', goHome);
 
   document.getElementById('themeToggleBtn').addEventListener('click', function() {
     var isLight = document.documentElement.dataset.theme === 'light';
@@ -17500,9 +17106,9 @@ function openVirtualSignagePage() {
 // WEB & DIGITAL — Blazers.com Display, RoseQuarter.com Display, Pre-Roll Video
 // ============================================================
 // Three source file types:
-//   blazersWebDisplay  — Delivery_Report_Blazers_*.xlsx
-//   rqWebDisplay       — Delivery_Report_RoseQuarter_*.xlsx
-//   webPreRoll         — *Pre-Roll*.xlsx or *Pre_Roll*.xlsx
+//   blazersWebDisplay  — Delivery_Report_Blazers_*.csv
+//   rqWebDisplay       — Delivery_Report_RoseQuarter_*.csv
+//   webPreRoll         — *Pre-Roll*.csv or *Pre_Roll*.csv
 //
 // DataStore keys: webBlazersBanners[], webRQBanners[], webPreRoll[]
 // Channel key:    'webDisplay'
@@ -17549,24 +17155,6 @@ function _webNormalizeHeader(v) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
-
-function _webFindKeyFromHeaderValues(headerRow, candidates) {
-  const wanted = candidates.map(_webNormalizeHeader);
-  for (const [key, value] of Object.entries(headerRow || {})) {
-    if (wanted.includes(_webNormalizeHeader(value))) return key;
-  }
-  return null;
-}
-
-function _webFindKeyFromKeys(keys, candidates) {
-  const wanted = candidates.map(_webNormalizeHeader);
-  return (keys || []).find(k => wanted.includes(_webNormalizeHeader(k))) || null;
-}
-
-function _webHasAnyHeaderKey(keys, candidates) {
-  return !!_webFindKeyFromKeys(keys || [], candidates);
-}
-
 
 // CSV delivery reports are exported for this offline dashboard. Google/Ad Manager
 // exports often put a date-range row above the real column headers, which breaks
@@ -17688,20 +17276,15 @@ function aggregateWebBannerRows(rows) {
 // ============================================================
 
 // Blazers.com delivery report.
-// The XLSX has an unusual layout: row 1 = "Date range | <date>" (skipped),
-// row 2 = actual column headers ("Order | Line item | Total impressions | …"),
-// rows 3+ = data.  sheet_to_json uses row 1 as header keys, so rows[0] contains
-// the real header labels as VALUES.  We build a reverse colMap to find the right key.
+// CSV layout: row 1 = "Date range | <date>" (skipped), row 2 = actual column headers
+// ("Order | Line item | Total impressions | …"), rows 3+ = data.
 async function ingestBlazersBannersFile(file, ext) {
-  let rows = [];
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
       csvMatrix = parseWebCSVMatrix(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
     } else {
-      return { success: false, error: 'Unsupported file type', filename: file.name };
+      return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
     }
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
@@ -17709,92 +17292,45 @@ async function ingestBlazersBannersFile(file, ext) {
 
   const results = [];
 
-  if (ext === 'csv') {
-    if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
+  if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
 
-    const headerIndex = _webHeaderRowIndex(csvMatrix, [
-      ['Order'],
-      ['Line item', 'Lineitem'],
-      ['Total impressions', 'Impressions'],
-    ]);
-    if (headerIndex < 0) {
-      return { success: false, error: 'Could not find the Blazers.com delivery-report header row', filename: file.name };
-    }
-
-    const headerRow = csvMatrix[headerIndex];
-    const orderIdx    = _webColumnIndex(headerRow, ['Order']);
-    const lineItemIdx = _webColumnIndex(headerRow, ['Line item', 'Lineitem']);
-    const impressIdx  = _webColumnIndex(headerRow, ['Total impressions', 'Impressions', 'Delivered impressions']);
-    const clicksIdx   = _webColumnIndex(headerRow, ['Total clicks', 'Clicks', 'Delivered clicks']);
-    const ctrIdx      = _webColumnIndex(headerRow, ['Total CTR', 'CTR', 'Click-through rate', 'Click through rate']);
-
-    csvMatrix.slice(headerIndex + 1).forEach(row => {
-      const orderVal = String(_webRowCell(row, orderIdx) || '').trim();
-      if (!orderVal || orderVal.toLowerCase() === 'total') return;
-      const lineItem = String(_webRowCell(row, lineItemIdx) || '').trim();
-      if (isWebDNU(lineItem)) return;
-
-      const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
-      results.push({
-        Brand:      brand,
-        _rawPartner: rawPartner,
-        Season:     season,
-        Order:      orderVal,
-        LineItem:   lineItem,
-        AdType:     getWebAdType(lineItem),
-        Impressions: parseWebNum(_webRowCell(row, impressIdx)),
-        Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
-        CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
-        _source:    'blazers',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
-  } else {
-    if (!rows || rows.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
-
-    // XLSX fallback for legacy/local testing. CSV is the supported offline path.
-    const firstRowKeys = Object.keys(rows[0]).map(k => k.trim());
-    const hasTwoHeaderRows = !_webHasAnyHeaderKey(firstRowKeys, ['Order', 'Line item', 'Total impressions']);
-
-    let orderKey, lineItemKey, impressKey, clicksKey, ctrKey, dataRows;
-    if (hasTwoHeaderRows) {
-      orderKey    = _webFindKeyFromHeaderValues(rows[0], ['Order']);
-      lineItemKey = _webFindKeyFromHeaderValues(rows[0], ['Line item', 'Lineitem']);
-      impressKey  = _webFindKeyFromHeaderValues(rows[0], ['Total impressions', 'Impressions']);
-      clicksKey   = _webFindKeyFromHeaderValues(rows[0], ['Total clicks', 'Clicks']);
-      ctrKey      = _webFindKeyFromHeaderValues(rows[0], ['Total CTR', 'CTR']);
-      dataRows    = rows.slice(1);
-    } else {
-      orderKey    = _webFindKeyFromKeys(firstRowKeys, ['Order']) || 'Order';
-      lineItemKey = _webFindKeyFromKeys(firstRowKeys, ['Line item', 'Lineitem']) || 'Line item';
-      impressKey  = _webFindKeyFromKeys(firstRowKeys, ['Total impressions', 'Impressions']) || 'Total impressions';
-      clicksKey   = _webFindKeyFromKeys(firstRowKeys, ['Total clicks', 'Clicks']) || 'Total clicks';
-      ctrKey      = _webFindKeyFromKeys(firstRowKeys, ['Total CTR', 'CTR']) || 'Total CTR';
-      dataRows    = rows;
-    }
-
-    dataRows.forEach(r => {
-      const orderVal = String(r[orderKey] || '').trim();
-      if (!orderVal || orderVal.toLowerCase() === 'total') return;
-      const lineItem = String(r[lineItemKey] || '').trim();
-      if (isWebDNU(lineItem)) return;
-
-      const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
-      results.push({
-        Brand:      brand,
-        _rawPartner: rawPartner,
-        Season:     season,
-        Order:      orderVal,
-        LineItem:   lineItem,
-        AdType:     getWebAdType(lineItem),
-        Impressions: parseWebNum(r[impressKey]),
-        Clicks:      parseWebNum(r[clicksKey]),
-        CTR:         parseWebPct(r[ctrKey]),
-        _source:    'blazers',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
+  const headerIndex = _webHeaderRowIndex(csvMatrix, [
+    ['Order'],
+    ['Line item', 'Lineitem'],
+    ['Total impressions', 'Impressions'],
+  ]);
+  if (headerIndex < 0) {
+    return { success: false, error: 'Could not find the Blazers.com delivery-report header row', filename: file.name };
   }
+
+  const headerRow = csvMatrix[headerIndex];
+  const orderIdx    = _webColumnIndex(headerRow, ['Order']);
+  const lineItemIdx = _webColumnIndex(headerRow, ['Line item', 'Lineitem']);
+  const impressIdx  = _webColumnIndex(headerRow, ['Total impressions', 'Impressions', 'Delivered impressions']);
+  const clicksIdx   = _webColumnIndex(headerRow, ['Total clicks', 'Clicks', 'Delivered clicks']);
+  const ctrIdx      = _webColumnIndex(headerRow, ['Total CTR', 'CTR', 'Click-through rate', 'Click through rate']);
+
+  csvMatrix.slice(headerIndex + 1).forEach(row => {
+    const orderVal = String(_webRowCell(row, orderIdx) || '').trim();
+    if (!orderVal || orderVal.toLowerCase() === 'total') return;
+    const lineItem = String(_webRowCell(row, lineItemIdx) || '').trim();
+    if (isWebDNU(lineItem)) return;
+
+    const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
+    results.push({
+      Brand:      brand,
+      _rawPartner: rawPartner,
+      Season:     season,
+      Order:      orderVal,
+      LineItem:   lineItem,
+      AdType:     getWebAdType(lineItem),
+      Impressions: parseWebNum(_webRowCell(row, impressIdx)),
+      Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
+      CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
+      _source:    'blazers',
+    });
+    DataStore.registerBrand(brand, 'webDisplay');
+  });
 
   DataStore.webBlazersBanners = (DataStore.webBlazersBanners || []).concat(results);
 
@@ -17808,15 +17344,12 @@ async function ingestBlazersBannersFile(file, ext) {
 // RoseQuarter.com delivery report.
 // Same layout quirk as Blazers: row 1 = "Date range | <date>", row 2 = real headers.
 async function ingestRQBannersFile(file, ext) {
-  let rows = [];
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
       csvMatrix = parseWebCSVMatrix(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
     } else {
-      return { success: false, error: 'Unsupported file type', filename: file.name };
+      return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
     }
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
@@ -17824,73 +17357,36 @@ async function ingestRQBannersFile(file, ext) {
 
   const results = [];
 
-  if (ext === 'csv') {
-    if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
+  if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
 
-    const headerIndex = _webHeaderRowIndex(csvMatrix, [
-      ['Advertiser'],
-      ['Ad server impressions', 'Impressions'],
-    ]);
-    if (headerIndex < 0) {
-      return { success: false, error: 'Could not find the RoseQuarter.com delivery-report header row', filename: file.name };
-    }
-
-    const headerRow = csvMatrix[headerIndex];
-    const advertiserIdx = _webColumnIndex(headerRow, ['Advertiser', 'Advertiser name']);
-    const impressIdx    = _webColumnIndex(headerRow, ['Ad server impressions', 'Impressions', 'Total impressions', 'Delivered impressions']);
-    const clicksIdx     = _webColumnIndex(headerRow, ['Ad server clicks', 'Clicks', 'Total clicks', 'Delivered clicks']);
-    const ctrIdx        = _webColumnIndex(headerRow, ['Ad server CTR', 'CTR', 'Total CTR', 'Click-through rate', 'Click through rate']);
-
-    csvMatrix.slice(headerIndex + 1).forEach(row => {
-      const advertiser = String(_webRowCell(row, advertiserIdx) || '').trim();
-      if (!advertiser || advertiser.toLowerCase() === 'total') return;
-      const brand = resolveCanonicalBrandName(advertiser) || advertiser;
-      results.push({
-        Brand:       brand,
-        _rawAdvertiser: advertiser,
-        Impressions: parseWebNum(_webRowCell(row, impressIdx)),
-        Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
-        CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
-        _source:     'rosequarter',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
-  } else {
-    if (!rows || rows.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
-
-    const firstRowKeysRQ = Object.keys(rows[0]).map(k => k.trim());
-    const hasTwoHeaderRowsRQ = !_webHasAnyHeaderKey(firstRowKeysRQ, ['Advertiser', 'Ad server impressions']);
-
-    let advertiserKey, impressKeyRQ, clicksKeyRQ, ctrKeyRQ, dataRowsRQ;
-    if (hasTwoHeaderRowsRQ) {
-      advertiserKey = _webFindKeyFromHeaderValues(rows[0], ['Advertiser']);
-      impressKeyRQ  = _webFindKeyFromHeaderValues(rows[0], ['Ad server impressions', 'Impressions']);
-      clicksKeyRQ   = _webFindKeyFromHeaderValues(rows[0], ['Ad server clicks', 'Clicks']);
-      ctrKeyRQ      = _webFindKeyFromHeaderValues(rows[0], ['Ad server CTR', 'CTR']);
-      dataRowsRQ    = rows.slice(1);
-    } else {
-      advertiserKey = _webFindKeyFromKeys(firstRowKeysRQ, ['Advertiser']) || 'Advertiser';
-      impressKeyRQ  = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server impressions', 'Impressions']) || 'Ad server impressions';
-      clicksKeyRQ   = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server clicks', 'Clicks']) || 'Ad server clicks';
-      ctrKeyRQ      = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server CTR', 'CTR']) || 'Ad server CTR';
-      dataRowsRQ    = rows;
-    }
-
-    dataRowsRQ.forEach(r => {
-      const advertiser = String(r[advertiserKey] || '').trim();
-      if (!advertiser || advertiser.toLowerCase() === 'total') return;
-      const brand = resolveCanonicalBrandName(advertiser) || advertiser;
-      results.push({
-        Brand:       brand,
-        _rawAdvertiser: advertiser,
-        Impressions: parseWebNum(r[impressKeyRQ]),
-        Clicks:      parseWebNum(r[clicksKeyRQ]),
-        CTR:         parseWebPct(r[ctrKeyRQ]),
-        _source:     'rosequarter',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
+  const headerIndex = _webHeaderRowIndex(csvMatrix, [
+    ['Advertiser'],
+    ['Ad server impressions', 'Impressions'],
+  ]);
+  if (headerIndex < 0) {
+    return { success: false, error: 'Could not find the RoseQuarter.com delivery-report header row', filename: file.name };
   }
+
+  const headerRow = csvMatrix[headerIndex];
+  const advertiserIdx = _webColumnIndex(headerRow, ['Advertiser', 'Advertiser name']);
+  const impressIdx    = _webColumnIndex(headerRow, ['Ad server impressions', 'Impressions', 'Total impressions', 'Delivered impressions']);
+  const clicksIdx     = _webColumnIndex(headerRow, ['Ad server clicks', 'Clicks', 'Total clicks', 'Delivered clicks']);
+  const ctrIdx        = _webColumnIndex(headerRow, ['Ad server CTR', 'CTR', 'Total CTR', 'Click-through rate', 'Click through rate']);
+
+  csvMatrix.slice(headerIndex + 1).forEach(row => {
+    const advertiser = String(_webRowCell(row, advertiserIdx) || '').trim();
+    if (!advertiser || advertiser.toLowerCase() === 'total') return;
+    const brand = resolveCanonicalBrandName(advertiser) || advertiser;
+    results.push({
+      Brand:       brand,
+      _rawAdvertiser: advertiser,
+      Impressions: parseWebNum(_webRowCell(row, impressIdx)),
+      Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
+      CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
+      _source:     'rosequarter',
+    });
+    DataStore.registerBrand(brand, 'webDisplay');
+  });
 
   DataStore.webRQBanners = (DataStore.webRQBanners || []).concat(results);
 
@@ -17902,14 +17398,12 @@ async function ingestRQBannersFile(file, ext) {
 }
 
 // Pre-Roll report.
-// This file has a proper header row (row 1 = column names), so sheet_to_json works normally.
 // Partner extracted from "Campaign Name": "Axiom > Portland Trail Blazers" → "Axiom".
 async function ingestPreRollFile(file, ext) {
   let rows = [];
   try {
-    if (ext === 'csv')                   rows = parseCSV(await file.text());
-    else if (ext === 'xlsx' || ext === 'xls') rows = parseXLSX(await file.arrayBuffer());
-    else return { success: false, error: 'Unsupported file type', filename: file.name };
+    if (ext === 'csv') rows = parseCSV(await file.text());
+    else return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
   }
@@ -17924,7 +17418,7 @@ async function ingestPreRollFile(file, ext) {
     const partnerRaw = campaignName.split(/ > /)[0].trim();
     const brand = resolveCanonicalBrandName(partnerRaw) || partnerRaw;
 
-    // Parse event date — may come in as a JS Date object (from XLSX) or string
+    // Parse event date — may come in as a JS Date object or string
     let eventDate = null;
     const rawDate = r['Event Date'];
     if (rawDate) {

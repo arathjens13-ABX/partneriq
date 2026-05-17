@@ -320,7 +320,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `pctChange(curr, prev)` | Returns a signed ratio `(curr - prev) / prev` or `null` |
 | `escapeHTML(value)` | HTML-escapes a string for safe DOM injection |
 | `normalizePartnerName(value)` | Lowercases and strips punctuation for partner name matching |
-| `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string |
+| `parseFlexibleSeasonToken(token)` | Recognizes a season token in canonical (2023-24), FY shorthand (FY24 / FY2024), long (2023-2024), or slash form (2024/25) and returns the canonical YYYY-YY form, or '' if not a season |
+| `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string. Tolerant of `_`, `-`, and space separators; embedded brand prefixes match case- and punctuation-insensitively |
 | `findRuleMatchInCampaign(campaignName)` | Checks saved assignment rules before heuristic parsing |
 | `normalizePaidRow(row, fallbackBrand)` | Coerces a raw paid CSV row into a standardized paid row object |
 | `getBrandTVData(brand, season)` | Returns TV signage rows for a brand/season (excludes virtual branding rows) |

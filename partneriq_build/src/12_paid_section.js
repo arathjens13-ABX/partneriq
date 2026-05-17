@@ -779,7 +779,7 @@ function renderPaidSection(brand) {
           <div class="kpi">
             <span class="kpi-label">CTR ${makeInfoIcon('CTR')}</span>
             <span class="kpi-value">${formatPct(agg.ctr, 2)}</span>
-            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs(ctrYoY.change * 100).toFixed(1)}% YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
+            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs((ctrYoY.curr - ctrYoY.prev) * 100).toFixed(2)}pp YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
           </div>
           <div class="kpi">
             <span class="kpi-label">Results ${makeInfoIcon('Results')}</span>

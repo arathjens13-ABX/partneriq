@@ -374,7 +374,7 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
         if (priorPct !== null) {
           const ppChange = chosenPct - priorPct;
           const cls = ppChange >= 0 ? 'up' : 'down';
-          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}% YoY</span>)`;
+          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}pp YoY</span>)`;
         }
       }
       takeaways.push(`<strong>${chosenLabel} —</strong> <strong>${(chosenPct * 100).toFixed(1)}%</strong> fan awareness${yoyText} (${latestWave.Season}).`);

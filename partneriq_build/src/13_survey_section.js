@@ -78,15 +78,16 @@ function getSurveyTrend(brand, phase) {
   return [...getBrandSurveyData(brand, 'all', phase)].sort((a, b) => a.Season.localeCompare(b.Season));
 }
 
-// Recall metric YoY — always same phase
+// Recall metric YoY — always same phase. `change` is a percentage-point delta (curr - prev),
+// expressed as a ratio (e.g. 0.045 means +4.5pp). Survey metrics are themselves rates, so pp is
+// the meaningful unit; a relative % change would obscure whether a brand moved 1pp or 20pp.
 function getSurveyMetricYoY(brand, phase, metric) {
   const latest = getSurveyLatestWave(brand, phase);
   const prior  = getSurveyPriorWave(brand, phase);
   if (!latest || !prior) return null;
   const curr = latest[metric], prev = prior[metric];
-  if (curr === null || prev === null) return null;
-  const change = typeof prev === 'number' && prev !== 0 ? (curr - prev) / Math.abs(prev) : null;
-  return { change, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
+  if (curr === null || prev === null || typeof curr !== 'number' || typeof prev !== 'number') return null;
+  return { change: curr - prev, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
 }
 
 // ---- Partner Roster ----
@@ -410,7 +411,7 @@ function renderBrandAwarenessTab(container, main) {
             const fmtYoY = yoy => {
               if (!yoy || yoy.change === null) return '—';
               const cls = yoy.change >= 0 ? 'up' : 'down';
-              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}%</span>`;
+              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}pp</span>`;
             };
             return `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${r.Brand.replace(/'/g,"\'")}')">
               <td class="num" style="color:var(--text-muted);">${idx + 1}</td>
@@ -1481,9 +1482,12 @@ function formatSurveyPctValue(v) {
   return v !== null && v !== undefined && !Number.isNaN(v) ? Math.round(v * 100) + '%' : '—';
 }
 
+// Returns a percentage-point delta (curr - prev) for survey metrics, which are themselves
+// percentages. The output is a ratio (e.g. 0.045 means +4.5pp). For count-based metrics
+// (response frequencies) use pctChange()/formatSignedPercent() instead.
 function surveyPctChangeFromValues(curr, prev) {
-  if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev) || prev === 0) return null;
-  return (curr - prev) / prev;
+  if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev)) return null;
+  return curr - prev;
 }
 
 function surveyPctChangeFromDelta(curr, delta) {
@@ -1502,7 +1506,7 @@ function formatSurveyPctChangeText(change) {
   if (change === null || change === undefined || Number.isNaN(change) || !isFinite(change)) return '—';
   const arrow = change > 0.0005 ? '▲' : change < -0.0005 ? '▼' : '•';
   const sign = change > 0.0005 ? '+' : change < -0.0005 ? '-' : '';
-  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%`;
+  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}pp`;
 }
 
 function formatSurveyPctChangeHTML(change, suffix = '') {
@@ -2400,7 +2404,7 @@ function renderProgramsSurveySection(brand) {
             </div>
             <div style="font-size:11px;color:var(--text-muted);">
               ${latestPct !== null ? Math.round(latestPct * 100) + '% awareness' : 'responses'}
-              ${yoyDelta !== null ? `· ${formatSurveyPctChangeHTML(surveyPctChangeFromValues(latestFreq, priorFreq))}` : ''}
+              ${yoyDelta !== null ? `· ${formatSignedPercent(pctChange(latestFreq, priorFreq))}` : ''}
             </div>
           </div>
         </div>
