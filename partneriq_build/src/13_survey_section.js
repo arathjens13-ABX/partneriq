@@ -78,9 +78,11 @@ function getSurveyTrend(brand, phase) {
   return [...getBrandSurveyData(brand, 'all', phase)].sort((a, b) => a.Season.localeCompare(b.Season));
 }
 
-// Recall metric YoY — always same phase. `change` is a percentage-point delta (curr - prev),
-// expressed as a ratio (e.g. 0.045 means +4.5pp). Survey metrics are themselves rates, so pp is
-// the meaningful unit; a relative % change would obscure whether a brand moved 1pp or 20pp.
+// Recall metric YoY — same-phase comparison (Late→Late, Early→Early). `change` is a
+// percentage-point delta (curr - prev) expressed as a ratio (0.045 means +4.5 points), which
+// is the natural way to compare two rate values; we then label it with the familiar % symbol
+// for readers. Switching to relative %-change would mislead — 40%→50% would read "+25%"
+// rather than the intuitive "+10%" the eye expects when looking at the two numbers.
 function getSurveyMetricYoY(brand, phase, metric) {
   const latest = getSurveyLatestWave(brand, phase);
   const prior  = getSurveyPriorWave(brand, phase);
@@ -411,7 +413,7 @@ function renderBrandAwarenessTab(container, main) {
             const fmtYoY = yoy => {
               if (!yoy || yoy.change === null) return '—';
               const cls = yoy.change >= 0 ? 'up' : 'down';
-              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}pp</span>`;
+              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}%</span>`;
             };
             return `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${r.Brand.replace(/'/g,"\'")}')">
               <td class="num" style="color:var(--text-muted);">${idx + 1}</td>
@@ -1483,8 +1485,9 @@ function formatSurveyPctValue(v) {
 }
 
 // Returns a percentage-point delta (curr - prev) for survey metrics, which are themselves
-// percentages. The output is a ratio (e.g. 0.045 means +4.5pp). For count-based metrics
-// (response frequencies) use pctChange()/formatSignedPercent() instead.
+// percentages — labeled with the % symbol for readability but conceptually the point delta,
+// not a relative ratio. For count-based metrics (response frequencies) use pctChange() with
+// formatSignedPercent() instead.
 function surveyPctChangeFromValues(curr, prev) {
   if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev)) return null;
   return curr - prev;
@@ -1506,7 +1509,7 @@ function formatSurveyPctChangeText(change) {
   if (change === null || change === undefined || Number.isNaN(change) || !isFinite(change)) return '—';
   const arrow = change > 0.0005 ? '▲' : change < -0.0005 ? '▼' : '•';
   const sign = change > 0.0005 ? '+' : change < -0.0005 ? '-' : '';
-  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}pp`;
+  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%`;
 }
 
 function formatSurveyPctChangeHTML(change, suffix = '') {

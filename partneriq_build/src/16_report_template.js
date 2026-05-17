@@ -1121,12 +1121,14 @@ function _computeSectionTakeaways(brand, season) {
   const surveyWave = getSurveyLatestWave(brand, 'Late') || getSurveyLatestWave(brand, 'Early');
   if (surveyWave) {
     const total = (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length;
-    const priorWave = getSurveyPriorWave(brand, 'all');
+    // Phase-matched YoY: Late→Late, Early→Early. Calling with 'all' would compare to the
+    // opposite-phase wave of the same season — intra-season, not YoY.
+    const priorWave = getSurveyPriorWave(brand, surveyWave.Phase);
     const _ppBadge = (curr, priorKey) => {
       if (!priorWave || priorWave[priorKey] == null || curr == null) return '';
       const pp = (curr - priorWave[priorKey]) * 100;
       const up = pp >= 0;
-      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}pp YoY</span>`;
+      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}% YoY</span>`;
     };
     const t = [];
     if (surveyWave.UnaidedPct != null)

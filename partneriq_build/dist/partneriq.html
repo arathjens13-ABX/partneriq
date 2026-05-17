@@ -3270,14 +3270,15 @@ const CHANGELOG = [
     version: 'v0.43',
     date: 'May 2026',
     source: 'Claude',
-    title: 'Percentage-point labels for rate-metric YoY, and a more forgiving paid-campaign auto-namer',
+    title: 'Phase-matched survey YoY, point-delta math under % labels, and a more forgiving paid-campaign auto-namer',
     changes: [
       {
-        category: 'Numeracy fixes',
+        category: 'Survey YoY correctness',
         items: [
-          `Survey recall YoY deltas (Unaided / Aided / Local HQ) are now expressed in percentage points (pp) instead of relative % change — a brand moving from 40% awareness to 50% now reads "+10.0pp YoY" rather than the misleading "+25.0% YoY". Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js to return pp deltas, and formatSurveyPctChangeText() to use the pp suffix; all callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers and now display pp consistently`,
-          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows percentage-point delta — a CTR move from 2.50% to 3.00% reads "+0.50pp YoY" instead of "+20.0% YoY". The "Key Takeaways" survey block in 09_app_core.js was already computing the pp delta correctly but rendering it as %; relabeled to pp`,
-          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) instead of the pp formatter — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
+          `Phase-mismatch bug fixed in the partner-page "Key Takeaways" block (09_app_core.js) and the PDF report's survey section (16_report_template.js). Both were calling getSurveyPriorWave(brand, 'all'), which returns the 2nd-most-recent wave regardless of phase — in practice the opposite-phase wave of the same season, so a Late wave was being compared to the Early wave of the same season and labeled "YoY". Now both pass the latest wave's Phase, so the comparison is true Late→Late / Early→Early`,
+          `Survey recall deltas (Unaided / Aided / Local HQ) now compute as a percentage-point change (curr - prev) instead of a relative ratio — a brand moving from 40% to 50% reads "+10.0%", matching what the eye expects when looking at the two numbers. The previous behavior computed (curr-prev)/prev and would have shown "+25.0%" for the same move. The % symbol is preserved on the label since that's what readers recognize; the math underneath is the point delta. Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js; all downstream callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers`,
+          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows the point delta — a CTR move from 2.50% to 3.00% reads "+0.50% YoY" instead of "+20.0% YoY"`,
+          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
         ]
       },
       {
@@ -8054,14 +8055,17 @@ function renderTakeaways(brand, latestSeason, prevSeason) {
       chosenPct = up; chosenLabel = 'Unaided Recall'; chosenPriorKey = 'UnaidedPct';
     }
     if (chosenPct !== null) {
-      const priorWave = getSurveyPriorWave(brand, 'all');
+      // Phase-matched YoY: Late→Late, Early→Early. Calling with 'all' would return the
+      // 2nd-most-recent wave regardless of phase, which in practice is the opposite-phase
+      // wave of the same season — an intra-season comparison, not YoY.
+      const priorWave = getSurveyPriorWave(brand, latestWave.Phase);
       let yoyText = '';
       if (priorWave) {
         const priorPct = priorWave[chosenPriorKey];
         if (priorPct !== null) {
           const ppChange = chosenPct - priorPct;
           const cls = ppChange >= 0 ? 'up' : 'down';
-          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}pp YoY</span>)`;
+          yoyText = ` (<span class="${cls}">${ppChange >= 0 ? '+' : ''}${(ppChange * 100).toFixed(1)}% YoY</span>)`;
         }
       }
       takeaways.push(`<strong>${chosenLabel} —</strong> <strong>${(chosenPct * 100).toFixed(1)}%</strong> fan awareness${yoyText} (${latestWave.Season}).`);
@@ -10218,7 +10222,7 @@ function renderPaidSection(brand) {
           <div class="kpi">
             <span class="kpi-label">CTR ${makeInfoIcon('CTR')}</span>
             <span class="kpi-value">${formatPct(agg.ctr, 2)}</span>
-            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs((ctrYoY.curr - ctrYoY.prev) * 100).toFixed(2)}pp YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
+            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs((ctrYoY.curr - ctrYoY.prev) * 100).toFixed(2)}% YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
           </div>
           <div class="kpi">
             <span class="kpi-label">Results ${makeInfoIcon('Results')}</span>
@@ -10475,9 +10479,11 @@ function getSurveyTrend(brand, phase) {
   return [...getBrandSurveyData(brand, 'all', phase)].sort((a, b) => a.Season.localeCompare(b.Season));
 }
 
-// Recall metric YoY — always same phase. `change` is a percentage-point delta (curr - prev),
-// expressed as a ratio (e.g. 0.045 means +4.5pp). Survey metrics are themselves rates, so pp is
-// the meaningful unit; a relative % change would obscure whether a brand moved 1pp or 20pp.
+// Recall metric YoY — same-phase comparison (Late→Late, Early→Early). `change` is a
+// percentage-point delta (curr - prev) expressed as a ratio (0.045 means +4.5 points), which
+// is the natural way to compare two rate values; we then label it with the familiar % symbol
+// for readers. Switching to relative %-change would mislead — 40%→50% would read "+25%"
+// rather than the intuitive "+10%" the eye expects when looking at the two numbers.
 function getSurveyMetricYoY(brand, phase, metric) {
   const latest = getSurveyLatestWave(brand, phase);
   const prior  = getSurveyPriorWave(brand, phase);
@@ -10808,7 +10814,7 @@ function renderBrandAwarenessTab(container, main) {
             const fmtYoY = yoy => {
               if (!yoy || yoy.change === null) return '—';
               const cls = yoy.change >= 0 ? 'up' : 'down';
-              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}pp</span>`;
+              return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}%</span>`;
             };
             return `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${r.Brand.replace(/'/g,"\'")}')">
               <td class="num" style="color:var(--text-muted);">${idx + 1}</td>
@@ -11880,8 +11886,9 @@ function formatSurveyPctValue(v) {
 }
 
 // Returns a percentage-point delta (curr - prev) for survey metrics, which are themselves
-// percentages. The output is a ratio (e.g. 0.045 means +4.5pp). For count-based metrics
-// (response frequencies) use pctChange()/formatSignedPercent() instead.
+// percentages — labeled with the % symbol for readability but conceptually the point delta,
+// not a relative ratio. For count-based metrics (response frequencies) use pctChange() with
+// formatSignedPercent() instead.
 function surveyPctChangeFromValues(curr, prev) {
   if (curr === null || curr === undefined || prev === null || prev === undefined || Number.isNaN(curr) || Number.isNaN(prev) || !isFinite(curr) || !isFinite(prev)) return null;
   return curr - prev;
@@ -11903,7 +11910,7 @@ function formatSurveyPctChangeText(change) {
   if (change === null || change === undefined || Number.isNaN(change) || !isFinite(change)) return '—';
   const arrow = change > 0.0005 ? '▲' : change < -0.0005 ? '▼' : '•';
   const sign = change > 0.0005 ? '+' : change < -0.0005 ? '-' : '';
-  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}pp`;
+  return `${arrow} ${sign}${Math.abs(change * 100).toFixed(1)}%`;
 }
 
 function formatSurveyPctChangeHTML(change, suffix = '') {
@@ -15191,12 +15198,14 @@ function _computeSectionTakeaways(brand, season) {
   const surveyWave = getSurveyLatestWave(brand, 'Late') || getSurveyLatestWave(brand, 'Early');
   if (surveyWave) {
     const total = (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length;
-    const priorWave = getSurveyPriorWave(brand, 'all');
+    // Phase-matched YoY: Late→Late, Early→Early. Calling with 'all' would compare to the
+    // opposite-phase wave of the same season — intra-season, not YoY.
+    const priorWave = getSurveyPriorWave(brand, surveyWave.Phase);
     const _ppBadge = (curr, priorKey) => {
       if (!priorWave || priorWave[priorKey] == null || curr == null) return '';
       const pp = (curr - priorWave[priorKey]) * 100;
       const up = pp >= 0;
-      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}pp YoY</span>`;
+      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}% YoY</span>`;
     };
     const t = [];
     if (surveyWave.UnaidedPct != null)

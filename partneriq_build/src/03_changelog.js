@@ -3,14 +3,15 @@ const CHANGELOG = [
     version: 'v0.43',
     date: 'May 2026',
     source: 'Claude',
-    title: 'Percentage-point labels for rate-metric YoY, and a more forgiving paid-campaign auto-namer',
+    title: 'Phase-matched survey YoY, point-delta math under % labels, and a more forgiving paid-campaign auto-namer',
     changes: [
       {
-        category: 'Numeracy fixes',
+        category: 'Survey YoY correctness',
         items: [
-          `Survey recall YoY deltas (Unaided / Aided / Local HQ) are now expressed in percentage points (pp) instead of relative % change — a brand moving from 40% awareness to 50% now reads "+10.0pp YoY" rather than the misleading "+25.0% YoY". Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js to return pp deltas, and formatSurveyPctChangeText() to use the pp suffix; all callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers and now display pp consistently`,
-          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows percentage-point delta — a CTR move from 2.50% to 3.00% reads "+0.50pp YoY" instead of "+20.0% YoY". The "Key Takeaways" survey block in 09_app_core.js was already computing the pp delta correctly but rendering it as %; relabeled to pp`,
-          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) instead of the pp formatter — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
+          `Phase-mismatch bug fixed in the partner-page "Key Takeaways" block (09_app_core.js) and the PDF report's survey section (16_report_template.js). Both were calling getSurveyPriorWave(brand, 'all'), which returns the 2nd-most-recent wave regardless of phase — in practice the opposite-phase wave of the same season, so a Late wave was being compared to the Early wave of the same season and labeled "YoY". Now both pass the latest wave's Phase, so the comparison is true Late→Late / Early→Early`,
+          `Survey recall deltas (Unaided / Aided / Local HQ) now compute as a percentage-point change (curr - prev) instead of a relative ratio — a brand moving from 40% to 50% reads "+10.0%", matching what the eye expects when looking at the two numbers. The previous behavior computed (curr-prev)/prev and would have shown "+25.0%" for the same move. The % symbol is preserved on the label since that's what readers recognize; the math underneath is the point delta. Updated getSurveyMetricYoY() and surveyPctChangeFromValues() in 13_survey_section.js; all downstream callers (KPI cards, leaderboard YoY columns, program-awareness table, trend chart tooltips, partner-question breakdowns) flow through these helpers`,
+          `Paid Social CTR YoY in the partner section (12_paid_section.js) now shows the point delta — a CTR move from 2.50% to 3.00% reads "+0.50% YoY" instead of "+20.0% YoY"`,
+          `Survey response frequencies are counts, not rates, so the one survey card that compares respondent counts (sponsor-aware question card in 13_survey_section.js) now uses the count-relative helper formatSignedPercent(pctChange(...)) — a count moving 1,000 → 1,200 correctly reads "+20.0%"`,
         ]
       },
       {
