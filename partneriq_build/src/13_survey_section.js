@@ -89,16 +89,6 @@ function getSurveyMetricYoY(brand, phase, metric) {
   return { change, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
 }
 
-// Rank YoY — lower is better, so delta<0 = improved
-function getSurveyRankYoY(brand, phase, rankKey) {
-  const latest = getSurveyLatestWave(brand, phase);
-  const prior  = getSurveyPriorWave(brand, phase);
-  if (!latest || !prior) return null;
-  const curr = latest[rankKey], prev = prior[rankKey];
-  if (!curr || !prev) return null;
-  return { delta: curr - prev, curr, prev, currSeason: latest.Season, priorSeason: prior.Season };
-}
-
 // ---- Partner Roster ----
 function getPartnerRoster() { return DataStore.partnerRoster || []; }
 

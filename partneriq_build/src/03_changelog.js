@@ -1,5 +1,39 @@
 const CHANGELOG = [
   {
+    version: 'v0.42',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Dead-code cleanup — Chart.js shim, unused helpers, stale CSS, XLSX support',
+    changes: [
+      {
+        category: 'Cleanup',
+        items: [
+          `Removed the unused OfflineChart shim (~90 lines) and the window.Chart / window.XLSX_OFFLINE_DISABLED globals from 00_vendor_shims.js — every chart in the dashboard is inline SVG, nothing ever instantiated Chart.js`,
+          `Removed chartDefaults() in 10_tv_section.js, activeCharts + destroyCharts() in 07_paid_assignment.js, and the no-op destroyCharts() call in renderApp() — none had any callers or state`,
+          `Removed getSurveyRankYoY() in 13_survey_section.js — defined but never called`,
+          `Removed parseXLSX() and the .xlsx / .xls ingest branches in 14_organic_section.js and 21_web_digital_section.js, plus orphan helpers _webHasAnyHeaderKey, _webFindKeyFromHeaderValues, _webFindKeyFromKeys — XLSX has never been supported in this offline build`,
+          `Dropped .xlsx and .xls from the file-picker accept attribute in shell.html and updated the helper copy — CSV is the only supported upload format`,
+          `Removed 12 unused CSS selectors from 01_styles.css: .chart-container, .kpi-card, .mean-diff(+variants), .rank-change(+variants), .reco-badge(+variants), .sentiment-bar / .sentiment-seg / .sentiment-legend(+variants), .methodology-callout, .placeholder-pill, .survey-chart-expand, .survey-svg-title, .survey-svg-subtitle, .survey-legend-label, .survey-trend-label`,
+          `Renamed homeNavBtn2 → homeNavBtn in 15_wiring.js — the "2" suffix was a leftover from a partial cleanup; the variable was always a single button reference`,
+        ]
+      },
+      {
+        category: 'Consistency',
+        items: [
+          `Added openPaidPortfolioPage(), openOrganicSocialPortfolioPage(), openSurveyPortfolioPage() helpers in 08_home_pages.js — home-page quick links now use the same navigation pattern as TV / Virtual Signage / Links / etc. instead of inline onclick="currentBrand=null; currentPage='paid'; renderApp();"`,
+        ]
+      },
+      {
+        category: 'Docs',
+        items: [
+          `CLAUDE.md: corrected wireSectionToggles() location (lives in 06_helpers.js, not 07_paid_assignment.js) and wireSortableTables() location (07_paid_assignment.js)`,
+          `CLAUDE.md: KPI card guidance and recipe template updated to use .kpi (the actual class) instead of the unused .kpi-card`,
+          `CLAUDE.md: function map updated to drop removed functions and add the new portfolio openers; web-digital ingest descriptions updated to "CSV" instead of "XLSX or CSV"`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.41',
     date: 'May 2026',
     source: 'Claude',

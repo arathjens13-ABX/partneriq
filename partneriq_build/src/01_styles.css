@@ -866,12 +866,6 @@ main {
   text-transform: uppercase;
 }
 
-.chart-container {
-  position: relative;
-  flex: 1;
-  min-height: 240px;
-}
-
 /* Tables */
 .data-table {
   width: 100%;
@@ -1212,24 +1206,6 @@ main {
 .yoy-change.up { color: var(--positive); }
 .yoy-change.down { color: var(--negative); }
 .yoy-change.neutral { color: var(--text-muted); }
-
-.reco-badge {
-  display: inline-block;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.reco-badge.scale { color: var(--positive); border-color: var(--positive); background: rgba(156, 207, 156, 0.08); }
-.reco-badge.protect { color: var(--text); border-color: var(--text-dim); background: var(--bg-elev-3); }
-.reco-badge.improve { color: var(--accent-soft); border-color: var(--accent-line); }
-.reco-badge.review { color: var(--negative); border-color: var(--negative); background: rgba(209, 150, 150, 0.08); }
-
 
 /* Leaderboards / portfolio intelligence */
 .control-row {
@@ -1650,15 +1626,6 @@ main {
   color: var(--text);
 }
 
-.mean-diff {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.mean-diff.up { color: var(--positive); }
-.mean-diff.down { color: var(--negative); }
-.mean-diff.neutral { color: var(--text-muted); }
-
 /* Paid Social assignment manager */
 .modal-wide { max-width: 1120px; }
 .assignment-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px; }
@@ -1672,32 +1639,6 @@ main {
 .assignment-input { width: 100%; min-width: 180px; padding: 7px 9px; background: var(--bg-elev-2); border: 1px solid var(--border); color: var(--text); border-radius: 5px; font-family: var(--font-body); font-size: 12px; }
 .assignment-input:focus { outline: none; border-color: var(--text-dim); }
 .assignment-actions { display: flex; gap: 8px; justify-content: flex-end; align-items: center; flex-wrap: wrap; }
-
-/* Sentiment bar */
-.sentiment-bar {
-  display: flex;
-  height: 8px;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-bottom: 14px;
-}
-
-.sentiment-seg { height: 100%; }
-.sentiment-seg.pos { background: var(--positive); }
-.sentiment-seg.neu { background: var(--neutral); }
-.sentiment-seg.neg { background: var(--negative); }
-
-.sentiment-legend {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  font-family: var(--font-mono);
-  color: var(--text-dim);
-}
-
-.sentiment-legend .label-pos { color: var(--positive); }
-.sentiment-legend .label-neu { color: var(--neutral); }
-.sentiment-legend .label-neg { color: var(--negative); }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -1759,15 +1700,6 @@ footer {
 .phase-badge.early { border-color: var(--positive); color: var(--positive); }
 .phase-badge.late  { border-color: var(--neutral);  color: var(--neutral); }
 
-.rank-change {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.02em;
-}
-.rank-change.up   { color: var(--positive); } /* rank improved = lower number */
-.rank-change.down { color: var(--negative); }
-.rank-change.same { color: var(--text-muted); }
-
 /* Survey SVG trend chart */
 .survey-trend-wrap {
   width: 100%;
@@ -1777,8 +1709,6 @@ footer {
 .survey-trend-axis  { stroke: var(--border); stroke-width: 1; }
 .survey-trend-grid  { stroke: var(--border-soft); stroke-width: 1; stroke-dasharray: 2 3; }
 .survey-trend-tick  { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px; }
-.survey-trend-label { fill: var(--text-muted); font-family: var(--font-mono); font-size: 10px;
-                      letter-spacing: 0.06em; text-transform: uppercase; }
 .survey-line-unaided { fill: none; stroke: var(--text-dim); stroke-width: 2; stroke-linejoin: round; }
 .survey-line-aided   { fill: none; stroke: var(--text); stroke-width: 2.5; stroke-linejoin: round; }
 .survey-line-localhq { fill: none; stroke: var(--positive); stroke-width: 1.8;
@@ -2273,16 +2203,6 @@ header {
   line-height: 1.5;
   margin-top: 6px;
 }
-.methodology-callout {
-  border: 1px solid rgba(224,58,62,.35);
-  background: linear-gradient(135deg, rgba(224,58,62,.16), rgba(224,58,62,.04));
-  border-radius: 14px;
-  padding: 16px 18px;
-  color: var(--text-dim);
-  line-height: 1.55;
-  font-size: 13px;
-  margin-bottom: 18px;
-}
 .glossary-grid {
   display:grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -2299,21 +2219,6 @@ header {
   line-height: 1.55;
   font-size: 12px;
 }
-.placeholder-pill {
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 999px;
-  padding: 5px 9px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-}
-
-
 /* ── Report export modal ───────────────────────────────── */
 .report-step-label {
   font-family: var(--font-mono);
@@ -2744,20 +2649,7 @@ header {
   justify-content: start;
   margin-bottom: 14px;
 }
-.kpi-card.compact .kpi-value { font-size: 24px; }
 .survey-chart-card { margin-bottom: 16px; }
-.survey-chart-expand {
-  display: block;
-  width: 100%;
-  padding: 0;
-  border: 1px solid var(--border-soft);
-  border-radius: 8px;
-  background: var(--bg-elev-2);
-  cursor: zoom-in;
-  text-align: left;
-  overflow: hidden;
-}
-.survey-chart-expand:hover { border-color: var(--border); }
 .survey-multi-trend-svg { display: block; width: 100%; height: auto; }
 .survey-empty-trend {
   border: 1px dashed var(--border);
@@ -2886,23 +2778,11 @@ header {
   overflow: visible;
 }
 
-.survey-svg-title {
-  font-size: 14px;
-  fill: var(--text);
-  font-weight: 600;
-  font-family: var(--font-sans);
-}
-
-.survey-svg-subtitle,
-.survey-axis-label,
-.survey-legend-label {
+.survey-axis-label {
   fill: var(--text-muted);
   font-family: var(--font-mono);
+  font-size: 10px;
 }
-
-.survey-svg-subtitle { font-size: 10.5px; }
-.survey-axis-label { font-size: 10px; }
-.survey-legend-label { font-size: 10px; }
 
 .survey-chart-gridline {
   stroke: var(--border-soft);

@@ -136,7 +136,6 @@ function renderTVPortfolioPage(main) {
 
 function renderApp() {
   const main = document.getElementById('main');
-  destroyCharts();
   hideTooltip();
 
   if (!DataStore.hasAnyData() && currentPage !== 'glossary' && currentPage !== 'data-health' && currentPage !== 'links') {

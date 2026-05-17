@@ -180,17 +180,17 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">🏀 On-Court Virtual Signage</div>
           <div class="home-action-copy">Center and 3-point line virtual branding — full schedule, partner breakdown, and home/away metrics with away-game estimates.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='paid'; renderApp();">
+        <div class="home-action" onclick="openPaidPortfolioPage();">
           <div class="home-action-kicker">Paid Social</div>
           <div class="home-action-title">💰 Paid Social Portfolio</div>
           <div class="home-action-copy">Total portfolio spend, partner breakdowns, objective mix, and campaign assignment health.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='organic'; renderApp();">
+        <div class="home-action" onclick="openOrganicSocialPortfolioPage();">
           <div class="home-action-kicker">Organic Social</div>
           <div class="home-action-title">📱 Organic Social Portfolio</div>
           <div class="home-action-copy">Brand leaderboard, engagement rankings, brand value, and logo impression data from Zoomph.</div>
         </div>
-        <div class="home-action" onclick="currentBrand=null; currentPage='survey'; renderApp();">
+        <div class="home-action" onclick="openSurveyPortfolioPage();">
           <div class="home-action-kicker">Survey Research</div>
           <div class="home-action-title">📊 Survey Research</div>
           <div class="home-action-copy">Brand awareness recall, fan insights, and program awareness — all survey data in one place across three tabs.</div>
@@ -257,6 +257,33 @@ function openTVPortfolioPage() {
   currentBrand = null;
   currentPeriod = null;
   currentPage = 'tv';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
+function openPaidPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'paid';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
+function openOrganicSocialPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'organic';
+  document.getElementById('brandSearch').value = '';
+  document.getElementById('brandDropdown').classList.remove('active');
+  renderApp();
+}
+
+function openSurveyPortfolioPage() {
+  currentBrand = null;
+  currentPeriod = null;
+  currentPage = 'survey';
   document.getElementById('brandSearch').value = '';
   document.getElementById('brandDropdown').classList.remove('active');
   renderApp();

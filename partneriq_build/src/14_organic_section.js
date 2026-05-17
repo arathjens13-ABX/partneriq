@@ -744,15 +744,6 @@ function parseCSV(text) {
   return Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data;
 }
 
-function parseXLSX(arrayBuffer) {
-  if (!window.XLSX || window.XLSX_OFFLINE_DISABLED) {
-    throw new Error('XLSX parsing is disabled in this offline-only build. Save/export the spreadsheet as CSV, then upload the CSV.');
-  }
-  const wb = XLSX.read(arrayBuffer, { type: 'array' });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { defval: null });
-}
-
 // ============================================================
 // TV RATINGS (NIELSEN VIEWERSHIP) — ingest
 // ============================================================
@@ -842,9 +833,7 @@ async function ingestFile(file) {
   try {
     if (ext === 'csv') {
       rows = parseCSV(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
-    } else throw new Error('Unsupported file type');
+    } else throw new Error('Unsupported file type — CSV only');
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
   }

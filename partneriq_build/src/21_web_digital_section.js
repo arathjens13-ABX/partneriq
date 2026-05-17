@@ -2,9 +2,9 @@
 // WEB & DIGITAL — Blazers.com Display, RoseQuarter.com Display, Pre-Roll Video
 // ============================================================
 // Three source file types:
-//   blazersWebDisplay  — Delivery_Report_Blazers_*.xlsx
-//   rqWebDisplay       — Delivery_Report_RoseQuarter_*.xlsx
-//   webPreRoll         — *Pre-Roll*.xlsx or *Pre_Roll*.xlsx
+//   blazersWebDisplay  — Delivery_Report_Blazers_*.csv
+//   rqWebDisplay       — Delivery_Report_RoseQuarter_*.csv
+//   webPreRoll         — *Pre-Roll*.csv or *Pre_Roll*.csv
 //
 // DataStore keys: webBlazersBanners[], webRQBanners[], webPreRoll[]
 // Channel key:    'webDisplay'
@@ -51,24 +51,6 @@ function _webNormalizeHeader(v) {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
 }
-
-function _webFindKeyFromHeaderValues(headerRow, candidates) {
-  const wanted = candidates.map(_webNormalizeHeader);
-  for (const [key, value] of Object.entries(headerRow || {})) {
-    if (wanted.includes(_webNormalizeHeader(value))) return key;
-  }
-  return null;
-}
-
-function _webFindKeyFromKeys(keys, candidates) {
-  const wanted = candidates.map(_webNormalizeHeader);
-  return (keys || []).find(k => wanted.includes(_webNormalizeHeader(k))) || null;
-}
-
-function _webHasAnyHeaderKey(keys, candidates) {
-  return !!_webFindKeyFromKeys(keys || [], candidates);
-}
-
 
 // CSV delivery reports are exported for this offline dashboard. Google/Ad Manager
 // exports often put a date-range row above the real column headers, which breaks
@@ -190,20 +172,15 @@ function aggregateWebBannerRows(rows) {
 // ============================================================
 
 // Blazers.com delivery report.
-// The XLSX has an unusual layout: row 1 = "Date range | <date>" (skipped),
-// row 2 = actual column headers ("Order | Line item | Total impressions | …"),
-// rows 3+ = data.  sheet_to_json uses row 1 as header keys, so rows[0] contains
-// the real header labels as VALUES.  We build a reverse colMap to find the right key.
+// CSV layout: row 1 = "Date range | <date>" (skipped), row 2 = actual column headers
+// ("Order | Line item | Total impressions | …"), rows 3+ = data.
 async function ingestBlazersBannersFile(file, ext) {
-  let rows = [];
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
       csvMatrix = parseWebCSVMatrix(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
     } else {
-      return { success: false, error: 'Unsupported file type', filename: file.name };
+      return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
     }
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
@@ -211,92 +188,45 @@ async function ingestBlazersBannersFile(file, ext) {
 
   const results = [];
 
-  if (ext === 'csv') {
-    if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
+  if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
 
-    const headerIndex = _webHeaderRowIndex(csvMatrix, [
-      ['Order'],
-      ['Line item', 'Lineitem'],
-      ['Total impressions', 'Impressions'],
-    ]);
-    if (headerIndex < 0) {
-      return { success: false, error: 'Could not find the Blazers.com delivery-report header row', filename: file.name };
-    }
-
-    const headerRow = csvMatrix[headerIndex];
-    const orderIdx    = _webColumnIndex(headerRow, ['Order']);
-    const lineItemIdx = _webColumnIndex(headerRow, ['Line item', 'Lineitem']);
-    const impressIdx  = _webColumnIndex(headerRow, ['Total impressions', 'Impressions', 'Delivered impressions']);
-    const clicksIdx   = _webColumnIndex(headerRow, ['Total clicks', 'Clicks', 'Delivered clicks']);
-    const ctrIdx      = _webColumnIndex(headerRow, ['Total CTR', 'CTR', 'Click-through rate', 'Click through rate']);
-
-    csvMatrix.slice(headerIndex + 1).forEach(row => {
-      const orderVal = String(_webRowCell(row, orderIdx) || '').trim();
-      if (!orderVal || orderVal.toLowerCase() === 'total') return;
-      const lineItem = String(_webRowCell(row, lineItemIdx) || '').trim();
-      if (isWebDNU(lineItem)) return;
-
-      const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
-      results.push({
-        Brand:      brand,
-        _rawPartner: rawPartner,
-        Season:     season,
-        Order:      orderVal,
-        LineItem:   lineItem,
-        AdType:     getWebAdType(lineItem),
-        Impressions: parseWebNum(_webRowCell(row, impressIdx)),
-        Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
-        CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
-        _source:    'blazers',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
-  } else {
-    if (!rows || rows.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
-
-    // XLSX fallback for legacy/local testing. CSV is the supported offline path.
-    const firstRowKeys = Object.keys(rows[0]).map(k => k.trim());
-    const hasTwoHeaderRows = !_webHasAnyHeaderKey(firstRowKeys, ['Order', 'Line item', 'Total impressions']);
-
-    let orderKey, lineItemKey, impressKey, clicksKey, ctrKey, dataRows;
-    if (hasTwoHeaderRows) {
-      orderKey    = _webFindKeyFromHeaderValues(rows[0], ['Order']);
-      lineItemKey = _webFindKeyFromHeaderValues(rows[0], ['Line item', 'Lineitem']);
-      impressKey  = _webFindKeyFromHeaderValues(rows[0], ['Total impressions', 'Impressions']);
-      clicksKey   = _webFindKeyFromHeaderValues(rows[0], ['Total clicks', 'Clicks']);
-      ctrKey      = _webFindKeyFromHeaderValues(rows[0], ['Total CTR', 'CTR']);
-      dataRows    = rows.slice(1);
-    } else {
-      orderKey    = _webFindKeyFromKeys(firstRowKeys, ['Order']) || 'Order';
-      lineItemKey = _webFindKeyFromKeys(firstRowKeys, ['Line item', 'Lineitem']) || 'Line item';
-      impressKey  = _webFindKeyFromKeys(firstRowKeys, ['Total impressions', 'Impressions']) || 'Total impressions';
-      clicksKey   = _webFindKeyFromKeys(firstRowKeys, ['Total clicks', 'Clicks']) || 'Total clicks';
-      ctrKey      = _webFindKeyFromKeys(firstRowKeys, ['Total CTR', 'CTR']) || 'Total CTR';
-      dataRows    = rows;
-    }
-
-    dataRows.forEach(r => {
-      const orderVal = String(r[orderKey] || '').trim();
-      if (!orderVal || orderVal.toLowerCase() === 'total') return;
-      const lineItem = String(r[lineItemKey] || '').trim();
-      if (isWebDNU(lineItem)) return;
-
-      const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
-      results.push({
-        Brand:      brand,
-        _rawPartner: rawPartner,
-        Season:     season,
-        Order:      orderVal,
-        LineItem:   lineItem,
-        AdType:     getWebAdType(lineItem),
-        Impressions: parseWebNum(r[impressKey]),
-        Clicks:      parseWebNum(r[clicksKey]),
-        CTR:         parseWebPct(r[ctrKey]),
-        _source:    'blazers',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
+  const headerIndex = _webHeaderRowIndex(csvMatrix, [
+    ['Order'],
+    ['Line item', 'Lineitem'],
+    ['Total impressions', 'Impressions'],
+  ]);
+  if (headerIndex < 0) {
+    return { success: false, error: 'Could not find the Blazers.com delivery-report header row', filename: file.name };
   }
+
+  const headerRow = csvMatrix[headerIndex];
+  const orderIdx    = _webColumnIndex(headerRow, ['Order']);
+  const lineItemIdx = _webColumnIndex(headerRow, ['Line item', 'Lineitem']);
+  const impressIdx  = _webColumnIndex(headerRow, ['Total impressions', 'Impressions', 'Delivered impressions']);
+  const clicksIdx   = _webColumnIndex(headerRow, ['Total clicks', 'Clicks', 'Delivered clicks']);
+  const ctrIdx      = _webColumnIndex(headerRow, ['Total CTR', 'CTR', 'Click-through rate', 'Click through rate']);
+
+  csvMatrix.slice(headerIndex + 1).forEach(row => {
+    const orderVal = String(_webRowCell(row, orderIdx) || '').trim();
+    if (!orderVal || orderVal.toLowerCase() === 'total') return;
+    const lineItem = String(_webRowCell(row, lineItemIdx) || '').trim();
+    if (isWebDNU(lineItem)) return;
+
+    const { brand, raw: rawPartner, season } = extractBlazersOrderPartner(orderVal);
+    results.push({
+      Brand:      brand,
+      _rawPartner: rawPartner,
+      Season:     season,
+      Order:      orderVal,
+      LineItem:   lineItem,
+      AdType:     getWebAdType(lineItem),
+      Impressions: parseWebNum(_webRowCell(row, impressIdx)),
+      Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
+      CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
+      _source:    'blazers',
+    });
+    DataStore.registerBrand(brand, 'webDisplay');
+  });
 
   DataStore.webBlazersBanners = (DataStore.webBlazersBanners || []).concat(results);
 
@@ -310,15 +240,12 @@ async function ingestBlazersBannersFile(file, ext) {
 // RoseQuarter.com delivery report.
 // Same layout quirk as Blazers: row 1 = "Date range | <date>", row 2 = real headers.
 async function ingestRQBannersFile(file, ext) {
-  let rows = [];
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
       csvMatrix = parseWebCSVMatrix(await file.text());
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      rows = parseXLSX(await file.arrayBuffer());
     } else {
-      return { success: false, error: 'Unsupported file type', filename: file.name };
+      return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
     }
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
@@ -326,73 +253,36 @@ async function ingestRQBannersFile(file, ext) {
 
   const results = [];
 
-  if (ext === 'csv') {
-    if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
+  if (!csvMatrix || csvMatrix.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
 
-    const headerIndex = _webHeaderRowIndex(csvMatrix, [
-      ['Advertiser'],
-      ['Ad server impressions', 'Impressions'],
-    ]);
-    if (headerIndex < 0) {
-      return { success: false, error: 'Could not find the RoseQuarter.com delivery-report header row', filename: file.name };
-    }
-
-    const headerRow = csvMatrix[headerIndex];
-    const advertiserIdx = _webColumnIndex(headerRow, ['Advertiser', 'Advertiser name']);
-    const impressIdx    = _webColumnIndex(headerRow, ['Ad server impressions', 'Impressions', 'Total impressions', 'Delivered impressions']);
-    const clicksIdx     = _webColumnIndex(headerRow, ['Ad server clicks', 'Clicks', 'Total clicks', 'Delivered clicks']);
-    const ctrIdx        = _webColumnIndex(headerRow, ['Ad server CTR', 'CTR', 'Total CTR', 'Click-through rate', 'Click through rate']);
-
-    csvMatrix.slice(headerIndex + 1).forEach(row => {
-      const advertiser = String(_webRowCell(row, advertiserIdx) || '').trim();
-      if (!advertiser || advertiser.toLowerCase() === 'total') return;
-      const brand = resolveCanonicalBrandName(advertiser) || advertiser;
-      results.push({
-        Brand:       brand,
-        _rawAdvertiser: advertiser,
-        Impressions: parseWebNum(_webRowCell(row, impressIdx)),
-        Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
-        CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
-        _source:     'rosequarter',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
-  } else {
-    if (!rows || rows.length < 2) return { success: false, error: 'No data rows found', filename: file.name };
-
-    const firstRowKeysRQ = Object.keys(rows[0]).map(k => k.trim());
-    const hasTwoHeaderRowsRQ = !_webHasAnyHeaderKey(firstRowKeysRQ, ['Advertiser', 'Ad server impressions']);
-
-    let advertiserKey, impressKeyRQ, clicksKeyRQ, ctrKeyRQ, dataRowsRQ;
-    if (hasTwoHeaderRowsRQ) {
-      advertiserKey = _webFindKeyFromHeaderValues(rows[0], ['Advertiser']);
-      impressKeyRQ  = _webFindKeyFromHeaderValues(rows[0], ['Ad server impressions', 'Impressions']);
-      clicksKeyRQ   = _webFindKeyFromHeaderValues(rows[0], ['Ad server clicks', 'Clicks']);
-      ctrKeyRQ      = _webFindKeyFromHeaderValues(rows[0], ['Ad server CTR', 'CTR']);
-      dataRowsRQ    = rows.slice(1);
-    } else {
-      advertiserKey = _webFindKeyFromKeys(firstRowKeysRQ, ['Advertiser']) || 'Advertiser';
-      impressKeyRQ  = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server impressions', 'Impressions']) || 'Ad server impressions';
-      clicksKeyRQ   = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server clicks', 'Clicks']) || 'Ad server clicks';
-      ctrKeyRQ      = _webFindKeyFromKeys(firstRowKeysRQ, ['Ad server CTR', 'CTR']) || 'Ad server CTR';
-      dataRowsRQ    = rows;
-    }
-
-    dataRowsRQ.forEach(r => {
-      const advertiser = String(r[advertiserKey] || '').trim();
-      if (!advertiser || advertiser.toLowerCase() === 'total') return;
-      const brand = resolveCanonicalBrandName(advertiser) || advertiser;
-      results.push({
-        Brand:       brand,
-        _rawAdvertiser: advertiser,
-        Impressions: parseWebNum(r[impressKeyRQ]),
-        Clicks:      parseWebNum(r[clicksKeyRQ]),
-        CTR:         parseWebPct(r[ctrKeyRQ]),
-        _source:     'rosequarter',
-      });
-      DataStore.registerBrand(brand, 'webDisplay');
-    });
+  const headerIndex = _webHeaderRowIndex(csvMatrix, [
+    ['Advertiser'],
+    ['Ad server impressions', 'Impressions'],
+  ]);
+  if (headerIndex < 0) {
+    return { success: false, error: 'Could not find the RoseQuarter.com delivery-report header row', filename: file.name };
   }
+
+  const headerRow = csvMatrix[headerIndex];
+  const advertiserIdx = _webColumnIndex(headerRow, ['Advertiser', 'Advertiser name']);
+  const impressIdx    = _webColumnIndex(headerRow, ['Ad server impressions', 'Impressions', 'Total impressions', 'Delivered impressions']);
+  const clicksIdx     = _webColumnIndex(headerRow, ['Ad server clicks', 'Clicks', 'Total clicks', 'Delivered clicks']);
+  const ctrIdx        = _webColumnIndex(headerRow, ['Ad server CTR', 'CTR', 'Total CTR', 'Click-through rate', 'Click through rate']);
+
+  csvMatrix.slice(headerIndex + 1).forEach(row => {
+    const advertiser = String(_webRowCell(row, advertiserIdx) || '').trim();
+    if (!advertiser || advertiser.toLowerCase() === 'total') return;
+    const brand = resolveCanonicalBrandName(advertiser) || advertiser;
+    results.push({
+      Brand:       brand,
+      _rawAdvertiser: advertiser,
+      Impressions: parseWebNum(_webRowCell(row, impressIdx)),
+      Clicks:      parseWebNum(_webRowCell(row, clicksIdx)),
+      CTR:         parseWebPct(_webRowCell(row, ctrIdx)),
+      _source:     'rosequarter',
+    });
+    DataStore.registerBrand(brand, 'webDisplay');
+  });
 
   DataStore.webRQBanners = (DataStore.webRQBanners || []).concat(results);
 
@@ -404,14 +294,12 @@ async function ingestRQBannersFile(file, ext) {
 }
 
 // Pre-Roll report.
-// This file has a proper header row (row 1 = column names), so sheet_to_json works normally.
 // Partner extracted from "Campaign Name": "Axiom > Portland Trail Blazers" → "Axiom".
 async function ingestPreRollFile(file, ext) {
   let rows = [];
   try {
-    if (ext === 'csv')                   rows = parseCSV(await file.text());
-    else if (ext === 'xlsx' || ext === 'xls') rows = parseXLSX(await file.arrayBuffer());
-    else return { success: false, error: 'Unsupported file type', filename: file.name };
+    if (ext === 'csv') rows = parseCSV(await file.text());
+    else return { success: false, error: 'Unsupported file type — CSV only', filename: file.name };
   } catch (e) {
     return { success: false, error: e.message, filename: file.name };
   }
@@ -426,7 +314,7 @@ async function ingestPreRollFile(file, ext) {
     const partnerRaw = campaignName.split(/ > /)[0].trim();
     const brand = resolveCanonicalBrandName(partnerRaw) || partnerRaw;
 
-    // Parse event date — may come in as a JS Date object (from XLSX) or string
+    // Parse event date — may come in as a JS Date object or string
     let eventDate = null;
     const rawDate = r['Event Date'];
     if (rawDate) {

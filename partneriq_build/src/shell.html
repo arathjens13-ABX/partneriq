@@ -81,15 +81,15 @@
       Paid Social: any filename containing "paid", "meta", "facebook", or "admanager". Campaign names are parsed locally; unclear partner assignments can be reviewed manually.<br>
       Brand aliases: use Manage brand aliases to merge naming variants like Daimler Trucks North America into one canonical partner.<br>
       Organic Social: <code>BrandName_DateRange.csv</code> — one file per brand<br>
-      Drop multiple CSV files at once. All processing happens locally in your browser. Offline mode makes no external calls; XLSX files should be saved/exported as CSV first.
+      Drop multiple CSV files at once. All processing happens locally in your browser — offline mode makes no external calls.
     </div>
     <div class="dropzone" id="dropzone">
       <div class="dropzone-icon">⬇</div>
       <div class="dropzone-text">
         <strong>Drop files here</strong> or click to browse<br>
-        <span style="font-size: 11px; color: var(--text-muted);">CSV supported offline · XLSX: save as CSV first</span>
+        <span style="font-size: 11px; color: var(--text-muted);">CSV only · export spreadsheets as CSV before uploading</span>
       </div>
-      <input type="file" id="fileInput" multiple accept=".csv,.xlsx,.xls" style="display:none;" />
+      <input type="file" id="fileInput" multiple accept=".csv" style="display:none;" />
     </div>
     <div class="file-list" id="fileList"></div>
     <div style="display: flex; justify-content: space-between; margin-top: 18px; gap: 12px; flex-wrap: wrap;">

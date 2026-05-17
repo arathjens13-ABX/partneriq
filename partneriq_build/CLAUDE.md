@@ -37,7 +37,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 
 | File | Responsibility |
 |------|---------------|
-| `00_vendor_shims.js` | Vendored libraries (PapaParse, etc.) |
+| `00_vendor_shims.js` | Vendored libraries (PapaParse CSV shim, LZ-string compression) |
 | `01_styles.css` | All CSS, design tokens, theme variables |
 | `02_constants.js` | Global constants, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
 | `03_changelog.js` | Full version history array |
@@ -90,8 +90,8 @@ Changes to these affect the entire app. Flag them in your plan and state what do
 | `canonicalizeAllBrandData()` | `04_datastore.js` | Brand name resolution across every channel |
 | `getSerializableDataStore()` | `04_datastore.js` | Export — missing keys means data loss on reload |
 | `hydrateFromPreloaded()` | `04_datastore.js` | Import — missing keys means data loss on load |
-| `wireSortableTables()` | `15_wiring.js` | All table sort interactivity |
-| `wireSectionToggles()` | `15_wiring.js` | All collapsible section open/close |
+| `wireSortableTables()` | `07_paid_assignment.js` | All table sort interactivity |
+| `wireSectionToggles()` | `06_helpers.js` | All collapsible section open/close |
 | `normalizeSeasonLabel()` | `04_datastore.js` | Season matching across TV, paid, and survey |
 
 ---
@@ -127,7 +127,7 @@ Any time you add or rename a key in `DataStore`, tick all four before finishing:
 ### UI Conventions
 - **Collapsible sections** use `.collapsible` class + `wireSectionToggles()`.
 - **Sortable tables** use `data-sort-key` / `data-sort-dir` on `<th>` + `wireSortableTables()`.
-- **KPI cards** reuse `.kpi-card` — don't build a new structure.
+- **KPI cards** reuse `.kpi` — don't build a new structure.
 - **Metric toggles** persist in `userPresets` via `getCurrentUserPresets()` / `applyUserPresets()`.
 - **Before building a new chart**, check `10_tv_section.js` and `13_survey_section.js` for an existing SVG pattern to adapt.
 
@@ -140,7 +140,7 @@ Any time you add or rename a key in `DataStore`, tick all four before finishing:
 - Don't add nav buttons to the header — navigation lives on Home page quick links.
 - Don't show upload controls in viewer mode — `applyViewerMode()` handles this.
 - Don't skip alias resolution — call `canonicalizeAllBrandData()` after loading data or changing alias rules.
-- Don't duplicate KPI card structures — reuse `.kpi-card`.
+- Don't duplicate KPI card structures — reuse `.kpi`.
 
 ---
 
@@ -185,10 +185,10 @@ For small changes, don't scan the whole codebase. Use this table:
 
 ### Add a KPI card to a section
 ```html
-<div class="kpi-card">
+<div class="kpi">
   <div class="kpi-label">Label</div>
   <div class="kpi-value">${formatCurrency(value)}</div>
-  <div class="kpi-badge ${delta >= 0 ? 'positive' : 'negative'}">${formatSignedPercent(delta)} YoY</div>
+  <div class="kpi-change ${delta >= 0 ? 'up' : 'down'}">${formatSignedPercent(delta)} YoY</div>
 </div>
 ```
 No wiring needed — KPI cards are static.
@@ -350,7 +350,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `attachAssetRankTooltip(el, brand, location, season)` | Attaches a rank-context tooltip to a TV asset cell |
 | `makeInfoIcon(term)` | Returns an `ⓘ` span wired to a definition tooltip |
 | `wireInfoIcons(root)` | Wires all `.info-icon` elements inside `root` after render |
-| `wireSectionToggles()` | Delegates to the same function in `07_paid_assignment.js`; kept here for discoverability |
+| `wireSectionToggles()` | Wires all `[data-section-toggle]` headers; toggles `openSections[id]` and re-renders |
 | `getAllPaidRows()` | Flattens `DataStore.paidSocial` keyed object into a single flat array |
 | `getPaidCampaignAssignmentGroups(onlyReview)` | Groups paid rows by campaign name; returns assignment status for review modal |
 | `getPaidAssignmentSummary()` | Returns `{ total, high, medium, review, unassigned }` counts for the modal header |
@@ -380,7 +380,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getPartnerAssetsForSeason(brand, period)` | Returns asset-level TV stats for a brand in a period |
 | `renderPartnerNameWithAssets(partnerName, period)` | Returns HTML for a partner name with asset badge chips |
 | `addPartnerYoY(rows, period)` | Annotates leaderboard rows with YoY delta fields |
-| `destroyCharts()` | Tears down all active Chart.js instances before a re-render |
 
 ---
 
@@ -393,6 +392,9 @@ A per-file index of every significant function. Use this to jump directly to the
 | `_renderPartnerGrid(main, rosterActive, allBrands)` | Inner renderer for the partner grid, shared between browse modes |
 | `openPortfolioHome()` | Sets `currentPage='home'` and calls `renderApp()` |
 | `openTVPortfolioPage()` | Sets `currentPage='tv'` and calls `renderApp()` |
+| `openPaidPortfolioPage()` | Sets `currentPage='paid'` and calls `renderApp()` |
+| `openOrganicSocialPortfolioPage()` | Sets `currentPage='organic'` and calls `renderApp()` |
+| `openSurveyPortfolioPage()` | Sets `currentPage='survey'` and calls `renderApp()` |
 | `openDataHealthPage()` | Navigates to the data health summary page |
 | `openGlossaryPage()` | Navigates to the metric glossary page |
 | `renderLinksPage(main)` | Renders the Links page — 8 external links grouped into Web Analytics, Attendance, Digital & Broadcast, and App Data; each opens in a new tab |
@@ -430,7 +432,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `sortAssetRows(assets)` | Applies current sort state to the asset array |
 | `getAssetSeasonTrend(brand, assetName)` | Returns multi-season trend data for an asset |
 | `getLocationQpmAverage(locationName, period)` | Portfolio average QIMV-per-minute for a location |
-| `chartDefaults()` | Returns shared Chart.js default options for all charts in this file |
 | `wireAssetBreakdownHovers(brand, period)` | Binds row-hover tooltip handlers on the asset table |
 | `wirePaidEfficiencyScatter()` | Wires filter toggle buttons on the paid efficiency scatter |
 
@@ -481,7 +482,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getSurveyPriorWave(brand, phase)` | Second-most-recent wave for YoY comparison |
 | `getSurveyTrend(brand, phase)` | Full ordered trend array across all waves |
 | `getSurveyMetricYoY(brand, phase, metric)` | YoY delta for a single survey metric |
-| `getSurveyRankYoY(brand, phase, rankKey)` | YoY delta for a rank field |
 | `normalizeSurveyRow(row)` | Coerces raw CSV columns to typed survey row |
 | `parseSurveyPct(val)` / `parseSurveyInt(val)` | Survey-specific numeric parsers |
 | `getPartnerRoster()` / `isCurrentPartner(brand)` / `getPartnerCategory(brand)` | Roster lookups |
@@ -608,9 +608,9 @@ A per-file index of every significant function. Use this to jump directly to the
 
 | Function | What it does |
 |----------|-------------|
-| `ingestBlazersBannersFile(file, ext)` | Parses Blazers.com delivery report (XLSX or CSV) into `DataStore.webBlazersBanners` |
-| `ingestRQBannersFile(file, ext)` | Parses RoseQuarter.com delivery report into `DataStore.webRQBanners` |
-| `ingestWebPreRollFile(file, ext)` | Parses pre-roll video report into `DataStore.webPreRoll` |
+| `ingestBlazersBannersFile(file, ext)` | Parses Blazers.com delivery report CSV into `DataStore.webBlazersBanners` |
+| `ingestRQBannersFile(file, ext)` | Parses RoseQuarter.com delivery report CSV into `DataStore.webRQBanners` |
+| `ingestWebPreRollFile(file, ext)` | Parses pre-roll video report CSV into `DataStore.webPreRoll` |
 | `extractBlazersOrderPartner(orderStr)` | Extracts brand name and season from an Order column string like `"Fred Meyer 2025-2026 > Trailblazers"` |
 | `getWebAdType(lineItemStr)` | Classifies a line item as `'banner'` or `'pushdown'` |
 | `isWebDNU(lineItemStr)` | Returns `true` for DNU (do not use / deprecated) line items |

@@ -26,8 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
     renderApp();
   };
   document.getElementById('homeBtn').addEventListener('click', goHome);
-  const homeNavBtn2 = document.getElementById('homeNavBtn');
-  if (homeNavBtn2) homeNavBtn2.addEventListener('click', goHome);
+  const homeNavBtn = document.getElementById('homeNavBtn');
+  if (homeNavBtn) homeNavBtn.addEventListener('click', goHome);
 
   document.getElementById('themeToggleBtn').addEventListener('click', function() {
     var isLight = document.documentElement.dataset.theme === 'light';
