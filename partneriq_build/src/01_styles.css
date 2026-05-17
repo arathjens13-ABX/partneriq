@@ -1206,6 +1206,8 @@ main {
 .yoy-change.up { color: var(--positive); }
 .yoy-change.down { color: var(--negative); }
 .yoy-change.neutral { color: var(--text-muted); }
+.yoy-change.small-sample { color: var(--text-muted); cursor: help; }
+.yoy-change.small-sample .small-sample-flag { color: var(--text-dim); font-size: 11px; }
 
 /* Leaderboards / portfolio intelligence */
 .control-row {

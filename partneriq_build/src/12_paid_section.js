@@ -91,14 +91,16 @@ function renderPaidPortfolioPage(main) {
     });
   }
 
-  const compDelta = paidPortfolioKpiMode === 'yoy' ? -12 : -1;
-  const compRows  = rowsInShiftedWindow(compDelta);
+  // Paid portfolio KPI badges compare to the prior month only — YoY was removed because
+  // paid performance shifts too much with creative and objective changes to read meaningfully
+  // year-over-year at the portfolio level.
+  const compRows = rowsInShiftedWindow(-1);
   if (compRows.length) {
     kpiCompAgg = paidAggregate(compRows);
     if (paidPortfolioDateMode === 'month') {
-      kpiCompLabel = `vs ${formatOrganicMonthLabel(shiftMonth(paidPortfolioMonth, compDelta))}`;
+      kpiCompLabel = `vs ${formatOrganicMonthLabel(shiftMonth(paidPortfolioMonth, -1))}`;
     } else if (paidPortfolioDateMode === 'range') {
-      kpiCompLabel = paidPortfolioKpiMode === 'yoy' ? 'vs prior year same range' : 'vs prior comparable range';
+      kpiCompLabel = 'vs prior comparable range';
     } else {
       kpiCompLabel = 'vs prior';
     }
@@ -199,14 +201,9 @@ function renderPaidPortfolioPage(main) {
         <span class="comparison-basis" style="margin-left:auto;">${partnerAggs.length} partner${partnerAggs.length === 1 ? '' : 's'} in window</span>
       </div>
 
-      <!-- KPI comparison toggle -->
+      <!-- KPI comparison label (MoM only) -->
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">Compare to</span>
-        <div class="comparison-toggle">
-          <button class="${paidPortfolioKpiMode === 'yoy' ? 'active' : ''}" data-paid-kpi-mode="yoy">YoY</button>
-          <button class="${paidPortfolioKpiMode === 'mom' ? 'active' : ''}" data-paid-kpi-mode="mom">MoM</button>
-        </div>
-        <span class="comparison-basis">${kpiCompLabel || `No prior ${paidPortfolioKpiMode === 'yoy' ? 'fiscal year' : 'month'} to compare`}</span>
+        <span class="comparison-basis">${kpiCompLabel || 'No prior month to compare'}</span>
       </div>
 
       <!-- Portfolio KPIs -->
@@ -383,14 +380,7 @@ function renderPaidPortfolioPage(main) {
     wireInfoIcons();
   });
 
-  // Wire KPI mode toggle
-  document.querySelectorAll('[data-paid-kpi-mode]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      paidPortfolioKpiMode = btn.dataset.paidKpiMode;
-      renderPaidPortfolioPage(main);
-      wireInfoIcons();
-    });
-  });
+  // KPI comparison toggle removed — paid portfolio uses MoM only
 
   // Wire table tab toggle
   document.querySelectorAll('[data-paid-table-tab]').forEach(btn => {
@@ -719,9 +709,8 @@ function renderPaidSection(brand) {
   if (!rows.length) return renderPaidPlaceholder();
 
   const agg = paidAggregate(rows);
-  const spendYoY = getPaidYoY(brand, currentPeriod, 'AmountSpentUSD');
-  const impYoY = getPaidYoY(brand, currentPeriod, 'Impressions');
-  const ctrYoY = getPaidYoY(brand, currentPeriod, 'CTR');
+  // No YoY badges on the Paid section: paid performance is too dependent on creative,
+  // objective, and flight strategy for year-over-year comparisons to be meaningful at this level.
 
   const summaryHTML = `
     <div class="section-summary-stat">
@@ -764,7 +753,7 @@ function renderPaidSection(brand) {
           <div class="kpi">
             <span class="kpi-label">Impressions ${makeInfoIcon('Impressions')}</span>
             <span class="kpi-value">${formatNum(agg.impressions)}</span>
-            ${impYoY ? `<span class="kpi-change ${impYoY.change >= 0 ? 'up' : 'down'}">${impYoY.change >= 0 ? '▲' : '▼'} ${Math.abs(impYoY.change * 100).toFixed(1)}% YoY</span>` : '<span class="kpi-change neutral">Paid delivery</span>'}
+            <span class="kpi-change neutral">Paid delivery</span>
           </div>
           <div class="kpi">
             <span class="kpi-label">Reported Reach ${makeInfoIcon('Reported Reach')}</span>
@@ -779,7 +768,7 @@ function renderPaidSection(brand) {
           <div class="kpi">
             <span class="kpi-label">CTR ${makeInfoIcon('CTR')}</span>
             <span class="kpi-value">${formatPct(agg.ctr, 2)}</span>
-            ${ctrYoY ? `<span class="kpi-change ${ctrYoY.change >= 0 ? 'up' : 'down'}">${ctrYoY.change >= 0 ? '▲' : '▼'} ${Math.abs((ctrYoY.curr - ctrYoY.prev) * 100).toFixed(2)}% YoY</span>` : '<span class="kpi-change neutral">Link CTR</span>'}
+            <span class="kpi-change neutral">Link CTR</span>
           </div>
           <div class="kpi">
             <span class="kpi-label">Results ${makeInfoIcon('Results')}</span>

@@ -404,6 +404,7 @@ function renderBrandAwarenessTab(container, main) {
           ${sortTh('Local HQ %',  'localhqPct', 'Sort by local HQ recall percentage')}
           <th class="num">Unaided YoY</th>
           <th class="num">Aided YoY</th>
+          <th class="num">Respondents</th>
         </tr></thead>
         <tbody>
           ${displayRows.map((r, idx) => {
@@ -425,6 +426,7 @@ function renderBrandAwarenessTab(container, main) {
               <td class="num">${r.LocalHQPct !== null ? Math.round(r.LocalHQPct*100)+'%' : '—'}</td>
               <td class="num">${fmtYoY(uYoY)}</td>
               <td class="num">${fmtYoY(aYoY)}</td>
+              <td class="num" style="color:var(--text-dim);">${r.TotalSurveyResponses !== null ? formatNum(r.TotalSurveyResponses) : '—'}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -1308,10 +1310,12 @@ function renderPartnerProgramsResearchBlock(brand, phase) {
     const top = latestRows[0] || null;
     const avgPct = latestRows.length ? latestRows.reduce((sum, r) => sum + (r.AnswerPercentage !== null ? r.AnswerPercentage : (r.TotalResponses && r.Frequency ? r.Frequency / r.TotalResponses : 0)), 0) / latestRows.length : null;
     const label = qKey === 'Q41' ? 'Community Programs' : 'In-Game Programs';
+    const latestRespondents = top && top.TotalResponses ? top.TotalResponses : (latestRows.find(r => r.TotalResponses)?.TotalResponses || null);
     const kpis = renderSurveyKpiCards([
       { label: 'Programs', value: [...new Set(qRows.map(r => r.CoreName))].length, sub: label },
       { label: 'Latest top program', value: top ? formatSurveyPctValue(top.AnswerPercentage !== null ? top.AnswerPercentage : (top.TotalResponses && top.Frequency ? top.Frequency / top.TotalResponses : null)) : '—', sub: top ? top.CoreName : latestWave || 'No latest wave' },
       { label: 'Average latest awareness', value: avgPct !== null ? Math.round(avgPct * 100) + '%' : '—', sub: latestWave || 'No wave' },
+      { label: 'Respondents', value: latestRespondents ? formatNum(latestRespondents) : '—', sub: latestWave || 'Latest wave' },
     ]);
 
     return `
@@ -1353,10 +1357,12 @@ function renderPartnerFanInsightsResearchBlock(brand, phase) {
     const latestWave = waves[waves.length - 1];
     const latestRows = qRows.filter(r => r.Survey === latestWave).sort((a, b) => (b.Frequency || 0) - (a.Frequency || 0));
     const top = latestRows[0] || null;
+    const latestRespondents = top && top.TotalResponses ? top.TotalResponses : (latestRows.find(r => r.TotalResponses)?.TotalResponses || null);
     const kpis = renderSurveyKpiCards([
       { label: 'Latest mention', value: top ? formatSurveyPctValue(top.Percentage !== null ? top.Percentage : (top.TotalResponses && top.Frequency ? top.Frequency / top.TotalResponses : null)) : '—', sub: top ? top.AnswerOption : latestWave || 'No wave' },
       { label: 'Answer options', value: [...new Set(qRows.map(r => r.AnswerOption))].length, sub: 'Linked to this partner' },
       { label: 'Waves', value: waves.length, sub: phase || 'All wave timing' },
+      { label: 'Respondents', value: latestRespondents ? formatNum(latestRespondents) : '—', sub: latestWave || 'Latest wave' },
     ]);
     return `
       <div class="card survey-chart-card">
@@ -1584,7 +1590,34 @@ function getPartnerSpecificRowComparison(row, mode = 'survey') {
     : candidates[0];
   const priorValue = getPartnerSpecificRowValue(prior);
   if (!prior || priorValue === null || priorValue === undefined || Number.isNaN(priorValue)) return null;
-  return { delta: currentValue - priorValue, pctChange: surveyPctChangeFromValues(currentValue, priorValue), priorWave: prior.Survey };
+  return {
+    delta: currentValue - priorValue,
+    pctChange: surveyPctChangeFromValues(currentValue, priorValue),
+    priorWave: prior.Survey,
+    currFrequency: row.Frequency,
+    priorFrequency: prior.Frequency,
+  };
+}
+
+// Fewer than 5 respondents on either side is too thin to call a real movement — render the
+// delta with a muted style and tooltip so the reader can self-discount it rather than treat
+// a swing from 2 → 4 like a real signal.
+const SURVEY_SMALL_SAMPLE_MIN_N = 5;
+function isSurveyDeltaSmallSample(delta) {
+  if (!delta) return false;
+  const a = typeof delta.currFrequency === 'number' ? delta.currFrequency : Infinity;
+  const b = typeof delta.priorFrequency === 'number' ? delta.priorFrequency : Infinity;
+  return Math.min(a, b) < SURVEY_SMALL_SAMPLE_MIN_N;
+}
+function formatSurveyDeltaCell(delta) {
+  if (!delta) return '—';
+  if (isSurveyDeltaSmallSample(delta)) {
+    const minN = Math.min(delta.currFrequency ?? Infinity, delta.priorFrequency ?? Infinity);
+    const title = `Compared with ${delta.priorWave} — small sample (n=${minN}). Treat as directional only.`;
+    const text = formatSurveyPctChangeText(delta.pctChange);
+    return `<span class="yoy-change small-sample" title="${escapeHTML(title)}">${text} <span class="small-sample-flag">⚠</span></span>`;
+  }
+  return formatSurveyPctChangeHTML(delta.pctChange, '');
 }
 
 function getPriorProgramWaveRow(coreName, questionKey, wave) {
@@ -1810,7 +1843,7 @@ function renderPartnerSpecificHistoryTable(rows) {
       <tbody>${sorted.map(r => {
         const surveyDelta = getPartnerSpecificRowComparison(r, 'survey');
         const yoyDelta = getPartnerSpecificRowComparison(r, 'yoy');
-        return `<tr><td style="text-align:left;">${escapeHTML(r.Survey)}</td><td style="text-align:left;font-weight:500;">${escapeHTML(r.Response)}</td><td class="num">${r.Frequency !== null ? formatNum(r.Frequency) : '—'}</td><td class="num">${formatSurveyPctValue(r.Percentage !== null ? r.Percentage : (r.TotalResponses && r.Frequency ? r.Frequency / r.TotalResponses : null))}</td><td class="num" title="${surveyDelta ? 'Compared with ' + escapeHTML(surveyDelta.priorWave) : ''}">${surveyDelta ? formatSurveyPctChangeHTML(surveyDelta.pctChange) : '—'}</td><td class="num" title="${yoyDelta ? 'Compared with ' + escapeHTML(yoyDelta.priorWave) : ''}">${yoyDelta ? formatSurveyPctChangeHTML(yoyDelta.pctChange) : '—'}</td><td class="num">${r.TotalResponses ? formatNum(r.TotalResponses) : '—'}</td></tr>`;
+        return `<tr><td style="text-align:left;">${escapeHTML(r.Survey)}</td><td style="text-align:left;font-weight:500;">${escapeHTML(r.Response)}</td><td class="num">${r.Frequency !== null ? formatNum(r.Frequency) : '—'}</td><td class="num">${formatSurveyPctValue(r.Percentage !== null ? r.Percentage : (r.TotalResponses && r.Frequency ? r.Frequency / r.TotalResponses : null))}</td><td class="num">${formatSurveyDeltaCell(surveyDelta)}</td><td class="num">${formatSurveyDeltaCell(yoyDelta)}</td><td class="num">${r.TotalResponses ? formatNum(r.TotalResponses) : '—'}</td></tr>`;
       }).join('')}</tbody>
     </table>
   </div>`;

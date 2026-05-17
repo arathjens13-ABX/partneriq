@@ -364,22 +364,6 @@ function getPaidSeasons(brand) {
   return [...new Set(getBrandPaidData(brand).map(r => normalizeSeasonLabel(r.Season)).filter(Boolean))].sort();
 }
 
-function getPaidYoY(brand, period, key) {
-  const seasons = getPaidSeasons(brand);
-  if (seasons.length < 2) return null;
-  const currSeason = period === 'all' ? seasons[seasons.length - 1] : period;
-  const idx = seasons.indexOf(currSeason);
-  if (idx <= 0) return null;
-  const prevSeason = seasons[idx - 1];
-  const currRows = getBrandPaidData(brand, currSeason);
-  const prevRows = getBrandPaidData(brand, prevSeason);
-  if (!currRows.length || !prevRows.length) return null;
-  const curr = key === 'CTR' ? paidAggregate(currRows).ctr : sum(currRows, key);
-  const prev = key === 'CTR' ? paidAggregate(prevRows).ctr : sum(prevRows, key);
-  const change = pctChange(curr, prev);
-  return change === null ? null : { change, curr, prev, currSeason, prevSeason, basis: `${currSeason} vs ${prevSeason}` };
-}
-
 function paidAggregate(rows) {
   const spend = sum(rows, 'AmountSpentUSD');
   const impressions = sum(rows, 'Impressions');

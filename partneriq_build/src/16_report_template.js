@@ -376,7 +376,7 @@ function generatePartnerReport(brand, options) {
       ${d.survey.wave.LocalHQPct != null
         ? surveyBar(d.survey.wave.LocalHQPct, d.survey.wave.LocalHQRecallRank, 'Local HQ Recall', d.survey.totalInWave)
         : ''}
-      <div class="r-survey-meta">${d.survey.wave.Survey} · ${d.survey.wave.TotalSurveyResponses || '—'} respondents</div>
+      <div class="r-survey-meta">${d.survey.wave.Survey}</div>
     ` : `<div class="r-empty">No survey data loaded.</div>`;
 
     sectionBlocks.push(`

@@ -329,7 +329,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getBrandPaidData(brand, season)` | Returns aggregated paid social rows for a brand/season |
 | `getBrandPaidDailyRows(brand, season)` | Returns daily-granularity paid rows for pacing charts |
 | `getPaidSeasons(brand)` | Returns distinct seasons present in paid data for a brand |
-| `getPaidYoY(brand, period, key)` | Computes YoY delta for a paid metric key |
 
 ---
 
@@ -425,7 +424,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPaceChart(brand, period)` | Season-pace SVG line chart overlaying current vs prior season |
 | `renderPaidEfficiencyScatter(partnerAggs, resultFilter)` | Portfolio-level paid efficiency scatter plot |
 | `renderTopMatchesTable(rows)` | Renders the top-games table inside the TV section |
-| `renderYoYChange(yoy)` | Returns a formatted YoY badge `<span>` |
+| `renderYoYChange(yoy)` | Returns a formatted YoY badge `<span>`. Falls back to a muted "small sample" style when either side of the comparison logged under `TV_ASSET_SMALL_SAMPLE_MIN_MINUTES` (1 minute) of on-screen time |
 | `aggregateAssetRows(rows)` | Sums TV rows by asset location |
 | `assetStatsFromAggregate(byAsset)` | Converts aggregated map to a sorted stats array |
 | `getAssetYoYChange(brand, assetName, period)` | YoY delta for one named asset |

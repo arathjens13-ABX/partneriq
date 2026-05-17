@@ -1,5 +1,38 @@
 const CHANGELOG = [
   {
+    version: 'v0.44',
+    date: 'May 2026',
+    source: 'Claude',
+    title: 'Paid YoY removed, small-sample guards on TV asset and survey question deltas, more respondent counts (but not in the PDF)',
+    changes: [
+      {
+        category: 'Paid Social',
+        items: [
+          `Removed YoY indicators from the Paid Social partner section — Impressions and CTR KPI cards no longer carry a YoY badge. Paid performance shifts too much with creative and objective changes for year-over-year comparisons to be meaningful at this level`,
+          `Removed the YoY option from the Paid Social Portfolio page's comparison toggle. KPI badges on that page now always compare to the prior month; the toggle UI is dropped since there's only one mode left. paidPortfolioKpiMode now defaults to 'mom' and is preserved as a serialized field for export/import compatibility`,
+          `Deleted getPaidYoY() in 05_paid_constants.js — no remaining callers after the badge removal`,
+        ]
+      },
+      {
+        category: 'Small-sample guards',
+        items: [
+          `TV Visible Signage asset breakdown YoY badge now shows in a muted "small sample" style when either the current or prior period had under 1 minute of total on-screen time on that asset. The number is still shown so the AM can see direction, but the styling and tooltip make clear it shouldn't be read as a real signal — a single mis-attributed clip can swing per-minute QIMV wildly at low totals. Constant TV_ASSET_SMALL_SAMPLE_MIN_MINUTES = 1 in 10_tv_section.js`,
+          `Partner-specific survey question table now applies the same small-sample treatment when either the current or prior wave drew fewer than 5 responses for that question/response combo. New formatSurveyDeltaCell() helper in 13_survey_section.js routes through isSurveyDeltaSmallSample() to decide which formatter to use; getPartnerSpecificRowComparison() now returns currFrequency and priorFrequency so the renderer can inspect both sides. Constant SURVEY_SMALL_SAMPLE_MIN_N = 5`,
+          `Added a shared .yoy-change.small-sample CSS rule in 01_styles.css so the muted style is consistent across TV and survey`,
+        ]
+      },
+      {
+        category: 'Respondent counts',
+        items: [
+          `Survey Research portfolio brand-awareness leaderboard now has a "Respondents" column showing the total survey responses behind each brand's row — useful context for the AM when reading the ranks and recall percentages`,
+          `Partner-page Programs & Community block KPI bar now includes a "Respondents" tile alongside Programs / Latest top program / Average awareness`,
+          `Partner-page Fan Insights block KPI bar now includes a "Respondents" tile alongside Latest mention / Answer options / Waves`,
+          `Stripped the respondents line from the PDF partner report's Brand Awareness Survey card (16_report_template.js) — respondent counts stay in the dashboard for AMs but not in the externally-shared PDF`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.43',
     date: 'May 2026',
     source: 'Claude',
