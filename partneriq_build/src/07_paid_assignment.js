@@ -4,7 +4,6 @@
 let currentBrand = null;
 let currentPeriod = null; // will be set to latest season on brand select
 let currentPage = 'home';
-let activeCharts = [];
 let homeLeaderboardMetric = 'brand_qimv';
 let locationPerformanceMetric = 'qimv';
 let homePeriod = null;
@@ -37,13 +36,6 @@ let paidPortfolioEndMonth   = '';         // YYYY-MM
 // Result Indicator filter for the Partner Efficiency scatter. 'all' = no filter.
 let paidPortfolioResultFilter = 'all';
 const TABLE_LIMITS = { homeLeaderboard: 10, locationPerformance: 10, organicPortfolio: 10, paidPortfolio: 10 };
-
-function destroyCharts() {
-  activeCharts.forEach(c => { try { c.destroy(); } catch(e){} });
-  activeCharts = [];
-}
-
-
 
 // Returns only non-virtual-branding TV rows for portfolio-level aggregations.
 // Virtual Branding (Center / 3 Point Line) is handled by the Virtual Signage page.
