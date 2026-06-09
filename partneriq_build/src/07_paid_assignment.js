@@ -21,7 +21,6 @@ let openSections = {};
 let currentSurveyPhase = 'Early';
 let currentPartnerSurveyPhase = 'Early';
 let paidPortfolioPeriod = 'latest';
-const sessionLoadedFiles = []; // persists across modal open/close
 let paidPortfolioSortKey = 'impressions';
 let paidPortfolioSortDir = 'desc';
 let paidPortfolioTableTab   = 'partners'; // 'partners' | 'campaigns'

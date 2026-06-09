@@ -174,7 +174,7 @@ function aggregateWebBannerRows(rows) {
 // Blazers.com delivery report.
 // CSV layout: row 1 = "Date range | <date>" (skipped), row 2 = actual column headers
 // ("Order | Line item | Total impressions | …"), rows 3+ = data.
-async function ingestBlazersBannersFile(file, ext) {
+async function ingestBlazersBannersFile(file, ext, fileId) {
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
@@ -228,6 +228,7 @@ async function ingestBlazersBannersFile(file, ext) {
     DataStore.registerBrand(brand, 'webDisplay');
   });
 
+  tagRowsWithFile(results, fileId);
   DataStore.webBlazersBanners = (DataStore.webBlazersBanners || []).concat(results);
 
   const brands = [...new Set(results.map(r => r.Brand).filter(Boolean))];
@@ -239,7 +240,7 @@ async function ingestBlazersBannersFile(file, ext) {
 
 // RoseQuarter.com delivery report.
 // Same layout quirk as Blazers: row 1 = "Date range | <date>", row 2 = real headers.
-async function ingestRQBannersFile(file, ext) {
+async function ingestRQBannersFile(file, ext, fileId) {
   let csvMatrix = null;
   try {
     if (ext === 'csv') {
@@ -284,6 +285,7 @@ async function ingestRQBannersFile(file, ext) {
     DataStore.registerBrand(brand, 'webDisplay');
   });
 
+  tagRowsWithFile(results, fileId);
   DataStore.webRQBanners = (DataStore.webRQBanners || []).concat(results);
 
   const brands = [...new Set(results.map(r => r.Brand).filter(Boolean))];
@@ -295,7 +297,7 @@ async function ingestRQBannersFile(file, ext) {
 
 // Pre-Roll report.
 // Partner extracted from "Campaign Name": "Axiom > Portland Trail Blazers" → "Axiom".
-async function ingestPreRollFile(file, ext) {
+async function ingestPreRollFile(file, ext, fileId) {
   let rows = [];
   try {
     if (ext === 'csv') rows = parseCSV(await file.text());
@@ -343,6 +345,7 @@ async function ingestPreRollFile(file, ext) {
     DataStore.registerBrand(brand, 'webDisplay');
   });
 
+  tagRowsWithFile(results, fileId);
   DataStore.webPreRoll = (DataStore.webPreRoll || []).concat(results);
 
   const brands = [...new Set(results.map(r => r.Brand).filter(Boolean))];

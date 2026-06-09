@@ -300,6 +300,11 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getSerializableDataStore()` | Returns a plain object snapshot of DataStore for embedding in an export |
 | `hydrateFromPreloaded(data)` | Restores DataStore from an embedded `PRELOADED_DATA` object on load |
 | `loadPreloadedData()` | Top-level boot function: calls `hydrateFromPreloaded`, normalizes, canonicalizes |
+| `generateFileId()` | Returns a unique id for one uploaded file; stamped onto every ingested row as `_fileId` |
+| `tagRowsWithFile(rows, fileId)` | Sets `_fileId` on each row object; returns the same array for chaining |
+| `getLoadedFileEntry(fileId)` | Returns the `DataStore.loadedFiles` registry entry for a file id, or null |
+| `removeFileDataById(fileId)` | Strips all rows tagged with the file id from every DataStore collection and drops the registry entry; no rebuild/re-render — caller decides |
+| `removeLoadedFile(fileId)` | User-facing remove: confirm dialog, strip rows, `canonicalizeAllBrandData()`, fall back to Home if the viewed partner vanished, re-render |
 | `getCurrentUserPresets()` | Serializes current UI toggles/filters for persistence |
 | `applyUserPresets(presets)` | Restores UI state from a saved preset object |
 | `exportPreloadedDashboard()` | Injects DataStore + meta into the HTML template and triggers download |
@@ -498,7 +503,12 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
 | `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) |
-| `ingestFile(file, rows, fileType)` | Routes a parsed file to the correct channel ingest function |
+| `ingestFile(file)` | Generates a file id, delegates to `_ingestFileInner`, attaches `fileId` to the result |
+| `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id |
+| `handleFiles(fileList)` | Batch entry point for drops/picks: consumes a pending replace, prompts on duplicate filenames, ingests each file, records registry entries, re-canonicalizes and re-renders |
+| `startReplaceFile(fileId)` | Arms `pendingReplaceFileId` and opens the file picker — the next picked file swaps in for the old one |
+| `describeLoadedFile(result)` | One-line summary string for a file-log entry (type, rows, brands…) |
+| `renderFileLog()` | Renders `DataStore.loadedFiles` into the modal file list with per-file Replace/Remove buttons (hidden in viewer mode or for pre-registry entries) |
 | `normalizeTVRatingsRow(row)` | Coerces a raw Nielsen TV metrics row into a typed ratings row; derives segment from Program column and season from Custom Year column |
 | `ingestTVRatingsFile(rows)` | Normalizes and deduplicates Nielsen rows into `DataStore.tvRatings`; safe to re-ingest the same export |
 | `normalizeZoomphRow(row, fileType)` | Coerces a raw organic row into a typed object |
@@ -608,9 +618,9 @@ A per-file index of every significant function. Use this to jump directly to the
 
 | Function | What it does |
 |----------|-------------|
-| `ingestBlazersBannersFile(file, ext)` | Parses Blazers.com delivery report CSV into `DataStore.webBlazersBanners` |
-| `ingestRQBannersFile(file, ext)` | Parses RoseQuarter.com delivery report CSV into `DataStore.webRQBanners` |
-| `ingestWebPreRollFile(file, ext)` | Parses pre-roll video report CSV into `DataStore.webPreRoll` |
+| `ingestBlazersBannersFile(file, ext, fileId)` | Parses Blazers.com delivery report CSV into `DataStore.webBlazersBanners`; tags rows with the file id |
+| `ingestRQBannersFile(file, ext, fileId)` | Parses RoseQuarter.com delivery report CSV into `DataStore.webRQBanners`; tags rows with the file id |
+| `ingestPreRollFile(file, ext, fileId)` | Parses pre-roll video report CSV into `DataStore.webPreRoll`; tags rows with the file id |
 | `extractBlazersOrderPartner(orderStr)` | Extracts brand name and season from an Order column string like `"Fred Meyer 2025-2026 > Trailblazers"` |
 | `getWebAdType(lineItemStr)` | Classifies a line item as `'banner'` or `'pushdown'` |
 | `isWebDNU(lineItemStr)` | Returns `true` for DNU (do not use / deprecated) line items |
