@@ -181,6 +181,7 @@ const DataStore = {
   webRQBanners: [],                 // RoseQuarter.com display banner delivery rows
   webPreRoll: [],                   // Pre-Roll video delivery rows
   tvRatings: [],                    // Nielsen TV broadcast viewership data (game-level ratings, not partner data)
+  loadedFiles: [],                  // Per-file ingest registry { fileId, filename, type, rows, loadedAt, ... } — backs Remove/Replace in the file log
   brands: new Set(),
   channelsByBrand: {},
 
@@ -209,6 +210,7 @@ const DataStore = {
     this.webRQBanners = [];
     this.webPreRoll = [];
     this.tvRatings = [];
+    this.loadedFiles = [];
     this.brands = new Set();
     this.channelsByBrand = {};
   },
@@ -240,6 +242,78 @@ const DataStore = {
     return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay + tvRatings > 0;
   }
 };
+
+// ============================================================
+// LOADED-FILE REGISTRY — per-file provenance, remove & replace
+// ============================================================
+let _fileIdCounter = 0;
+function generateFileId() {
+  return 'f' + Date.now().toString(36) + '-' + (++_fileIdCounter).toString(36) + '-' + Math.floor(Math.random() * 46656).toString(36);
+}
+
+function tagRowsWithFile(rows, fileId) {
+  (rows || []).forEach(r => { if (r && typeof r === 'object') r._fileId = fileId; });
+  return rows;
+}
+
+function getLoadedFileEntry(fileId) {
+  return (DataStore.loadedFiles || []).find(f => f.fileId === fileId) || null;
+}
+
+// Strips every row tagged with fileId out of all DataStore collections and
+// drops the registry entry. Does NOT rebuild registries or re-render — callers
+// decide how much downstream work to run (single remove vs. replace flow).
+function removeFileDataById(fileId) {
+  const byFile = r => !r || r._fileId !== fileId;
+  DataStore.tvSignage          = (DataStore.tvSignage || []).filter(byFile);
+  DataStore.zoomphBrandPerf    = (DataStore.zoomphBrandPerf || []).filter(byFile);
+  DataStore.zoomphContentSeries= (DataStore.zoomphContentSeries || []).filter(byFile);
+  DataStore.zoomphAssets       = (DataStore.zoomphAssets || []).filter(byFile);
+  DataStore.surveys            = (DataStore.surveys || []).filter(byFile);
+  DataStore.surveyGeneral      = (DataStore.surveyGeneral || []).filter(byFile);
+  DataStore.surveyPartner      = (DataStore.surveyPartner || []).filter(byFile);
+  DataStore.surveyPrograms     = (DataStore.surveyPrograms || []).filter(byFile);
+  DataStore.partnerRoster      = (DataStore.partnerRoster || []).filter(byFile);
+  DataStore.affidavits         = (DataStore.affidavits || []).filter(byFile);
+  DataStore.ancLED             = (DataStore.ancLED || []).filter(byFile);
+  DataStore.virtualSignageSchedule = (DataStore.virtualSignageSchedule || []).filter(byFile);
+  DataStore.webBlazersBanners  = (DataStore.webBlazersBanners || []).filter(byFile);
+  DataStore.webRQBanners       = (DataStore.webRQBanners || []).filter(byFile);
+  DataStore.webPreRoll         = (DataStore.webPreRoll || []).filter(byFile);
+  DataStore.tvRatings          = (DataStore.tvRatings || []).filter(byFile);
+  // Brand-keyed collections: filter each bucket, drop buckets that empty out
+  [DataStore.organicSocial, DataStore.paidSocial].forEach(obj => {
+    if (!obj || typeof obj !== 'object') return;
+    Object.keys(obj).forEach(brand => {
+      obj[brand] = (obj[brand] || []).filter(byFile);
+      if (!obj[brand].length) delete obj[brand];
+    });
+  });
+  DataStore.loadedFiles = (DataStore.loadedFiles || []).filter(f => f.fileId !== fileId);
+}
+
+// User-facing remove: confirm, strip rows, rebuild brand state, re-render.
+function removeLoadedFile(fileId) {
+  const entry = getLoadedFileEntry(fileId);
+  if (!entry) return;
+  // Error entries hold no data — dismiss the log line without confirmation
+  if (entry.success === false) {
+    DataStore.loadedFiles = DataStore.loadedFiles.filter(f => f.fileId !== fileId);
+    renderFileLog();
+    return;
+  }
+  if (!confirm(`Remove "${entry.filename}" and its ${entry.rows || 0} rows from the dashboard?`)) return;
+  removeFileDataById(fileId);
+  canonicalizeAllBrandData();
+  // If the partner being viewed disappeared with the file, fall back to Home
+  if (typeof currentBrand !== 'undefined' && currentBrand && !DataStore.brands.has(currentBrand)) {
+    currentBrand = null;
+    currentPage = 'home';
+  }
+  renderFileLog();
+  renderApp();
+  updateBrandDropdown(document.getElementById('brandSearch').value);
+}
 
 // ============================================================
 // PRELOADED DATA HELPERS
@@ -567,6 +641,7 @@ function loadPreloadedData() {
   DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
   DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
   DataStore.tvRatings = Array.isArray(PRELOADED_DATA.tvRatings) ? PRELOADED_DATA.tvRatings : [];
+  DataStore.loadedFiles = Array.isArray(PRELOADED_DATA.loadedFiles) ? PRELOADED_DATA.loadedFiles : [];
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
   DataStore.brandNameChanges = new Set(Array.isArray(PRELOADED_DATA.brandNameChanges) ? PRELOADED_DATA.brandNameChanges : []);
   normalizeLoadedRows();
@@ -682,6 +757,8 @@ function getSerializableDataStore() {
     webRQBanners: DataStore.webRQBanners || [],
     webPreRoll: DataStore.webPreRoll || [],
     tvRatings: DataStore.tvRatings || [],
+    // Only successful ingests carry data worth round-tripping; error log lines stay session-only
+    loadedFiles: (DataStore.loadedFiles || []).filter(f => f && f.success !== false),
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
     brandNameChanges: [...(DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : [])],
     userPresets: getCurrentUserPresets()

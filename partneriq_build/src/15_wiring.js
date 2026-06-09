@@ -46,27 +46,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const dz = document.getElementById('dropzone');
   const fileInput = document.getElementById('fileInput');
-  dz.addEventListener('click', () => fileInput.click());
+  // Disarm any pending replace and reset the input so picking the same filename re-fires change
+  dz.addEventListener('click', () => { pendingReplaceFileId = null; fileInput.value = ''; fileInput.click(); });
   dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
   dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-  dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('dragover'); handleFiles(e.dataTransfer.files); });
+  dz.addEventListener('drop', (e) => { e.preventDefault(); dz.classList.remove('dragover'); pendingReplaceFileId = null; handleFiles(e.dataTransfer.files); });
   fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
 
   document.getElementById('loadMockBtn').addEventListener('click', () => {
     generateMockData();
     modal.classList.remove('active');
-    document.getElementById('fileList').innerHTML = '';
+    renderFileLog();
     renderApp();
     updateBrandDropdown('');
   });
 
   document.getElementById('clearDataBtn').addEventListener('click', () => {
+    if (!DataStore.hasAnyData() && !(DataStore.loadedFiles || []).length) return;
+    if (!confirm('Clear ALL loaded data and the file log? This cannot be undone.')) return;
     DataStore.reset();
     currentBrand = null;
     currentPage = 'home';
     currentPeriod = null;
     document.getElementById('brandSearch').value = '';
-    document.getElementById('fileList').innerHTML = '';
+    renderFileLog();
     renderApp();
   });
 
@@ -110,6 +113,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const loadedPreloaded = loadPreloadedData();
   applyViewerMode();
+  // Restore the file log from the embedded registry so Remove/Replace work after reopening an export
+  if (loadedPreloaded) renderFileLog();
 
   // Inject org logo into header from PARTNER_LOGOS["TrailBlazers"] if available
   const orgLogoImg = document.getElementById('org-logo-img');

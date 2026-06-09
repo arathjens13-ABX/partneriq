@@ -32,7 +32,8 @@ Output goes to `dist/partneriq.html` — this is the file to share.
 1. Edit source files in `src/`
 2. Run Cell 1 in `build.ipynb`
 3. Test in browser (Cell 3 opens it automatically)
-4. Share `dist/partneriq.html`
+4. Optional: `node smoke_test.js` — loads `dist/partneriq.html` headlessly and exercises file ingest, per-file remove/replace, and the export/import round-trip
+5. Share `dist/partneriq.html`
 
 ## Adding a new version
 

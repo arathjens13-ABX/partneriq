@@ -1,5 +1,31 @@
 const CHANGELOG = [
   {
+    version: 'v0.45',
+    date: 'June 2026',
+    source: 'Claude',
+    title: 'File manager — remove or replace individual data files without starting over',
+    changes: [
+      {
+        category: 'File manager',
+        items: [
+          `Every uploaded file's rows are now tagged with a file ID at ingest, and the file log (Import / Export modal) became a persistent file manager: each loaded file shows Replace and Remove buttons. Remove strips that file's rows from every channel, rebuilds the brand registry, and re-renders; Replace opens the file picker and swaps the old file's data for the new CSV in one step`,
+          `Re-uploading a file whose name is already loaded now prompts to replace the existing data instead of silently double-counting rows — previously every re-upload duplicated the file's rows, which is why updating one file meant clearing everything and starting over`,
+          `The loaded-file registry is included in preloaded exports (new loadedFiles key in the DataStore serialization), so reopening an exported dashboard restores the file log with working Remove/Replace buttons. Old exports without the registry still load fine — their file log is simply empty`,
+          `New functions: generateFileId / tagRowsWithFile / getLoadedFileEntry / removeFileDataById / removeLoadedFile in 04_datastore.js; startReplaceFile / describeLoadedFile in 14_organic_section.js. The transient sessionLoadedFiles array is gone — DataStore.loadedFiles is the single source of truth`,
+          `Roster and Virtual Signage schedule uploads overwrite their whole collection by design, so loading a new one now retires the superseded file's log entry instead of listing both`,
+        ]
+      },
+      {
+        category: 'Safety',
+        items: [
+          `Clear all data now asks for confirmation — it previously wiped every loaded row in one click with no undo`,
+          `Removing the file that contains the partner page you're viewing falls back to Home instead of rendering an empty partner`,
+          `Failed-upload log entries can be dismissed individually with their new ✕ button`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.44',
     date: 'May 2026',
     source: 'Claude',

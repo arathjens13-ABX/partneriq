@@ -1071,6 +1071,29 @@ main {
 
 .file-item-name { color: var(--text); }
 .file-item-info { color: var(--text-muted); }
+.file-item-date { color: var(--text-muted); font-size: 10px; }
+
+.file-item-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: 12px;
+  flex-shrink: 0;
+}
+
+.file-item-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.file-item-btn:hover { color: var(--text); border-color: var(--text-muted); }
+.file-item-btn.danger:hover { color: var(--negative); border-color: var(--negative); }
 
 /* Data status bar */
 .data-status {

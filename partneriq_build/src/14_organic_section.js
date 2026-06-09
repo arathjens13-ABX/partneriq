@@ -828,6 +828,13 @@ function ingestTVRatingsFile(rows) {
 }
 
 async function ingestFile(file) {
+  const fileId = generateFileId();
+  const result = await _ingestFileInner(file, fileId);
+  result.fileId = fileId;
+  return result;
+}
+
+async function _ingestFileInner(file, fileId) {
   const ext = file.name.split('.').pop().toLowerCase();
   let rows = [];
   try {
@@ -840,6 +847,7 @@ async function ingestFile(file) {
 
   const type = detectFileType(file.name, rows);
   if (type === 'tv') {
+    tagRowsWithFile(rows, fileId);
     rows.forEach(r => {
       if (r.Season) r.Season = normalizeSeasonLabel(r.Season);
       if (r.Brand) {
@@ -850,6 +858,7 @@ async function ingestFile(file) {
     });
     return { success: true, type: 'tv', rows: rows.length, filename: file.name };
   } else if (type === 'paid') {
+    tagRowsWithFile(rows, fileId);
     rows.forEach(r => normalizePaidRow(r, r.Brand || r.Partner || ''));
     const grouped = {};
     rows.forEach(r => {
@@ -866,7 +875,7 @@ async function ingestFile(file) {
     const brands = Object.keys(grouped).filter(b => b !== UNASSIGNED_PAID_KEY).join(', ') || 'paid campaigns loaded';
     return { success: true, type: 'paid', brand: brands, rows: rows.length, reviewCount: summary.medium + summary.unassigned, filename: file.name };
   } else if (type === 'survey') {
-    const normalized = rows.map(r => normalizeSurveyRow(r)).filter(r => r.Brand && r.Survey);
+    const normalized = tagRowsWithFile(rows.map(r => normalizeSurveyRow(r)).filter(r => r.Brand && r.Survey), fileId);
     normalized.forEach(r => {
       DataStore.surveys.push(r);
       DataStore.registerBrand(r.Brand, 'survey');
@@ -876,7 +885,7 @@ async function ingestFile(file) {
     return { success: true, type: 'survey', rows: normalized.length, phases: phases.join('+'), seasons: seasons.join(', '), filename: file.name };
 
   } else if (type === 'zoomphBrand' || type === 'zoomphSeries' || type === 'zoomphAsset') {
-    const normalized = rows.map(r => normalizeZoomphRow(r, type)).filter(r => r.Name);
+    const normalized = tagRowsWithFile(rows.map(r => normalizeZoomphRow(r, type)).filter(r => r.Name), fileId);
     const storeKey = type === 'zoomphBrand' ? 'zoomphBrandPerf' : type === 'zoomphSeries' ? 'zoomphContentSeries' : 'zoomphAssets';
     DataStore[storeKey] = DataStore[storeKey].concat(normalized);
     // Register brands
@@ -885,7 +894,7 @@ async function ingestFile(file) {
     return { success: true, type, rows: normalized.length, unresolved, filename: file.name };
 
   } else if (type === 'generalSurvey') {
-    const normalized = rows.map(r => normalizeGeneralSurveyRow(r)).filter(r => r.Question && r.AnswerOption);
+    const normalized = tagRowsWithFile(rows.map(r => normalizeGeneralSurveyRow(r)).filter(r => r.Question && r.AnswerOption), fileId);
     applyGeneralSurveyAssignmentRules(normalized);
     DataStore.surveyGeneral = DataStore.surveyGeneral.concat(normalized);
     normalized.forEach(r => { if (r._partner) DataStore.registerBrand(r._partner, 'survey'); });
@@ -895,14 +904,14 @@ async function ingestFile(file) {
     return { success: true, type: 'generalSurvey', rows: normalized.length, questions: questions.length, waves: waves.length, unmatched, filename: file.name };
 
   } else if (type === 'partnerSurvey') {
-    const normalized = rows.map(r => normalizePartnerSurveyRow(r)).filter(r => r.Question && r.Response && r.Partner);
+    const normalized = tagRowsWithFile(rows.map(r => normalizePartnerSurveyRow(r)).filter(r => r.Question && r.Response && r.Partner), fileId);
     DataStore.surveyPartner = DataStore.surveyPartner.concat(normalized);
     const partners = [...new Set(normalized.map(r => r.Partner).filter(Boolean))];
     const waves = [...new Set(normalized.map(r => r.Survey).filter(Boolean))];
     return { success: true, type: 'partnerSurvey', rows: normalized.length, partners: partners.join(' + '), waves: waves.length, filename: file.name };
 
   } else if (type === 'programSurvey') {
-    const normalized = rows.map(r => normalizeProgramSurveyRow(r)).filter(r => r.ProgramName && r.ProgramName !== 'None of these');
+    const normalized = tagRowsWithFile(rows.map(r => normalizeProgramSurveyRow(r)).filter(r => r.ProgramName && r.ProgramName !== 'None of these'), fileId);
     DataStore.surveyPrograms = DataStore.surveyPrograms.concat(normalized);
     normalized.forEach(r => { if (r.Sponsor) DataStore.registerBrand(r.Sponsor, 'survey'); });
     const programs = [...new Set(normalized.map(r => r.CoreName).filter(Boolean))];
@@ -911,33 +920,34 @@ async function ingestFile(file) {
     return { success: true, type: 'programSurvey', rows: normalized.length, programs: programs.length, waves: waves.length, sponsored, filename: file.name };
 
   } else if (type === 'tvRatings') {
-    const ingested = ingestTVRatingsFile(rows);
+    // Tag only rows that survived dedupe — overlapping rows stay owned by the file that first brought them
+    const ingested = tagRowsWithFile(ingestTVRatingsFile(rows), fileId);
     const seasons = [...new Set(ingested.map(r => r.season).filter(Boolean))];
     const games   = [...new Set(ingested.filter(r => r.segment === 'Game').map(r => r.date))].length;
     return { success: true, type: 'tvRatings', rows: ingested.length, games, seasons: seasons.join(', '), filename: file.name };
 
   } else if (type === 'blazersWebDisplay') {
-    return ingestBlazersBannersFile(file, ext);
+    return ingestBlazersBannersFile(file, ext, fileId);
 
   } else if (type === 'rqWebDisplay') {
-    return ingestRQBannersFile(file, ext);
+    return ingestRQBannersFile(file, ext, fileId);
 
   } else if (type === 'webPreRoll') {
-    return ingestPreRollFile(file, ext);
+    return ingestPreRollFile(file, ext, fileId);
 
   } else if (type === 'tvAffidavit' || type === 'radioAffidavit') {
     const channel = type === 'tvAffidavit' ? 'TV' : 'Radio';
-    const ingested = ingestAffidavitFile(rows, channel);
+    const ingested = tagRowsWithFile(ingestAffidavitFile(rows, channel), fileId);
     return { success: true, type, channel, rows: ingested.length, filename: file.name };
 
   } else if (type === 'ancLED') {
     const meta = parseANCFilename(file.name);
     if (!meta) return { success: false, error: 'Could not parse arena/asset/dates from filename', filename: file.name };
-    const ingested = ingestANCLEDFile(rows, file.name);
+    const ingested = tagRowsWithFile(ingestANCLEDFile(rows, file.name), fileId);
     return { success: true, type: 'ancLED', arena: meta.arena, asset: meta.asset, rows: ingested.length, filename: file.name };
 
   } else if (type === 'virtualSignage') {
-    const ingested = ingestVirtualSignageSchedule(rows);
+    const ingested = tagRowsWithFile(ingestVirtualSignageSchedule(rows), fileId);
     const homeGames = ingested.filter(g => g.IsHome).length;
     const awayGames = ingested.filter(g => !g.IsHome).length;
     const brands = new Set();
@@ -952,6 +962,7 @@ async function ingestFile(file) {
         Category: String(r.Category || r.category || '').trim(),
       }))
       .filter(r => r.Account);
+    tagRowsWithFile(rosterRows, fileId);
     DataStore.partnerRoster = rosterRows;
     // Warn about any roster names not found in other channels
     const unknown = rosterRows.filter(r => !DataStore.brands.has(r.Account));
@@ -960,6 +971,7 @@ async function ingestFile(file) {
   } else {
     const brand = extractBrandFromSocialFilename(file.name);
     if (!brand) return { success: false, error: 'Could not extract brand from filename', filename: file.name };
+    tagRowsWithFile(rows, fileId);
     rows.forEach(r => {
       if (r.PartnerExposureDate) {
         r._date = new Date(r.PartnerExposureDate);
@@ -976,26 +988,67 @@ async function ingestFile(file) {
   }
 }
 
+// When set, the next batch from the file picker replaces this file's data
+// instead of adding to it. Armed by startReplaceFile(), consumed by handleFiles().
+let pendingReplaceFileId = null;
+
+function startReplaceFile(fileId) {
+  const entry = getLoadedFileEntry(fileId);
+  if (!entry) return;
+  pendingReplaceFileId = fileId;
+  const input = document.getElementById('fileInput');
+  if (input) { input.value = ''; input.click(); }
+}
+
 async function handleFiles(fileList) {
-  const results = [];
-  for (const f of fileList) results.push(await ingestFile(f));
-  // Append to persistent session log so prior uploads remain visible
-  results.forEach(r => sessionLoadedFiles.push(r));
-  // After all files in this batch are ingested, run auto-detection so word-prefix
-  // variants like "Axiom Eco-Pest Control" → "Axiom" are grouped immediately.
-  applyAutoDetectedAliases();
+  const files = [...fileList];
+  const replacingFileId = pendingReplaceFileId;
+  pendingReplaceFileId = null;
+  if (!files.length) return;
+
+  let removedAny = false;
+  if (replacingFileId && getLoadedFileEntry(replacingFileId)) {
+    removeFileDataById(replacingFileId);
+    removedAny = true;
+  }
+
+  for (const f of files) {
+    // Same filename already loaded? Offer replace so re-uploads don't double rows.
+    const dup = (DataStore.loadedFiles || []).find(e => e.success !== false && e.filename === f.name);
+    if (dup) {
+      const replace = confirm(`"${f.name}" is already loaded (${dup.rows || 0} rows).\n\nOK — replace the existing data with this file\nCancel — skip this file`);
+      if (!replace) continue;
+      removeFileDataById(dup.fileId);
+      removedAny = true;
+    }
+    const result = await ingestFile(f);
+    result.loadedAt = new Date().toISOString().slice(0, 10);
+    if (result.success && (result.type === 'roster' || result.type === 'virtualSignage')) {
+      // These ingests overwrite their whole collection — retire superseded log entries
+      DataStore.loadedFiles = (DataStore.loadedFiles || []).filter(e => e.type !== result.type);
+    }
+    DataStore.loadedFiles.push(result);
+  }
+
+  if (removedAny) {
+    // Full pipeline: drops brands that only existed in the removed data, then re-aliases
+    canonicalizeAllBrandData();
+  } else {
+    // After all files in this batch are ingested, run auto-detection so word-prefix
+    // variants like "Axiom Eco-Pest Control" → "Axiom" are grouped immediately.
+    applyAutoDetectedAliases();
+  }
+  if (typeof currentBrand !== 'undefined' && currentBrand && !DataStore.brands.has(currentBrand)) {
+    currentBrand = null;
+    currentPage = 'home';
+  }
   renderFileLog();
   renderApp();
   updateBrandDropdown(document.getElementById('brandSearch').value);
 }
 
-function renderFileLog() {
-  const el = document.getElementById('fileList');
-  if (!el) return;
-  if (!sessionLoadedFiles.length) { el.innerHTML = ''; return; }
-  const items = sessionLoadedFiles.map(r => {
-    if (r.success) {
-      const info = r.type === 'tv'
+function describeLoadedFile(r) {
+  return r.type === 'tv'
         ? `TV · ${r.rows} rows`
         : r.type === 'paid'
           ? `Paid Social · ${r.brand || 'multiple brands'} · ${r.rows} rows${r.reviewCount ? ` · ${r.reviewCount} to review` : ''}`
@@ -1026,20 +1079,42 @@ function renderFileLog() {
         : r.type === 'tvRatings'
           ? `TV Ratings · ${r.games} games · ${r.seasons} · ${r.rows} demo rows`
         : `Organic Social · ${r.brand} · ${r.rows} posts`;
+}
+
+function renderFileLog() {
+  const el = document.getElementById('fileList');
+  if (!el) return;
+  const files = DataStore.loadedFiles || [];
+  if (!files.length) { el.innerHTML = ''; return; }
+  const isViewer = typeof VIEWER_MODE !== 'undefined' && VIEWER_MODE === true;
+  const items = files.map(r => {
+    if (r.success) {
+      // Entries hydrated from pre-registry exports have no fileId — no per-file actions for those
+      const actions = (isViewer || !r.fileId) ? '' : `
+        <span class="file-item-actions">
+          <button class="file-item-btn" title="Swap this file's data for an updated CSV" onclick="startReplaceFile('${r.fileId}')">&#8635; Replace</button>
+          <button class="file-item-btn danger" title="Remove this file's rows from the dashboard" onclick="removeLoadedFile('${r.fileId}')">&#10005; Remove</button>
+        </span>`;
       return `<div class="file-item success">
-        <span class="file-item-name">${r.filename}</span>
-        <span class="file-item-info">${info}</span>
+        <span class="file-item-name">${escapeHTML(r.filename)}${r.loadedAt ? ` <span class="file-item-date">· ${r.loadedAt}</span>` : ''}</span>
+        <span class="file-item-info">${describeLoadedFile(r)}</span>
+        ${actions}
       </div>`;
     }
+    const dismiss = (isViewer || !r.fileId) ? '' : `
+      <span class="file-item-actions">
+        <button class="file-item-btn" title="Dismiss this log entry" onclick="removeLoadedFile('${r.fileId}')">&#10005; Dismiss</button>
+      </span>`;
     return `<div class="file-item error">
-      <span class="file-item-name">${r.filename}</span>
-      <span class="file-item-info">ERROR: ${r.error}</span>
+      <span class="file-item-name">${escapeHTML(r.filename)}</span>
+      <span class="file-item-info">ERROR: ${escapeHTML(r.error || 'unknown')}</span>
+      ${dismiss}
     </div>`;
   }).join('');
   el.innerHTML = `
     <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;
       color:var(--text-muted);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border-soft);">
-      Loaded this session (${sessionLoadedFiles.length} file${sessionLoadedFiles.length === 1 ? '' : 's'})
+      Loaded data files (${files.length} file${files.length === 1 ? '' : 's'})
     </div>
     ${items}`;
 }
