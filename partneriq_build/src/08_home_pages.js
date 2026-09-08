@@ -2,12 +2,11 @@
 // PARTNER BROWSE PAGE
 // ============================================================
 let partnerBrowseSearch = '';
-let partnerBrowsePartnersOnly = true;
 
 function renderPartnerBrowsePage(main) {
   const allBrands = DataStore.getBrandList();
   const rosterActive = DataStore.partnerRoster && DataStore.partnerRoster.length > 0;
-  const displayBrands = (partnerBrowsePartnersOnly && rosterActive)
+  const displayBrands = (searchPartnersOnly && rosterActive)
     ? allBrands.filter(b => isCurrentPartner(b))
     : allBrands;
   const filtered = partnerBrowseSearch
@@ -32,7 +31,7 @@ function renderPartnerBrowsePage(main) {
         </div>
         ${rosterActive ? `
           <label class="survey-partner-toggle">
-            <input type="checkbox" id="partnerBrowseRosterToggle" ${partnerBrowsePartnersOnly ? 'checked' : ''}>
+            <input type="checkbox" id="partnerBrowseRosterToggle" ${searchPartnersOnly ? 'checked' : ''}>
             Current partners only
           </label>
         ` : ''}
@@ -50,7 +49,7 @@ function renderPartnerBrowsePage(main) {
             onmouseenter="this.style.borderColor='var(--text-dim)';this.style.background='var(--bg-elev-2)'"
             onmouseleave="this.style.borderColor='var(--border)';this.style.background='var(--bg-elev)'">
             <div style="font-weight:500;font-size:13px;color:var(--text);margin-bottom:6px;display:flex;align-items:center;gap:8px;">
-              ${renderPartnerLogo(brand, 28)}${brand}${isPartner ? '<span class="brand-option-roster-dot" title="Current partner"></span>' : ''}
+              ${renderPartnerLogo(brand, 28)}${brand}${renderPartnerStatusPill(brand)}
             </div>
             <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">${tags || 'No channel data'}</div>
           </button>`;
@@ -72,14 +71,14 @@ function renderPartnerBrowsePage(main) {
   }
   const tog = document.getElementById('partnerBrowseRosterToggle');
   if (tog) tog.addEventListener('change', () => {
-    partnerBrowsePartnersOnly = tog.checked;
-    renderPartnerBrowsePage(main); // full re-render only when toggle changes
+    searchPartnersOnly = tog.checked;
+    renderApp(); // re-renders the browse page and syncs the header toggle
   });
 }
 
 // Re-renders only the partner grid (not the search bar) to avoid input focus loss
 function _renderPartnerGrid(main, rosterActive, allBrands) {
-  const displayBrands = (partnerBrowsePartnersOnly && rosterActive)
+  const displayBrands = (searchPartnersOnly && rosterActive)
     ? allBrands.filter(b => isCurrentPartner(b))
     : allBrands;
   const filtered = partnerBrowseSearch
@@ -102,7 +101,7 @@ function _renderPartnerGrid(main, rosterActive, allBrands) {
         style="text-align:left;background:transparent;border:none;
         padding:14px 16px 10px;cursor:pointer;width:100%;display:block;">
         <div style="font-weight:500;font-size:13px;color:var(--text);margin-bottom:5px;display:flex;align-items:center;gap:8px;">
-          ${renderPartnerLogo(brand, 28)}${brand}${isPartner ? '<span class="brand-option-roster-dot" title="Current partner"></span>' : ''}
+          ${renderPartnerLogo(brand, 28)}${brand}${renderPartnerStatusPill(brand)}
         </div>
         <div style="font-family:var(--font-mono);font-size:10px;color:var(--text-muted);">${tags || 'No channel data'}</div>
       </button>

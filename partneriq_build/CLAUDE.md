@@ -269,6 +269,7 @@ Add at the **top** of the `CHANGELOG` array in `03_changelog.js`:
 | `currentPage` | `09_app_core.js` | Active portfolio page (`'tv'`, `'paid'`, `'organic'`, `'survey'`, etc.) |
 | `currentPeriod` | `09_app_core.js` | Active season filter |
 | `comparisonMode` | `09_app_core.js` | `'auto-match'` or `'full'` for YoY comparisons |
+| `searchPartnersOnly` | `07_paid_assignment.js` | Shared "current partners only" filter for header search, Partner Browse, and paid switcher (default `true`); persisted in `userPresets` |
 | `VIEWER_MODE` | `02_constants.js` | `true` hides upload controls in distributed files |
 | `DASHBOARD_META` | `02_constants.js` | Update label, date, notes, preparedBy — edit before exporting |
 | `PRELOADED_DATA` | `02_constants.js` | Replaced by export tool; `null` in the working file |
@@ -468,7 +469,11 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPaidCampaignTable(rows)` | Campaign-by-campaign summary table |
 | `renderPaidPlaceholder()` | "No paid data" empty state |
 | `getPacingMetricKey(brand)` / `setPacingMetricKey(brand, key)` | Get/set the active pacing metric for a brand's chart |
-| `updateBrandDropdown(query)` | Filters and renders the header partner search dropdown |
+| `updateBrandDropdown(query)` | Filters and renders the header partner search dropdown; respects the shared `searchPartnersOnly` filter |
+| `renderPartnerStatusPill(brand)` | Returns a "Partner" / "Not partner" status pill for a brand (empty until a roster is loaded); used in header search and Partner Browse |
+| `syncHeaderPartnersToggle()` | Syncs the header "Partners only" checkbox to `searchPartnersOnly` and shows it only when a roster is loaded; called from `renderApp()` |
+
+> **Shared state:** `searchPartnersOnly` (declared in `07_paid_assignment.js`) drives the header search, Partner Browse, and paid brand switcher; persisted in `userPresets`.
 
 ---
 

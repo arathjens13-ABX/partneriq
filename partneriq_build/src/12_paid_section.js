@@ -896,12 +896,35 @@ function renderSurveyPlaceholder() {
 // ============================================================
 // BRAND SEARCH
 // ============================================================
+
+// Returns a "Partner" / "Not partner" status pill for a brand, shown next to
+// names in the header search and Partner Browse. Nothing renders until a roster
+// is loaded (without one, every brand is treated as a partner).
+function renderPartnerStatusPill(brand) {
+  if (!DataStore.partnerRoster || !DataStore.partnerRoster.length) return '';
+  return isCurrentPartner(brand)
+    ? `<span class="partner-pill is-partner" title="Current partner">Partner</span>`
+    : `<span class="partner-pill is-prospect" title="Not a current partner">Not partner</span>`;
+}
+
+// Keeps the header "Partners only" toggle in sync with shared state and only
+// shows it once a partner roster is loaded. Called from renderApp().
+function syncHeaderPartnersToggle() {
+  const wrap = document.getElementById('headerPartnersToggle');
+  if (!wrap) return;
+  const rosterActive = DataStore.partnerRoster && DataStore.partnerRoster.length > 0;
+  wrap.style.display = rosterActive ? '' : 'none';
+  const box = document.getElementById('headerPartnersOnly');
+  if (box) box.checked = searchPartnersOnly;
+}
+
 function updateBrandDropdown(query = '') {
   const dropdown = document.getElementById('brandDropdown');
   const allBrands = DataStore.getBrandList();
-  // If a partner roster is loaded, only show current partners in the dropdown
+  // Respect the shared "current partners only" filter (default on). Turning it
+  // off reveals prospects and non-partner brands in the generic header search.
   const rosterActive = DataStore.partnerRoster && DataStore.partnerRoster.length > 0;
-  const brandsToShow = rosterActive ? allBrands.filter(b => isCurrentPartner(b)) : allBrands;
+  const brandsToShow = (rosterActive && searchPartnersOnly) ? allBrands.filter(b => isCurrentPartner(b)) : allBrands;
   const filtered = query
     ? brandsToShow.filter(b => b.toLowerCase().includes(query.toLowerCase()))
     : brandsToShow;
@@ -915,10 +938,8 @@ function updateBrandDropdown(query = '') {
   dropdown.innerHTML = filtered.map(b => {
     const chs = DataStore.channelsByBrand[b] || {};
     const tags = [chs.tv && 'TV', chs.organic && 'SOC', chs.paid && 'PAID', chs.survey && 'SRV'].filter(Boolean).join(' · ');
-    const rosterDot = (DataStore.partnerRoster.length && isCurrentPartner(b))
-      ? `<span class="brand-option-roster-dot" title="Current partner"></span>` : '';
     return `<div class="brand-option ${b === currentBrand ? 'selected' : ''}" data-brand="${b.replace(/"/g, '&quot;')}">
-      <span style="display:flex;align-items:center;gap:6px;">${renderPartnerLogo(b, 20)}<span>${b}${rosterDot}</span></span><span class="brand-option-channels">${tags}</span>
+      <span style="display:flex;align-items:center;gap:6px;">${renderPartnerLogo(b, 20)}<span>${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
     </div>`;
   }).join('');
 
