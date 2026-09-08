@@ -1,11 +1,44 @@
 // WIRING
 // ============================================================
+// Last-resort error reporting. Without this, anything that throws outside a
+// section boundary failed silently — the user saw a control that did nothing
+// and had no way to know why, or to tell us what happened.
+window.addEventListener('error', (e) => {
+  console.error('Uncaught error', e.error || e.message);
+  if (typeof showErrorToast === 'function') {
+    showErrorToast(`Something went wrong: ${(e.error && e.error.message) || e.message || 'unknown error'}`);
+  }
+});
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('Unhandled promise rejection', e.reason);
+  if (typeof showErrorToast === 'function') {
+    showErrorToast(`Something went wrong: ${(e.reason && e.reason.message) || 'unknown error'}`);
+  }
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   // Always start clean — close modals, so exported preloaded dashboards open on the home page
   document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active'));
   const search = document.getElementById('brandSearch');
   const dropdown = document.getElementById('brandDropdown');
   search.addEventListener('focus', () => updateBrandDropdown(search.value));
+  search.setAttribute('role', 'combobox');
+  search.setAttribute('aria-autocomplete', 'list');
+  search.setAttribute('aria-controls', 'brandDropdown');
+  dropdown.setAttribute('role', 'listbox');
+
+  // Keyboard navigation for the partner search. The dropdown options are divs
+  // with click handlers, so without this there is no way to choose a partner
+  // without a mouse.
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown')      { e.preventDefault(); moveBrandDropdownCursor(1); }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); moveBrandDropdownCursor(-1); }
+    else if (e.key === 'Enter')     {
+      const brand = getBrandDropdownCursorBrand();
+      if (brand) { e.preventDefault(); selectBrandFromDropdown(brand); }
+    }
+    else if (e.key === 'Escape')    { dropdown.classList.remove('active'); search.blur(); }
+  });
   // Debounce input so the dropdown filter/render work doesn't block keystroke painting.
   let brandSearchDebounce = null;
   search.addEventListener('input', () => {
@@ -14,6 +47,45 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.brand-selector-wrapper') && !e.target.closest('#headerPartnersToggle')) dropdown.classList.remove('active');
+  });
+
+  // Delegated navigation for data-driven controls.
+  //
+  // These used to be inline `onclick="selectBrandFromSurvey('${brand}')"` handlers
+  // with hand-rolled apostrophe escaping. Three of the ten sites escaped with
+  // "\'" — which in a double-quoted JS string is just an apostrophe, so it did
+  // nothing, and every partner with an apostrophe in their name (McDonald's)
+  // produced a syntax error and a control that silently did nothing when clicked.
+  //
+  // Reading the name back out of a data attribute removes the escaping problem
+  // entirely: the value never has to survive a trip through a JS string literal.
+  // Delegation also means newly rendered markup is live without re-wiring.
+  document.addEventListener('click', (e) => {
+    const reportEl = e.target.closest('[data-report-brand]');
+    if (reportEl) {
+      e.stopPropagation();
+      const brand = reportEl.getAttribute('data-report-brand');
+      openReportModal(brand || null);
+      return;
+    }
+    const mergeEl = e.target.closest('[data-naming-merge-variant]');
+    if (mergeEl) {
+      mergeNamingSuggestion(
+        mergeEl.getAttribute('data-naming-merge-variant'),
+        mergeEl.getAttribute('data-naming-merge-canonical')
+      );
+      return;
+    }
+    const keepApartEl = e.target.closest('[data-naming-keep-apart]');
+    if (keepApartEl) {
+      keepNamingSuggestionApart(keepApartEl.getAttribute('data-naming-keep-apart'));
+      return;
+    }
+    const navEl = e.target.closest('[data-brand-nav]');
+    if (navEl) {
+      const brand = navEl.getAttribute('data-brand-nav');
+      if (brand) selectBrandFromSurvey(brand);
+    }
   });
 
   // Header "Partners only" toggle — shared filter for search, browse, and paid switcher
@@ -102,6 +174,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const paidAssignmentBackdrop = document.getElementById('paidAssignmentBackdrop');
   if (paidAssignmentBackdrop) paidAssignmentBackdrop.addEventListener('click', (e) => { if (e.target === paidAssignmentBackdrop) closePaidAssignmentReview(); });
 
+  // Escape closes whichever modal is open. Five modals shipped without this —
+  // only the intro overlay handled Escape — so the only way out of the import,
+  // paid assignment, survey review, alias manager or report dialogs was to find
+  // and click the ✕. Handled centrally so a new modal gets it for free.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = [...document.querySelectorAll('.modal-backdrop.active')];
+    if (!open.length) return;
+    // Close only the topmost, so nested cases don't dismiss everything at once.
+    open[open.length - 1].classList.remove('active');
+  });
+
   // Back-to-top button wiring
   const backToTop = document.getElementById('backToTop');
   if (backToTop) {
@@ -123,6 +207,19 @@ document.addEventListener('DOMContentLoaded', () => {
   applyViewerMode();
   // Restore the file log from the embedded registry so Remove/Replace work after reopening an export
   if (loadedPreloaded) renderFileLog();
+
+  // Footer version stamp — rendered from DASHBOARD_VERSION rather than baked
+  // into shell.html, so it can't fall behind the real version again.
+  const footer = document.getElementById('app-footer');
+  if (footer) {
+    const stamp = [
+      'PartnerIQ',
+      typeof DASHBOARD_VERSION !== 'undefined' ? DASHBOARD_VERSION : '',
+      typeof DASHBOARD_VERSION_DATE !== 'undefined' ? DASHBOARD_VERSION_DATE : '',
+      'Confidential · Contact Anders for issues or additions',
+    ].filter(Boolean).join(' · ');
+    footer.textContent = stamp;
+  }
 
   // Inject org logo into header from PARTNER_LOGOS["TrailBlazers"] if available
   const orgLogoImg = document.getElementById('org-logo-img');

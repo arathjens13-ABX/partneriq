@@ -57,10 +57,6 @@ function getPortfolioSeasons() {
   return [...new Set(DataStore.tvSignage.filter(r => !_isVBRow(r)).map(r => r.Season).filter(Boolean))].sort();
 }
 
-function getPortfolioLatestSeason() {
-  const seasons = getPortfolioSeasons();
-  return seasons[seasons.length - 1] || 'all';
-}
 
 
 function formatDurationFromMinutes(minutes) {
@@ -155,11 +151,6 @@ function aggregateBy(rows, keyName) {
   }));
 }
 
-function pctChangeFromValues(curr, prev) {
-  if (!prev || prev === 0) return null;
-  return (curr - prev) / prev;
-}
-
 function formatSignedPercent(change, opts = {}) {
   if (change === null || change === undefined || !isFinite(change)) {
     return opts.blank || '<span class="yoy-change neutral">—</span>';
@@ -232,12 +223,11 @@ function getPartnerAssetsForSeason(brand, period) {
 
 function renderPartnerNameWithAssets(partnerName, period) {
   const assets = getPartnerAssetsForSeason(partnerName, period);
-  const safeName = partnerName.replace(/'/g, "\\'");
-  if (!assets.length) return `<button type="button" onclick="selectBrandFromSurvey('${safeName}')" style="background:none;border:none;color:var(--text);cursor:pointer;text-align:left;padding:0;font:inherit;"><span style="text-decoration:underline;text-underline-offset:2px;">${partnerName}</span></button>`;
+  if (!assets.length) return `<button type="button" data-brand-nav="${escapeAttr(partnerName)}" style="background:none;border:none;color:var(--text);cursor:pointer;text-align:left;padding:0;font:inherit;"><span style="text-decoration:underline;text-underline-offset:2px;">${escapeHTML(partnerName)}</span></button>`;
   const names = assets.map(a => a.name);
   const preview = names.slice(0, 4).join(', ') + (names.length > 4 ? ` + ${names.length - 4} more` : '');
   const title = names.map(a => `• ${a}`).join('\n');
-  return `<button type="button" onclick="selectBrandFromSurvey('${safeName}')" style="background:none;border:none;color:var(--text);cursor:pointer;text-align:left;padding:0;font:inherit;display:block;width:100%;" title="Assets this season:\n${title.replace(/"/g, '&quot;')}"><span style="text-decoration:underline;text-underline-offset:2px;">${partnerName}</span><div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${preview}</div></button>`;
+  return `<button type="button" data-brand-nav="${escapeAttr(partnerName)}" style="background:none;border:none;color:var(--text);cursor:pointer;text-align:left;padding:0;font:inherit;display:block;width:100%;" title="Assets this season:\n${escapeAttr(title)}"><span style="text-decoration:underline;text-underline-offset:2px;">${escapeHTML(partnerName)}</span><div style="font-size:11px;color:var(--text-muted);margin-top:3px;">${escapeHTML(preview)}</div></button>`;
 }
 
 function addPartnerYoY(rows, period) {
@@ -261,10 +251,10 @@ function addLocationYoY(rows, period) {
     const prevRow = map.get(r.name);
     return {
       ...r,
-      yoyQpm: prevRow ? pctChangeFromValues(r.qimvPerMin, prevRow.qimvPerMin) : null,
-      yoyQimv: prevRow ? pctChangeFromValues(r.qimv, prevRow.qimv) : null,
-      yoyMinutes: prevRow ? pctChangeFromValues(r.minutes, prevRow.minutes) : null,
-      yoyQiImpressions: prevRow ? pctChangeFromValues(r.qiImpressions, prevRow.qiImpressions) : null,
+      yoyQpm: prevRow ? pctChange(r.qimvPerMin, prevRow.qimvPerMin) : null,
+      yoyQimv: prevRow ? pctChange(r.qimv, prevRow.qimv) : null,
+      yoyMinutes: prevRow ? pctChange(r.minutes, prevRow.minutes) : null,
+      yoyQiImpressions: prevRow ? pctChange(r.qiImpressions, prevRow.qiImpressions) : null,
       yoyBasis: sets.basis,
     };
   });
@@ -378,7 +368,7 @@ function getTopTakeaways(period) {
     let qimvGrowthText = '';
     if (yoySets) {
       const prevQimv = sum(yoySets.priorRows, 'QI Media Value ($)');
-      const qimvChg  = pctChangeFromValues(totalQimv, prevQimv);
+      const qimvChg  = pctChange(totalQimv, prevQimv);
       if (qimvChg !== null) qimvGrowthText = ` (${formatSignedPercent(qimvChg)} YoY vs ${yoySets.priorSeason})`;
     }
 
@@ -514,45 +504,287 @@ function getDateRangeForRows(rows, keys) {
   return { min: new Date(Math.min(...dates)), max: new Date(Math.max(...dates)) };
 }
 
-function getChannelFreshnessSummary(brand = null) {
-  const tvRows = brand ? getBrandTVData(brand, 'all') : (DataStore.tvSignage || []);
-  const paidRows = brand ? getBrandPaidData(brand, 'all') : getAllPaidRows().filter(r => r.Brand !== UNASSIGNED_PAID_KEY);
-  const organicRows = brand
-    ? [
-        ...(DataStore.zoomphBrandPerf || []).filter(r => r.Brand === brand),
-        ...(DataStore.zoomphContentSeries || []).filter(r => r.Brand === brand),
-        ...(DataStore.zoomphAssets || []).filter(r => r.Brand === brand),
-        ...getBrandSocialData(brand, 'all')
-      ]
-    : [
-        ...(DataStore.zoomphBrandPerf || []),
-        ...(DataStore.zoomphContentSeries || []),
-        ...(DataStore.zoomphAssets || []),
-        ...Object.values(DataStore.organicSocial || {}).flat()
+// ============================================================
+// CHANNEL REGISTRY — the one list of what data this dashboard holds
+// ============================================================
+// Data Health and the per-partner freshness strip are the dashboard's trust
+// surface: they answer "what is loaded and how current is it". They used to be
+// built from a hand-written four-branch literal that was never extended past
+// TV / Organic / Paid / Survey, so six channels — affidavits, ANC LED, virtual
+// signage, the three web sources, TV ratings — were invisible there, and a
+// partner whose only data was ANC LED showed an empty strip.
+//
+// Adding a channel here is now the single step required for it to appear in
+// both. `rows(brand)` returns that channel's rows (all rows when brand is null);
+// `dateFields` lists the columns that might carry a date, in preference order.
+const CHANNEL_REGISTRY = [
+  {
+    key: 'TV',
+    label: 'TV Visible Signage',
+    dateFields: ['Matchdate', 'Match Date', 'Date', 'Game Date'],
+    rows: brand => brand ? getBrandTVData(brand, 'all') : (DataStore.tvSignage || []),
+  },
+  {
+    key: 'Organic',
+    label: 'Organic Social',
+    dateFields: ['ReportDate', '_reportDate', 'Date', 'PublishDate', 'Posted Date'],
+    rows: brand => brand
+      ? [
+          ...(DataStore.zoomphBrandPerf || []).filter(r => r.Brand === brand),
+          ...(DataStore.zoomphContentSeries || []).filter(r => r.Brand === brand),
+          ...(DataStore.zoomphAssets || []).filter(r => r.Brand === brand),
+          ...getBrandSocialData(brand, 'all'),
+        ]
+      : [
+          ...(DataStore.zoomphBrandPerf || []),
+          ...(DataStore.zoomphContentSeries || []),
+          ...(DataStore.zoomphAssets || []),
+          ...Object.values(DataStore.organicSocial || {}).flat(),
+        ],
+  },
+  {
+    key: 'Paid',
+    label: 'Paid Social',
+    dateFields: ['Ends', 'EndDate', 'Reporting ends', 'Reporting Ends', 'Starts', 'StartDate'],
+    rows: brand => brand
+      ? getBrandPaidData(brand, 'all')
+      : getAllPaidRows().filter(r => r.Brand !== UNASSIGNED_PAID_KEY),
+  },
+  {
+    key: 'Survey',
+    label: 'Survey Research — brand recall',
+    dateFields: ['SurveyDate', 'Date', 'ReportDate'],
+    rows: brand => brand
+      ? (DataStore.surveys || []).filter(r => r.Brand === brand)
+      : (DataStore.surveys || []),
+  },
+  {
+    key: 'Fan Insights',
+    label: 'Survey Research — general survey',
+    dateFields: ['Date', 'SurveyDate'],
+    rows: brand => brand
+      ? (DataStore.surveyGeneral || []).filter(r => r._partner === brand)
+      : (DataStore.surveyGeneral || []),
+  },
+  {
+    key: 'Partner Survey',
+    label: 'Survey Research — partner question battery',
+    dateFields: ['Date', 'SurveyDate'],
+    rows: brand => brand
+      ? (DataStore.surveyPartner || []).filter(r => r.Partner === brand)
+      : (DataStore.surveyPartner || []),
+  },
+  {
+    key: 'Programs',
+    label: 'Survey Research — programs & community',
+    dateFields: ['Date', 'SurveyDate'],
+    rows: brand => brand
+      ? (DataStore.surveyPrograms || []).filter(r => r.Sponsor === brand)
+      : (DataStore.surveyPrograms || []),
+  },
+  {
+    key: 'Virtual Signage',
+    label: 'On-Court Virtual Signage',
+    dateFields: ['Date', 'GameDate', '_normalizedDate'],
+    rows: brand => {
+      const games = DataStore.virtualSignageSchedule || [];
+      if (!brand) return games;
+      return games.filter(g => g.BrandA === brand || g.BrandB === brand);
+    },
+  },
+  {
+    key: 'ANC LED',
+    label: 'ANC LED in-arena exposure',
+    dateFields: ['EndDate', 'StartDate', 'Date'],
+    rows: brand => brand
+      ? (DataStore.ancLED || []).filter(r => r.Brand === brand)
+      : (DataStore.ancLED || []),
+  },
+  {
+    key: 'Affidavits',
+    label: 'TV / Radio affidavits',
+    dateFields: ['Date', 'AirDate', 'EndDate', 'StartDate'],
+    rows: brand => brand
+      ? (DataStore.affidavits || []).filter(r => r.Brand === brand)
+      : (DataStore.affidavits || []),
+  },
+  {
+    key: 'Web & Digital',
+    label: 'Blazers.com, RoseQuarter.com, pre-roll',
+    dateFields: ['EventDate', 'Date', 'EndDate', 'StartDate', 'Month'],
+    rows: brand => {
+      const all = [
+        ...(DataStore.webBlazersBanners || []),
+        ...(DataStore.webRQBanners || []),
+        ...(DataStore.webPreRoll || []),
       ];
-  const surveyRows = brand ? (DataStore.surveys || []).filter(r => r.Brand === brand) : (DataStore.surveys || []);
-  const tvRange = getDateRangeForRows(tvRows, ['Matchdate', 'Match Date', 'Date', 'Game Date']);
-  const paidRange = getDateRangeForRows(paidRows, ['Ends', 'EndDate', 'Reporting ends', 'Reporting Ends', 'Starts', 'StartDate']);
-  const organicRange = getDateRangeForRows(organicRows, ['ReportDate', '_reportDate', 'Date', 'PublishDate', 'Posted Date']);
-  const surveyRange = getDateRangeForRows(surveyRows, ['SurveyDate', 'Date', 'ReportDate']);
-  return [
-    { key: 'TV', rows: tvRows.length, range: tvRange, note: tvRange ? `${formatShortDate(tvRange.min)} → ${formatShortDate(tvRange.max)}` : 'No date coverage found' },
-    { key: 'Organic', rows: organicRows.length, range: organicRange, note: organicRange ? `${formatShortDate(organicRange.min)} → ${formatShortDate(organicRange.max)}` : 'No date coverage found' },
-    { key: 'Paid', rows: paidRows.length, range: paidRange, note: paidRange ? `${formatShortDate(paidRange.min)} → ${formatShortDate(paidRange.max)}` : 'No date coverage found' },
-    { key: 'Survey', rows: surveyRows.length, range: surveyRange, note: surveyRange ? `${formatShortDate(surveyRange.min)} → ${formatShortDate(surveyRange.max)}` : 'No date coverage found' },
-  ];
+      return brand ? all.filter(r => r.Brand === brand) : all;
+    },
+  },
+  {
+    key: 'TV Ratings',
+    label: 'Nielsen broadcast viewership',
+    dateFields: ['date'],
+    // Viewership data carries no partner association, so it only ever appears
+    // in the portfolio-level view, never on a partner page.
+    partnerScoped: false,
+    rows: brand => brand ? [] : (DataStore.tvRatings || []),
+  },
+];
+
+function getChannelFreshnessSummary(brand = null) {
+  return CHANNEL_REGISTRY
+    .filter(ch => !brand || ch.partnerScoped !== false)
+    .map(ch => {
+      let rows = [];
+      try { rows = ch.rows(brand) || []; }
+      catch (e) { console.warn(`getChannelFreshnessSummary: ${ch.key} lookup failed`, e); }
+      const range = getDateRangeForRows(rows, ch.dateFields);
+      return {
+        key: ch.key,
+        label: ch.label,
+        rows: rows.length,
+        range,
+        note: range
+          ? `${formatShortDate(range.min)} → ${formatShortDate(range.max)}`
+          : 'No date coverage found',
+      };
+    });
+}
+
+// The most recent date across every loaded channel — "how current is this
+// dashboard", answered from the data rather than from the clock.
+function getLatestDataDate() {
+  const maxes = getChannelFreshnessSummary()
+    .filter(c => c.range && c.range.max)
+    .map(c => c.range.max.getTime());
+  return maxes.length ? new Date(Math.max(...maxes)) : null;
+}
+
+// Label for the "LAST UPDATE" stamp. Prefers what was set at export time, then
+// the newest date actually present in the data. Never falls back to today's
+// date: this used to render `new Date()`, so an export sent in March and opened
+// in September confidently reported September as its last update.
+function getDataAsOfLabel() {
+  const meta = typeof DASHBOARD_META !== 'undefined' ? DASHBOARD_META : {};
+  if (meta.latestUpdateDate) return String(meta.latestUpdateDate);
+  const latest = getLatestDataDate();
+  if (latest) return formatShortDate(latest);
+  if (meta.latestUpdateLabel) return String(meta.latestUpdateLabel);
+  return 'Not recorded';
 }
 
 function renderDataFreshnessStrip(brand = null) {
   const rows = getChannelFreshnessSummary(brand).filter(x => x.rows > 0);
   if (!rows.length) return '';
   return `<div class="freshness-strip">
-    ${rows.map(x => `<div class="freshness-item">
-      <div class="freshness-label">${x.key} freshness</div>
-      <div class="freshness-value">${x.range ? formatShortDate(x.range.max) : 'Loaded'}</div>
-      <div class="freshness-note">${formatNum(x.rows)} row${x.rows === 1 ? '' : 's'} · ${x.note}</div>
+    ${rows.map(x => `<div class="freshness-item" title="${escapeAttr(x.label || x.key)}">
+      <div class="freshness-label">${escapeHTML(x.key)} freshness</div>
+      <div class="freshness-value">${x.range ? escapeHTML(formatShortDate(x.range.max)) : 'Loaded'}</div>
+      <div class="freshness-note">${formatNum(x.rows)} row${x.rows === 1 ? '' : 's'} · ${escapeHTML(x.note)}</div>
     </div>`).join('')}
   </div>`;
+}
+
+// ============================================================
+// NAMING & ALIASES PANEL — Data Health
+// ============================================================
+// Surfaces everything that would otherwise be found by manually scanning the
+// brand list after a refresh: names that look like the same partner spelled two
+// ways, brands stranded in a single channel, logo files whose names don't match
+// any partner, and roster entries that match nothing loaded.
+//
+// Every near-miss row offers the merge as one click, so confirming a batch of
+// them is a minute's work rather than a half-hour sweep of the alias manager.
+function renderNamingHealthPanel() {
+  if (!DataStore.hasAnyData()) return '';
+  let report;
+  try { report = getBrandNamingReport(); }
+  catch (e) {
+    console.warn('renderNamingHealthPanel failed', e);
+    return '';
+  }
+
+  const section = (title, count, body, tone = '') => `
+    <div class="naming-block${tone ? ' ' + tone : ''}">
+      <div class="naming-block-head">
+        <span class="naming-block-title">${escapeHTML(title)}</span>
+        <span class="naming-block-count">${formatNum(count)}</span>
+      </div>
+      ${body}
+    </div>`;
+
+  const nearMissBody = report.nearMisses.length
+    ? `<div class="naming-list">${report.nearMisses.slice(0, 40).map(pair => {
+        // Propose the shorter name as canonical — it is nearly always the
+        // trading name rather than a typo'd or suffixed variant.
+        const [canonical, variant] = pair.a.length <= pair.b.length ? [pair.a, pair.b] : [pair.b, pair.a];
+        return `<div class="naming-row">
+          <div class="naming-row-main">
+            <span class="naming-variant">${escapeHTML(variant)}</span>
+            <span class="naming-arrow">→</span>
+            <span class="naming-canonical">${escapeHTML(canonical)}</span>
+          </div>
+          <div class="naming-row-meta">${Math.round(pair.similarity * 100)}% match</div>
+          <div class="naming-row-actions">
+            <button class="file-item-btn" data-naming-merge-variant="${escapeAttr(variant)}" data-naming-merge-canonical="${escapeAttr(canonical)}">Merge</button>
+            <button class="file-item-btn" data-naming-keep-apart="${escapeAttr(variant)}">Keep separate</button>
+          </div>
+        </div>`;
+      }).join('')}${report.nearMisses.length > 40 ? `<div class="naming-more">+ ${report.nearMisses.length - 40} more</div>` : ''}</div>`
+    : `<div class="naming-empty">No near-duplicate partner names detected.</div>`;
+
+  const listBody = (items, empty, renderItem) => items.length
+    ? `<div class="naming-chips">${items.slice(0, 60).map(renderItem).join('')}${items.length > 60 ? `<span class="naming-more">+ ${items.length - 60} more</span>` : ''}</div>`
+    : `<div class="naming-empty">${escapeHTML(empty)}</div>`;
+
+  return `
+    <div class="card" style="margin-top:18px;">
+      <div class="card-header">
+        <span class="card-title">Naming &amp; aliases</span>
+        <span class="card-sub">${formatNum(report.totalRawNames)} source name${report.totalRawNames === 1 ? '' : 's'} → ${formatNum(report.totalCanonical)} partner${report.totalCanonical === 1 ? '' : 's'} · ${formatNum(report.issueCount)} to review</span>
+      </div>
+      <div class="leaderboard-note" style="margin-bottom:14px;">
+        Suggestions only — nothing is merged automatically. Confirming a merge here writes the same alias rule the Brand alias manager would, and it travels with an exported dashboard.
+      </div>
+      ${section('Possible duplicate partners', report.nearMisses.length, nearMissBody, report.nearMisses.length ? 'warning' : '')}
+      ${section('Logo files matching no partner', report.orphanLogos.length,
+        listBody(report.orphanLogos, 'Every logo file matches a partner name.',
+          n => `<span class="naming-chip warn" title="Rename this file to the partner's canonical name">${escapeHTML(n)}</span>`),
+        report.orphanLogos.length ? 'warning' : '')}
+      ${section('Partners with data but no logo', report.missingLogos.length,
+        listBody(report.missingLogos, 'Every partner with data has a logo.',
+          n => `<span class="naming-chip">${escapeHTML(n)}</span>`))}
+      ${section('Roster entries matching no loaded data', report.rosterMismatch.length,
+        listBody(report.rosterMismatch, 'Every roster entry matches a loaded partner.',
+          n => `<span class="naming-chip warn">${escapeHTML(n)}</span>`),
+        report.rosterMismatch.length ? 'warning' : '')}
+      ${section('Partners appearing in only one channel', report.singleChannel.length,
+        listBody(report.singleChannel, 'Every partner appears in more than one channel.',
+          x => `<span class="naming-chip" title="Only in: ${escapeAttr(x.channels.join(', '))}">${escapeHTML(x.brand)}</span>`))}
+    </div>`;
+}
+
+// Confirms one near-miss suggestion: writes the alias rule and re-canonicalizes.
+function mergeNamingSuggestion(variant, canonical) {
+  if (!variant || !canonical || variant === canonical) return;
+  DataStore.brandMergeRules[variant] = canonical;
+  canonicalizeAllBrandData();
+  renderApp();
+  updateBrandDropdown(document.getElementById('brandSearch').value);
+  showErrorToast(`Merged "${variant}" into "${canonical}".`);
+}
+
+// Records that two similar names are genuinely different partners, so the pair
+// stops being proposed on every refresh.
+function keepNamingSuggestionApart(variant) {
+  if (!variant) return;
+  if (!(DataStore.autoAliasBlocks instanceof Set)) {
+    DataStore.autoAliasBlocks = new Set(DataStore.autoAliasBlocks || []);
+  }
+  DataStore.autoAliasBlocks.add(variant);
+  canonicalizeAllBrandData();
+  renderApp();
 }
 
 function renderDataHealthPage(main) {
@@ -564,12 +796,6 @@ function renderDataHealthPage(main) {
   const brandCount = DataStore.brands.size;
   const freshness = getChannelFreshnessSummary();
   const missingDates = freshness.filter(f => f.rows > 0 && !f.range).map(f => f.key);
-  const allRows = {
-    tv: (DataStore.tvSignage || []).length,
-    organic: (DataStore.zoomphBrandPerf||[]).length + (DataStore.zoomphContentSeries||[]).length + (DataStore.zoomphAssets||[]).length + Object.values(DataStore.organicSocial || {}).flat().length,
-    paid: allPaid.length,
-    survey: (DataStore.surveys || []).length
-  };
   main.innerHTML = `
     ${renderBreadcrumb([{label:'Home', action:'openPortfolioHome();'}, {label:'Data Health'}])}
     <section class="section">
@@ -586,6 +812,7 @@ function renderDataHealthPage(main) {
         <div class="health-card ${missingDates.length ? 'warning' : 'good'}"><div class="health-label">Date coverage</div><div class="health-value">${missingDates.length ? `${missingDates.length} issue${missingDates.length === 1 ? '' : 's'}` : 'Healthy'}</div><div class="health-note">${missingDates.length ? `Missing date coverage in: ${missingDates.join(', ')}.` : 'Loaded channels have usable date coverage.'}</div></div>
       </div>
       ${renderDataFreshnessStrip()}
+      ${renderNamingHealthPanel()}
       <div class="card">
         <div class="card-header">
           <span class="card-title">Loaded source summary</span>
@@ -594,7 +821,7 @@ function renderDataHealthPage(main) {
         <table class="data-table">
           <thead><tr><th>Channel</th><th class="num">Rows</th><th>Latest coverage</th><th>Notes</th></tr></thead>
           <tbody>
-            ${freshness.map(f => `<tr><td>${f.key}</td><td class="num">${formatNum(f.rows)}</td><td>${f.range ? formatShortDate(f.range.max) : '—'}</td><td>${f.rows ? f.note : 'No rows loaded'}</td></tr>`).join('')}
+            ${freshness.map(f => `<tr><td>${escapeHTML(f.key)}<div class="comparison-basis block">${escapeHTML(f.label || '')}</div></td><td class="num">${formatNum(f.rows)}</td><td>${f.range ? escapeHTML(formatShortDate(f.range.max)) : '—'}</td><td>${f.rows ? f.note : 'No rows loaded'}</td></tr>`).join('')}
             <tr><td>Paid assigned rows</td><td class="num">${formatNum(assignedPaid)}</td><td>—</td><td>${formatNum(unmatchedPaid)} paid rows still need assignment review.</td></tr>
           </tbody>
         </table>

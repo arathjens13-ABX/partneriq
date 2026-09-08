@@ -173,7 +173,7 @@ function renderTVRatingsPage(main) {
 
   const yoyBadge = (curr, prev) => {
     if (curr === null || prev === null || prev === 0) return '';
-    const chg = pctChangeFromValues(curr, prev);
+    const chg = pctChange(curr, prev);
     return `<div class="home-card-note" style="color:${chg >= 0 ? 'var(--positive)' : 'var(--negative)'};">${formatSignedPercent(chg)} vs ${priorSeason}</div>`;
   };
 

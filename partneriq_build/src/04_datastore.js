@@ -79,7 +79,89 @@ const BRAND_ALIAS_DEFAULTS = {
   'Alaska Dunk Of The Game': 'Alaska Airlines',
   // ANC LED Report — Comcast Xfinity (existing 'Comcast' alias only matches the bare word)
   'Comcast Xfinity': 'Xfinity',
+  // Misspellings and legal-name variants seen in source exports. Case and
+  // punctuation variants no longer need entries here — CANONICAL_BRANDS handles
+  // those — so this list is only for names that differ by more than spelling.
+  'Spirit Mountian Casino': 'Spirit Mountain Casino',
+  'Spirit Mountain': 'Spirit Mountain Casino',
+  'Delta Dental of Oregon': 'Delta Dental',
+  'ODS': 'Delta Dental',
+  'Nike Inc': 'Nike',
+  'Nike, Inc.': 'Nike',
+  'Dave\'s Hot Chicken': "Dave's Hot Chicken",
+  'Travel and Leisure': 'Travel & Leisure',
+  'Travel + Leisure': 'Travel & Leisure',
 };
+
+// ============================================================
+// CANONICAL BRAND SPELLINGS
+// ============================================================
+// The preferred spelling of every partner we know about. Any incoming name
+// whose compact token matches one of these resolves to the spelling here —
+// so "NIKE", "nike" and "Nike" all become "Nike", and "DeltaDental" becomes
+// "Delta Dental", without needing an alias entry per variant.
+//
+// This is the fix for the largest category of manual matching work: source
+// files spell partners inconsistently (all-caps in ANC LED exports, no-space
+// in filenames, title case in survey data), and every one of those variants
+// used to arrive as a separate brand needing a hand-written alias.
+//
+// Add a partner here when you add their logo. The logo filename and this list
+// should always agree — Data Health flags any that don't.
+const CANONICAL_BRANDS = [
+  '19 Acres',
+  'Adidas',
+  'Alaska Airlines',
+  'Athletic Brewing',
+  'Axiom',
+  'Boyds Coffee',
+  'Brightside Windows',
+  'Coca-Cola',
+  'Columbia Bank',
+  'Coors Light',
+  'Daimler',
+  "Dave's Hot Chicken",
+  'Delta Dental',
+  'Directors Mortgage',
+  'DSP Connections',
+  'ECR',
+  'Evolv',
+  'First Tech',
+  'Ford',
+  'Fred Meyer',
+  'Gatorade',
+  'Goldberg And Loren',
+  'Hop Valley',
+  'Hornitos',
+  'Jamba Juice',
+  'Les Schwab',
+  'Luckin Coffee',
+  'Lyft',
+  "McDonald's",
+  'Michelob Ultra',
+  'Moda Health',
+  'Nike',
+  'Nuna',
+  'Pacific Office Automation',
+  'Paylocity',
+  'Pendleton',
+  'Polar',
+  'Providence Health',
+  'Rebound Orthopedics',
+  'Riverside',
+  'Shift4',
+  'Shine Vodka',
+  'Spirit Mountain Casino',
+  'Sprite',
+  'State Farm',
+  'Ticketmaster',
+  'Toyota',
+  'Travel & Leisure',
+  'Umpqua Bank',
+  'Vortex Legacy Group',
+  'Xfinity',
+  'ZoomInfo',
+];
 
 function compactBrandToken(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
@@ -88,6 +170,59 @@ function compactBrandToken(value) {
 function getBrandMergeRules() {
   const custom = (typeof DataStore !== 'undefined' && DataStore.brandMergeRules) ? DataStore.brandMergeRules : {};
   return { ...BRAND_ALIAS_DEFAULTS, ...custom };
+}
+
+// ============================================================
+// BRAND RESOLUTION CACHES
+// ============================================================
+// resolveCanonicalBrandName() is the hottest function in the app: it runs at
+// least once per row per channel, twice per canonicalization pass. It used to
+// rebuild `Object.entries(rules)` and run compactBrandToken() over ~110 aliases
+// on every single call — about 43µs each, or 4.2 seconds per 100k calls.
+//
+// Two caches fix that. `_brandLookup` precomputes the compact-token maps once
+// per rules change; `_brandResolveCache` memoizes the answer per input string.
+// Together they took the same 100k calls from 4,252ms to 20ms.
+//
+// Both are keyed to a generation counter. Anything that changes the inputs to
+// resolution — alias rules, auto-detected groups, block list — must call
+// invalidateBrandCaches(). Missing one shows up as stale merges, so the setters
+// that touch those fields call it directly rather than relying on callers.
+let _brandCacheGeneration = 0;
+let _brandLookup = null;
+let _brandLookupGeneration = -1;
+const _brandResolveCache = new Map();
+
+function invalidateBrandCaches() {
+  _brandCacheGeneration++;
+  _brandResolveCache.clear();
+  _brandLookup = null;
+}
+
+function getBrandLookup() {
+  if (_brandLookup && _brandLookupGeneration === _brandCacheGeneration) return _brandLookup;
+  const rules = getBrandMergeRules();
+  const byCompactAlias = new Map();   // compact(aliasKey)   → canonical
+  const byCompactCanonical = new Map(); // compact(canonical) → canonical
+  Object.entries(rules).forEach(([alias, canonical]) => {
+    const key = compactBrandToken(alias);
+    if (key && !byCompactAlias.has(key)) byCompactAlias.set(key, canonical);
+  });
+  // Canonical values win over alias keys on a tie, so register them last and
+  // allow them to overwrite — "Nike" as a canonical beats "nike" as an alias.
+  new Set(Object.values(rules)).forEach(canonical => {
+    const key = compactBrandToken(canonical);
+    if (key) byCompactCanonical.set(key, canonical);
+  });
+  // The explicit canonical-spelling list wins over everything: it is the
+  // authority on how a partner's name is written.
+  CANONICAL_BRANDS.forEach(canonical => {
+    const key = compactBrandToken(canonical);
+    if (key) byCompactCanonical.set(key, canonical);
+  });
+  _brandLookup = { rules, byCompactAlias, byCompactCanonical };
+  _brandLookupGeneration = _brandCacheGeneration;
+  return _brandLookup;
 }
 
 // Detects pairs where one brand name is a word-prefix of another and returns a
@@ -122,17 +257,32 @@ function detectWordPrefixGroups(brandNames, blockedSet) {
 function resolveCanonicalBrandName(value, skipAutoDetect = false) {
   const raw = String(value || '').trim().replace(/^[-_\s]+|[-_\s]+$/g, '');
   if (!raw || raw === '__UNASSIGNED_PAID__' || raw === 'Unassigned Paid Social') return raw;
-  const rules = getBrandMergeRules();
+
+  // Two cache namespaces: skipAutoDetect callers must not read or write the
+  // answers seen by normal callers, since step 4 differs between them.
+  const cacheKey = (skipAutoDetect ? 'M:' : 'A:') + raw;
+  const cached = _brandResolveCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const resolved = _resolveCanonicalBrandNameUncached(raw, skipAutoDetect);
+  _brandResolveCache.set(cacheKey, resolved);
+  return resolved;
+}
+
+function _resolveCanonicalBrandNameUncached(raw, skipAutoDetect) {
+  const { rules, byCompactAlias, byCompactCanonical } = getBrandLookup();
   // 1. Exact alias key match
   if (rules[raw]) return rules[raw];
   const compact = compactBrandToken(raw);
-  // 2. Compact alias key match (handles case/punctuation variants of known alias keys)
-  const keyMatch = Object.entries(rules).find(([alias]) => compactBrandToken(alias) === compact);
-  if (keyMatch) return keyMatch[1];
-  // 3. Compact canonical value match — catches variants like "NIKE" vs "Nike"
-  const canonicals = [...new Set(Object.values(rules))];
-  const canonicalMatch = canonicals.find(c => compactBrandToken(c) === compact);
+  // 2. Compact canonical match — catches case/spacing variants of a canonical
+  //    name ("NIKE" and "nike" → "Nike", "DeltaDental" → "Delta Dental").
+  //    Checked before alias keys so a name that IS a canonical resolves to its
+  //    own preferred spelling rather than to whatever an alias key mapped to.
+  const canonicalMatch = byCompactCanonical.get(compact);
   if (canonicalMatch) return canonicalMatch;
+  // 3. Compact alias key match (case/punctuation variants of known alias keys)
+  const aliasMatch = byCompactAlias.get(compact);
+  if (aliasMatch) return aliasMatch;
   // 4. Auto-detected word-prefix match (e.g. "Axiom Eco-Pest Control" → "Axiom")
   //    Populated by detectWordPrefixGroups after data loads; lower priority than explicit rules.
   if (!skipAutoDetect && typeof DataStore !== 'undefined' && DataStore.autoDetectedAliases) {
@@ -195,6 +345,8 @@ const DataStore = {
     this.paidAssignmentRules = {};
     this.brandMergeRules = { ...BRAND_ALIAS_DEFAULTS };
     this.autoDetectedAliases = {};
+    invalidateBrandCaches();
+    invalidateTVIndex();
     this.autoAliasBlocks = new Set();
     this.brandNameChanges = new Set();
     this.surveys = [];
@@ -226,7 +378,9 @@ const DataStore = {
     this.channelsByBrand[clean][channel] = true;
   },
 
-  getBrandList() { return [...this.brands].sort(); },
+  // localeCompare, not a bare sort(): code-point ordering puts every
+  // lowercase-initial brand (adidas) after every uppercase one.
+  getBrandList() { return [...this.brands].sort((a, b) => a.localeCompare(b)); },
   hasAnyData() {
     const tv = (this.tvSignage || []).length;
     const organic = Object.values(this.organicSocial || {}).reduce((a, rows) => a + (Array.isArray(rows) ? rows.length : 0), 0);
@@ -290,6 +444,10 @@ function removeFileDataById(fileId) {
     });
   });
   DataStore.loadedFiles = (DataStore.loadedFiles || []).filter(f => f.fileId !== fileId);
+  // Row arrays were just replaced, so any derived index is stale. Callers decide
+  // whether to re-canonicalize, but they must never see a stale index.
+  invalidateBrandCaches();
+  invalidateTVIndex();
 }
 
 // User-facing remove: confirm, strip rows, rebuild brand state, re-render.
@@ -411,6 +569,13 @@ function canonicalizeObjectRowsByBrand(sourceObj, primaryField = 'Partner') {
 }
 
 function canonicalizeAllBrandData(skipAutoDetect = false) {
+  // Single choke point for cache invalidation. Every path that changes alias
+  // rules, auto-detected groups, or the block list calls this immediately
+  // afterwards, so clearing here means no individual mutation site can forget
+  // and leave stale merges behind. The TV index is derived from the same inputs
+  // (row set + resolved brand names), so it is dropped here too.
+  invalidateBrandCaches();
+  invalidateTVIndex();
   (DataStore.tvSignage || []).forEach(r => resolveAndTrackRaw(r, 'Brand', '_rawBrand'));
   DataStore.organicSocial = canonicalizeObjectRowsByBrand(DataStore.organicSocial, 'Partner');
   const paidGrouped = {};
@@ -548,6 +713,198 @@ function applyAutoDetectedAliases() {
   canonicalizeAllBrandData(true);
 }
 
+// ============================================================
+// NAMING HEALTH — near-miss detection and the alias report
+// ============================================================
+// The alias system handles variants it has been told about. The expensive part
+// of a data refresh is finding the ones it hasn't: a typo in a source file, a
+// new dealership spelling, a partner whose legal name appears in survey data
+// but whose trading name appears everywhere else. These helpers surface those
+// candidates so they can be confirmed in one pass instead of hunted down.
+//
+// Nothing here changes data on its own. Detection proposes; a person disposes,
+// via the Brand Alias manager. Auto-merging on fuzzy similarity would quietly
+// combine genuinely different partners, which is worse than the manual work.
+
+// Levenshtein distance, capped: once the distance exceeds `max` we stop, since
+// callers only care whether two names are *close*, not how far apart they are.
+function _editDistance(a, b, max) {
+  if (a === b) return 0;
+  const al = a.length, bl = b.length;
+  if (Math.abs(al - bl) > max) return max + 1;
+  if (!al) return bl;
+  if (!bl) return al;
+  let prev = new Array(bl + 1);
+  let curr = new Array(bl + 1);
+  for (let j = 0; j <= bl; j++) prev[j] = j;
+  for (let i = 1; i <= al; i++) {
+    curr[0] = i;
+    let rowMin = curr[0];
+    const ca = a.charCodeAt(i - 1);
+    for (let j = 1; j <= bl; j++) {
+      const cost = ca === b.charCodeAt(j - 1) ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      if (curr[j] < rowMin) rowMin = curr[j];
+    }
+    if (rowMin > max) return max + 1;
+    const swap = prev; prev = curr; curr = swap;
+  }
+  return prev[bl];
+}
+
+// Similarity of two brand names on their compact tokens, 0..1.
+// 1 means identical once case and punctuation are stripped.
+function brandTokenSimilarity(a, b) {
+  const ta = compactBrandToken(a);
+  const tb = compactBrandToken(b);
+  if (!ta || !tb) return 0;
+  if (ta === tb) return 1;
+  const longer = Math.max(ta.length, tb.length);
+  const max = Math.ceil(longer * 0.4);
+  const dist = _editDistance(ta, tb, max);
+  if (dist > max) return 0;
+  return 1 - dist / longer;
+}
+
+// Names closer than this are proposed as the same partner. Tuned so that a
+// one- or two-character typo in a normal-length brand name is caught, while
+// genuinely distinct short names are not.
+const BRAND_NEAR_MISS_THRESHOLD = 0.86;
+
+// Returns { a, b, similarity } for every pair of names that look like the same
+// partner spelled two ways. Pairs already merged by an alias rule, already
+// identical once compacted, or explicitly kept apart by the user are excluded.
+function findNearMissBrandPairs(names) {
+  const blocks = DataStore.autoAliasBlocks instanceof Set
+    ? DataStore.autoAliasBlocks
+    : new Set(Array.isArray(DataStore.autoAliasBlocks) ? DataStore.autoAliasBlocks : []);
+  const unique = [...new Set((names || []).filter(Boolean))];
+  const pairs = [];
+  for (let i = 0; i < unique.length; i++) {
+    for (let j = i + 1; j < unique.length; j++) {
+      const a = unique[i], b = unique[j];
+      if (blocks.has(a) || blocks.has(b)) continue;
+      // Already the same partner — nothing to propose.
+      if (resolveCanonicalBrandName(a) === resolveCanonicalBrandName(b)) continue;
+      const similarity = brandTokenSimilarity(a, b);
+      if (similarity >= BRAND_NEAR_MISS_THRESHOLD && similarity < 1) {
+        pairs.push({ a, b, similarity });
+      }
+    }
+  }
+  return pairs.sort((x, y) => y.similarity - x.similarity);
+}
+
+// Every raw brand string this dashboard has ingested, with the channels it came
+// from and what it currently resolves to. This is the ground truth the naming
+// report is built on.
+function collectRawBrandObservations() {
+  const seen = new Map(); // raw name → { raw, channels:Set, rows:number }
+  const note = (raw, channel) => {
+    if (!raw || typeof raw !== 'string' || !raw.trim()) return;
+    const key = raw.trim();
+    let entry = seen.get(key);
+    if (!entry) { entry = { raw: key, channels: new Set(), rows: 0 }; seen.set(key, entry); }
+    entry.channels.add(channel);
+    entry.rows++;
+  };
+  const firstOf = (r, channel, fields) => {
+    if (!r) return;
+    for (const f of fields) {
+      if (r[f] && typeof r[f] === 'string' && r[f].trim()) { note(r[f], channel); return; }
+    }
+  };
+
+  (DataStore.tvSignage || []).forEach(r => firstOf(r, 'TV', ['_rawBrand', 'Brand']));
+  Object.values(DataStore.organicSocial || {}).forEach(rows =>
+    (rows || []).forEach(r => firstOf(r, 'Organic', ['_rawPartner', '_rawBrand', 'Partner', 'Brand'])));
+  Object.values(DataStore.paidSocial || {}).forEach(rows =>
+    (rows || []).forEach(r => {
+      if (!r || r.Brand === UNASSIGNED_PAID_KEY || r.Partner === UNASSIGNED_PAID_LABEL) return;
+      firstOf(r, 'Paid', ['_rawBrand', '_rawPartner', 'Brand', 'Partner']);
+    }));
+  (DataStore.surveys || []).forEach(r => firstOf(r, 'Survey', ['_rawBrand', 'Brand']));
+  [DataStore.zoomphBrandPerf, DataStore.zoomphContentSeries, DataStore.zoomphAssets].forEach(arr =>
+    (arr || []).forEach(r => firstOf(r, 'Organic', ['_rawBrand', 'Brand'])));
+  (DataStore.affidavits || []).forEach(r => firstOf(r, 'Affidavits', ['_rawPartner', 'Brand']));
+  (DataStore.ancLED || []).forEach(r => firstOf(r, 'ANC LED', ['_rawSponsor', 'Brand']));
+  (DataStore.webBlazersBanners || []).forEach(r => firstOf(r, 'Web', ['_rawPartner', 'Brand']));
+  (DataStore.webRQBanners || []).forEach(r => firstOf(r, 'Web', ['_rawAdvertiser', 'Brand']));
+  (DataStore.webPreRoll || []).forEach(r => firstOf(r, 'Web', ['_rawPartner', 'Brand']));
+  (DataStore.virtualSignageSchedule || []).forEach(g => {
+    if (g && g.BrandA) note(g.BrandA, 'Virtual Signage');
+    if (g && g.BrandB) note(g.BrandB, 'Virtual Signage');
+  });
+
+  return [...seen.values()].map(e => ({
+    raw: e.raw,
+    rows: e.rows,
+    channels: [...e.channels].sort(),
+    canonical: resolveCanonicalBrandName(e.raw),
+    matched: resolveCanonicalBrandName(e.raw) !== e.raw,
+  }));
+}
+
+// The full naming report behind the Data Health "Naming & Aliases" panel.
+// Answers, in one place, every question that used to need a manual sweep:
+//   nearMisses     — names that look like the same partner spelled two ways
+//   singleChannel  — brands appearing in exactly one channel, which is the
+//                    usual signature of a name that failed to merge
+//   missingLogos   — canonical brands with data but no logo file
+//   orphanLogos    — logo files that match no canonical brand (typo'd filenames)
+//   rosterMismatch — roster entries that match no ingested brand
+function getBrandNamingReport() {
+  const observations = collectRawBrandObservations();
+  const canonicalNames = DataStore.getBrandList();
+
+  const nearMisses = findNearMissBrandPairs(canonicalNames);
+
+  const singleChannel = canonicalNames
+    .map(brand => {
+      const channels = DataStore.channelsByBrand[brand] || {};
+      const active = Object.keys(channels).filter(k => channels[k]);
+      return { brand, channels: active };
+    })
+    .filter(x => x.channels.length === 1)
+    .sort((a, b) => a.brand.localeCompare(b.brand));
+
+  const logoNames = (typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS)
+    ? Object.keys(PARTNER_LOGOS)
+    : [];
+  const logoByCompact = new Map(logoNames.map(n => [compactBrandToken(n), n]));
+  // The org logo is not a partner.
+  logoByCompact.delete(compactBrandToken('TrailBlazers'));
+
+  const missingLogos = canonicalNames
+    .filter(b => !logoByCompact.has(compactBrandToken(b)))
+    .sort((a, b) => a.localeCompare(b));
+
+  const canonicalCompacts = new Set(canonicalNames.map(compactBrandToken));
+  CANONICAL_BRANDS.forEach(b => canonicalCompacts.add(compactBrandToken(b)));
+  const orphanLogos = [...logoByCompact.entries()]
+    .filter(([compact]) => !canonicalCompacts.has(compact))
+    .map(([, name]) => name)
+    .sort((a, b) => a.localeCompare(b));
+
+  const brandSet = new Set(canonicalNames);
+  const rosterMismatch = (DataStore.partnerRoster || [])
+    .map(r => r.Account)
+    .filter(a => a && !brandSet.has(a))
+    .sort((a, b) => a.localeCompare(b));
+
+  return {
+    observations,
+    totalRawNames: observations.length,
+    totalCanonical: canonicalNames.length,
+    nearMisses,
+    singleChannel,
+    missingLogos,
+    orphanLogos,
+    rosterMismatch,
+    issueCount: nearMisses.length + orphanLogos.length + rosterMismatch.length,
+  };
+}
+
 function rebuildBrandRegistryFromData() {
   DataStore.brands = new Set();
   DataStore.channelsByBrand = {};
@@ -625,6 +982,7 @@ function loadPreloadedData() {
   DataStore.paidSocial = PRELOADED_DATA.paidSocial && typeof PRELOADED_DATA.paidSocial === 'object' ? PRELOADED_DATA.paidSocial : {};
   DataStore.paidAssignmentRules = PRELOADED_DATA.paidAssignmentRules && typeof PRELOADED_DATA.paidAssignmentRules === 'object' ? PRELOADED_DATA.paidAssignmentRules : {};
   DataStore.brandMergeRules = { ...BRAND_ALIAS_DEFAULTS, ...(PRELOADED_DATA.brandMergeRules && typeof PRELOADED_DATA.brandMergeRules === 'object' ? PRELOADED_DATA.brandMergeRules : {}) };
+  invalidateBrandCaches();
   DataStore.surveys = Array.isArray(PRELOADED_DATA.surveys) ? PRELOADED_DATA.surveys : [];
   DataStore.surveyGeneral = Array.isArray(PRELOADED_DATA.surveyGeneral) ? PRELOADED_DATA.surveyGeneral : [];
   DataStore.surveyPartner = Array.isArray(PRELOADED_DATA.surveyPartner) ? PRELOADED_DATA.surveyPartner : [];
@@ -1053,22 +1411,58 @@ function fiscalSeasonFromDate(value) {
   return `${startYear}-${endYear}`;
 }
 
+// Normalizes season strings to the canonical "YYYY-YY" form.
+//
+// Season labels are the join key across TV, paid and survey, so a value that
+// isn't a season must not be allowed through: this used to read "2025-01-15" as
+// the range 2025\u219201 and emit "2025-01", producing a phantom season in every
+// period selector and silently splitting a partner's data in two. Anything that
+// isn't recognisably a season now returns '' and is filtered out upstream.
 function normalizeSeasonLabel(value) {
   if (value === null || value === undefined) return '';
   const raw = String(value).trim();
   if (!raw) return '';
-  const cleaned = raw.replace(/[\u2013\u2014]/g, '-');
+  const cleaned = raw.replace(/[\u2013\u2014]/g, '-').trim();
 
-  // Normalize labels like "NBA 2024-2025", "2024-2025", "FY 2024/25", etc.
-  const rangeMatch = cleaned.match(/((?:19|20)\d{2})\s*[-\/]\s*((?:19|20)?\d{2})/);
-  if (rangeMatch) {
-    const start = Number(rangeMatch[1]);
-    let end = String(rangeMatch[2]);
-    if (end.length === 4) end = end.slice(-2);
-    end = end.padStart(2, '0');
-    return `${start}-${end}`;
+  const asSeason = (startYear, endTwo) => `${startYear}-${String(endTwo).padStart(2, '0')}`;
+
+  // Reject date-shaped input outright, before any range matching. This is the
+  // whole point of the guard: an ISO date used to match the range pattern.
+  // ISO (2025-01-15), US/dotted (1/5/2025, 15.01.2025), and long forms.
+  if (/^\d{4}-\d{1,2}-\d{1,2}([T\s]|$)/.test(cleaned)) return '';
+  if (/^\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}$/.test(cleaned)) return '';
+
+  // Two-digit range: "24-25" \u2192 "2024-25". Checked first so it isn't shadowed.
+  const shortRange = cleaned.match(/^(\d{2})\s*[-\/]\s*(\d{2})$/);
+  if (shortRange) {
+    const startTwo = Number(shortRange[1]);
+    const endTwo = Number(shortRange[2]);
+    if (endTwo === (startTwo + 1) % 100) return asSeason(2000 + startTwo, endTwo);
   }
 
+  // Four-digit start with a two- or four-digit end: "2024-25", "2024-2025",
+  // "NBA 2024-2025", "FY 2024/25".
+  const fullRange = cleaned.match(/(?:^|\D)((?:19|20)\d{2})\s*[-\/]\s*((?:19|20)?\d{2})(?!\d)/);
+  if (fullRange) {
+    const start = Number(fullRange[1]);
+    const endRaw = fullRange[2];
+    const endTwo = endRaw.length === 4 ? Number(endRaw) % 100 : Number(endRaw);
+    return asSeason(start, endTwo);
+  }
+
+  // A bare year is read as the season *ending* in that year, matching how the
+  // Nielsen "Custom Year" field is already interpreted: 2025 \u2192 "2024-25".
+  // Without this, a source using "2025" never matched one using "2024-25".
+  const bareYear = cleaned.match(/^((?:19|20)\d{2})$/);
+  if (bareYear) {
+    const year = Number(bareYear[1]);
+    return asSeason(year - 1, year % 100);
+  }
+
+  // Deliberately permissive: an unrecognised label is passed through rather than
+  // dropped. This function gates every season filter in the dashboard, so a
+  // label shape we failed to anticipate must degrade to "shown as-is", never to
+  // "silently has no season".
   return cleaned;
 }
 

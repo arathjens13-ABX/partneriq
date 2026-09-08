@@ -445,16 +445,4 @@ function renderOrganicSocialPortfolioPage(main) {
   wireLimitControls();
 }
 
-// ============================================================
-// PAID SOCIAL PORTFOLIO PAGE
-// ============================================================
-function getAllPaidFiscalSeasons() {
-  const all = getAllPaidRows();
-  return [...new Set(all.map(r => r.Season).filter(Boolean))].sort();
-}
 
-function getPaidRowsForPeriod(period) {
-  const all = getAllPaidRows().filter(r => r.Brand !== UNASSIGNED_PAID_KEY);
-  if (!period || period === 'all') return all;
-  return all.filter(r => r.Season === period);
-}

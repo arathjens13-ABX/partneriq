@@ -161,18 +161,6 @@ function getLatestSeasonVSRows() {
   return allRows.filter(r => normalizeSeasonLabel(r.Season || '') === latestSeason);
 }
 
-// ── Conservative estimate: floor(min(mean, median)) ────────
-function vsConservativeEstimate(vals) {
-  const nonZero = (vals || []).filter(v => v > 0);
-  if (!nonZero.length) return 0;
-  const mean = nonZero.reduce((a, b) => a + b, 0) / nonZero.length;
-  const sorted = [...nonZero].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  const median = sorted.length % 2 !== 0
-    ? sorted[mid]
-    : (sorted[mid - 1] + sorted[mid]) / 2;
-  return Math.floor(Math.min(mean, median));
-}
 
 // Build per-position simple means from TV actuals (pooled across all brands),
 // keyed by lowercase location string (e.g. "center", "3 point line").
@@ -212,8 +200,6 @@ function computeVSLocationMeans() {
   return out;
 }
 
-// Legacy alias — kept in case any external caller references it.
-function computeVSEstimates() { return computeVSLocationMeans(); }
 
 // ── Partner-level stats: home actuals (by date) + away estimates ──
 // Key change from prior implementation: home-game TV metrics are now looked up

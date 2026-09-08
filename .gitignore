@@ -1,2 +1,17 @@
+# The built dashboard IS tracked — teammates need it without running Jupyter.
+# It used to be listed here while also being committed, which meant the ignore
+# rule did nothing (git keeps tracking files it already knows about) and only
+# made the intent unclear.
+
+# Stray copies produced by the export flow
 partneriq.html
-partneriq_build/dist/partneriq.html
+partneriq_preloaded.html
+partneriq_build/partneriq_preloaded.html
+partneriq_build/dist/partneriq_export_*.html
+
+# Jupyter autosaves
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# OS noise
+.DS_Store

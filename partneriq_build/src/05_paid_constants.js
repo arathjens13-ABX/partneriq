@@ -85,6 +85,16 @@ const PAID_SOCIAL_PARTNER_ALIASES = {
   Columbia: 'Columbia',
 };
 function escapeHTML(value) { return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+// Escaping for an HTML *attribute* value. Same output as escapeHTML today, but
+// named for the call site so the intent survives future edits — and so there is
+// one obvious function to reach for instead of hand-rolled quote replacement.
+//
+// Attribute values are the only safe place to put a data-derived string that
+// JavaScript later reads back. Never interpolate one into an inline `onclick`:
+// a brand like "McDonald's" produced onclick="…('McDonald's')", a syntax error
+// that silently made those controls dead. Use data-* plus a delegated listener.
+function escapeAttr(value) { return escapeHTML(value); }
 function compactToken(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ''); }
 function titleFromToken(value) { const spaced = String(value || '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim(); return spaced.replace(/\w/g, c => c.toUpperCase()); }
 function normalizePartnerName(value) {
@@ -289,31 +299,69 @@ function normalizePaidRow(row, fallbackBrand = '') {
   return row;
 }
 
-function formatNum(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
+// Number formatting
+// -----------------
+// `Number.isFinite` rather than `isNaN`: isNaN(Infinity) is false, so a metric
+// derived from a divide-by-zero (CPM with no impressions, QIMV/min on a
+// zero-duration asset) used to render literally as "$InfinityB".
+function isRenderableNumber(n) {
+  return n !== null && n !== undefined && n !== '' && Number.isFinite(Number(n));
+}
+
+// Rounds before choosing the magnitude bucket, so 999,999 renders as "1.0M"
+// rather than "1000.0K". Returns { value, suffix } for the caller to prefix.
+function scaleMagnitude(n) {
+  const units = [
+    { limit: 1e9, div: 1e9, digits: 2, suffix: 'B' },
+    { limit: 1e6, div: 1e6, digits: 2, suffix: 'M' },
+    { limit: 1e3, div: 1e3, digits: 1, suffix: 'K' },
+  ];
   const abs = Math.abs(n);
-  if (abs >= 1e9) return (n / 1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-  if (abs >= 1e3) return (n / 1e3).toFixed(1) + 'K';
-  return Math.round(n).toLocaleString();
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (abs < u.limit) continue;
+    const scaled = n / u.div;
+    // Rounding can push the mantissa to 1000 (999,999 → "1000.0K"); when it
+    // does, promote to the next unit up instead of printing a four-digit mantissa.
+    if (Math.abs(Number(scaled.toFixed(u.digits))) >= 1000 && i > 0) {
+      const up = units[i - 1];
+      return { text: (n / up.div).toFixed(up.digits), suffix: up.suffix };
+    }
+    return { text: scaled.toFixed(u.digits), suffix: u.suffix };
+  }
+  return { text: Math.round(n).toLocaleString(), suffix: '' };
+}
+
+function formatNum(n) {
+  if (!isRenderableNumber(n)) return '—';
+  const s = scaleMagnitude(Number(n));
+  return s.text + s.suffix;
 }
 
 function formatCurrency(n) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  const abs = Math.abs(n);
-  if (abs >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
-  if (abs >= 1e6) return '$' + (n / 1e6).toFixed(2) + 'M';
-  if (abs >= 1e3) return '$' + (n / 1e3).toFixed(1) + 'K';
-  return '$' + Math.round(n).toLocaleString();
+  if (!isRenderableNumber(n)) return '—';
+  const s = scaleMagnitude(Number(n));
+  return '$' + s.text + s.suffix;
 }
 
 function formatPct(n, digits = 1) {
-  if (n === null || n === undefined || isNaN(n)) return '—';
-  return (n * 100).toFixed(digits) + '%';
+  if (!isRenderableNumber(n)) return '—';
+  return (Number(n) * 100).toFixed(digits) + '%';
 }
 
+// Exact, unabbreviated form for tooltips on headline figures — an AM quoting a
+// number to a partner needs the real value, not "$1.2M".
+function formatExact(n, prefix = '') {
+  if (!isRenderableNumber(n)) return '';
+  return prefix + Math.round(Number(n)).toLocaleString();
+}
+
+// Percent change. A negative prior makes the sign meaningless (growth from -5 to
+// 10 is not a 300% decline), so those return null and render as "—" like any
+// other uncomputable comparison.
 function pctChange(curr, prev) {
-  if (!prev || prev === 0) return null;
+  if (!isRenderableNumber(curr) || !isRenderableNumber(prev)) return null;
+  if (prev <= 0) return null;
   return (curr - prev) / prev;
 }
 
@@ -323,15 +371,66 @@ function ordinal(n) {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+// ============================================================
+// TV ROW INDEX
+// ============================================================
+// getBrandTVData() is called from 18 sites, and a single partner-page render
+// hits it and its YoY wrappers well over a dozen times. Each call used to scan
+// the whole tvSignage array, re-deriving the virtual-branding exclusion from
+// two string comparisons and re-running normalizeSeasonLabel() per row — about
+// 100ms per render at 30k rows, repeated on every period click, comparison
+// toggle, theme switch and search filter.
+//
+// The index is built lazily on first read and thrown away whenever the row set
+// or the alias rules change (invalidateTVIndex, called from
+// canonicalizeAllBrandData). Keyed brand → season → rows, with 'all' holding
+// the unfiltered set for that brand.
+let _tvIndex = null;
+
+function invalidateTVIndex() { _tvIndex = null; }
+
+function buildTVIndex() {
+  const index = new Map();
+  (DataStore.tvSignage || []).forEach(r => {
+    if (!r || !r.Brand) return;
+    // Exclude on-court virtual branding — those rows belong to the Virtual
+    // Signage page. Cached on the row so it is derived once, not per scan.
+    if (r._isVB === undefined) {
+      r._isVB = String(r.Tool || '').trim().toLowerCase() === 'virtual branding' &&
+        ['center', '3 point line'].includes(String(r.Location || '').trim().toLowerCase());
+    }
+    if (r._isVB) return;
+    let bySeason = index.get(r.Brand);
+    if (!bySeason) { bySeason = new Map(); index.set(r.Brand, bySeason); }
+    let all = bySeason.get('all');
+    if (!all) { all = []; bySeason.set('all', all); }
+    all.push(r);
+    // Season is normalized here, once per build, rather than once per row per
+    // call. Deliberately not cached on the row: r.Season can be rewritten by
+    // normalizeLoadedRows, and a row-level cache would go stale silently.
+    const season = normalizeSeasonLabel(r.Season);
+    if (season) {
+      let bucket = bySeason.get(season);
+      if (!bucket) { bucket = []; bySeason.set(season, bucket); }
+      bucket.push(r);
+    }
+  });
+  return index;
+}
+
+function getTVIndex() {
+  if (!_tvIndex) _tvIndex = buildTVIndex();
+  return _tvIndex;
+}
+
+// Returns the index's own array, not a copy — callers must treat the result as
+// read-only. Every current call site does (filter / map / sum / avg); if you
+// need to sort or splice, copy first with slice().
 function getBrandTVData(brand, season = 'all') {
-  const rows = DataStore.tvSignage.filter(r =>
-    r.Brand === brand &&
-    // Exclude on-court virtual branding — those rows belong to the Virtual Signage page
-    !(String(r.Tool     || '').trim().toLowerCase() === 'virtual branding' &&
-      ['center', '3 point line'].includes(String(r.Location || '').trim().toLowerCase()))
-  );
-  if (season === 'all') return rows;
-  return rows.filter(r => normalizeSeasonLabel(r.Season) === season);
+  if (!brand) return [];
+  const bySeason = getTVIndex().get(brand);
+  if (!bySeason) return [];
+  return bySeason.get(season || 'all') || [];
 }
 
 function getBrandSocialData(brand, season = 'all') {
@@ -353,12 +452,6 @@ function getBrandPaidDailyRows(brand, season = 'all') {
     .sort((a, b) => a._dailySortKey - b._dailySortKey);
 }
 
-// All paid rows with a valid DailyDate for a given portfolio period (all brands)
-function getPaidDailyRowsForPeriod(period) {
-  return getPaidRowsForPeriod(period)
-    .filter(r => r.DailyDate instanceof Date && !isNaN(r.DailyDate))
-    .sort((a, b) => a._dailySortKey - b._dailySortKey);
-}
 
 function getPaidSeasons(brand) {
   return [...new Set(getBrandPaidData(brand).map(r => normalizeSeasonLabel(r.Season)).filter(Boolean))].sort();

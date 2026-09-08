@@ -7,12 +7,16 @@
 // the builder working file never shows it. Built entirely in JS and mounted
 // into #introRoot; the live dashboard sits behind a dimming backdrop.
 //
-// No localStorage (forbidden): the "Don't show again" checkbox suppresses the
-// intro for the rest of the page session only — a full reload shows it again.
+// No localStorage (forbidden), so there is no way to remember that a viewer has
+// already seen this across loads. A "Don't show again" checkbox used to sit in
+// the rail, but it could never work — maybeShowIntro() reads its flag once at
+// DOMContentLoaded, strictly before the overlay is on screen and therefore
+// before the box can be ticked. It was removed rather than left as a control
+// that silently did nothing. The intro is skippable (Skip, Esc, or the
+// backdrop) and reopenable from the "?" button, which is the honest contract.
 
 let _introStep = 0;
 let _introTimers = [];
-let introSuppressed = false; // session-only: set by "Don't show again"
 
 const INTRO_STEPS = [
   {
@@ -85,7 +89,7 @@ function buildIntroOverlay() {
           <div class="pqi-eyebrow">How to use · ${INTRO_STEPS.length} steps</div>
           <ul class="pqi-steps" id="pqiSteps"><span class="pqi-spine"><i id="pqiSpine"></i></span></ul>
           <div class="pqi-railfoot">
-            <label class="pqi-dontshow"><input type="checkbox" id="pqiDontShow"> Don't show this again</label>
+            <span class="pqi-railhint">Esc to close · reopen any time with <b>?</b></span>
           </div>
         </div>
         <div class="pqi-right">
@@ -127,7 +131,6 @@ function buildIntroOverlay() {
   });
   document.getElementById('pqiBack').addEventListener('click', () => introGo(_introStep - 1));
   document.getElementById('pqiSkip').addEventListener('click', hideIntro);
-  document.getElementById('pqiDontShow').addEventListener('change', (e) => { introSuppressed = e.target.checked; });
   document.getElementById('pqiBackdrop').addEventListener('click', hideIntro);
   document.addEventListener('keydown', _introKeyHandler);
   return root;
@@ -347,7 +350,7 @@ function maybeShowIntro() {
   const fab = document.getElementById('introHelpFab');
   if (fab) fab.style.display = VIEWER_MODE ? '' : 'none';
   document.body.classList.toggle('pqi-viewer', !!VIEWER_MODE);
-  if (!VIEWER_MODE || introSuppressed) {
+  if (!VIEWER_MODE) {
     document.documentElement.classList.remove('pqi-preboot'); // reveal the dashboard
     return;
   }
