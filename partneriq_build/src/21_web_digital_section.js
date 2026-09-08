@@ -82,22 +82,7 @@ function _webHeaderRowIndex(matrix, requiredColumnGroups) {
   return -1;
 }
 
-function _webRowObjectFromMatrix(headerRow, dataRow) {
-  const obj = {};
-  (headerRow || []).forEach((h, idx) => {
-    const key = String(h || '').trim();
-    if (key) obj[key] = _webRowCell(dataRow, idx);
-  });
-  return obj;
-}
 
-function _webObjectRowsFromCSV(text, requiredColumnGroups) {
-  const matrix = parseWebCSVMatrix(text);
-  const headerIndex = _webHeaderRowIndex(matrix, requiredColumnGroups);
-  if (headerIndex < 0) return [];
-  const headerRow = matrix[headerIndex];
-  return matrix.slice(headerIndex + 1).map(row => _webRowObjectFromMatrix(headerRow, row));
-}
 
 // -- Partner / ad-type helpers --
 
@@ -395,10 +380,6 @@ function getTBIRQBanner() {
 // RENDER HELPERS
 // ============================================================
 
-// Shared KPI cell used in comparison and summary tables.
-function _webKpiCell(label, val) {
-  return `<div class="kpi"><span class="kpi-label">${label}</span><span class="kpi-value">${val}</span></div>`;
-}
 
 // Format impressions, showing "—" when null but "(data pending)" tooltip hint.
 function _fmtWebImpr(n) {

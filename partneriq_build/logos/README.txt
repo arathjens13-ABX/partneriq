@@ -31,5 +31,13 @@ Recommended size: 200x200px minimum, 400x400px ideal
 
 After adding or changing any logo, run Cell 1 in build.ipynb to rebuild.
 
-Name mismatches for partner logos are reported as warnings during the build —
-check the Cell 1 output to confirm all logos were matched correctly.
+Logo lookup tolerates case, spacing and punctuation differences, so
+"DeltaDental.png" will still match the partner "Delta Dental". Even so, name the
+file to match the canonical name exactly.
+
+To confirm every logo is matched: open the dashboard and go to
+Data Health -> "Naming & aliases". It lists logo files that match no partner
+and partners that have data but no logo.
+
+(The build does NOT warn about name mismatches, despite what this file used to
+claim — that is why a misspelled "Spirit Mountian Casino.png" went unnoticed.)

@@ -33,10 +33,6 @@ function getUniqueMatchdates(rows) {
   });
 }
 
-function getMatchdateCountForBrandSeason(brand, season) {
-  if (!brand || !season) return 0;
-  return getUniqueMatchdates(getBrandTVData(brand, season)).length;
-}
 
 // Returns rows from the prior season limited to the first N matchdates.
 // This is the core "auto-match" mechanism.
@@ -131,27 +127,11 @@ function getBrandRankOnAsset(brand, location, season = 'all') {
   return { rank: idx + 1, total: ranked.length, data: ranked[idx], all: ranked };
 }
 
-// Rank a brand overall (across all locations) by total QIMV/min in a season
-function getBrandOverallRank(brand, season = 'all') {
-  const rows = season === 'all' ? DataStore.tvSignage : DataStore.tvSignage.filter(r => normalizeSeasonLabel(r.Season) === season);
-  const byBrand = {};
-  rows.forEach(r => {
-    if (!byBrand[r.Brand]) byBrand[r.Brand] = { qimv: 0, minutes: 0 };
-    byBrand[r.Brand].qimv += Number(r['QI Media Value ($)']) || 0;
-    byBrand[r.Brand].minutes += Number(r['Duration (Minutes)']) || 0;
-  });
-  const ranked = Object.entries(byBrand)
-    .map(([b, v]) => ({ brand: b, qimvPerMin: v.minutes > 0 ? v.qimv / v.minutes : 0 }))
-    .sort((a, b) => b.qimvPerMin - a.qimvPerMin);
-  const idx = ranked.findIndex(r => r.brand === brand);
-  return idx === -1 ? null : { rank: idx + 1, total: ranked.length };
-}
 
 // ============================================================
 // TOOLTIP SYSTEM
 // ============================================================
 const tooltipEl = document.getElementById('tooltip');
-let tooltipTimer = null;
 
 function showTooltip(event, html) {
   tooltipEl.innerHTML = html;

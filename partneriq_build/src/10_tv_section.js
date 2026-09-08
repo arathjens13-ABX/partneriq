@@ -65,12 +65,12 @@ function renderTVSection(brand) {
         <div class="kpi-grid">
           <div class="kpi">
             <span class="kpi-label">QI Media Value ${makeInfoIcon('QI Media Value')}</span>
-            <span class="kpi-value">${formatCurrency(qiMV)}</span>
+            <span class="kpi-value" title="${formatExact(qiMV, '$')}">${formatCurrency(qiMV)}</span>
             ${mvYoY ? `<span class="kpi-change ${mvYoY.change >= 0 ? 'up' : 'down'}">${mvYoY.change >= 0 ? '▲' : '▼'} ${Math.abs(mvYoY.change * 100).toFixed(1)}% YoY</span>` : '<span class="kpi-change neutral">—</span>'}
           </div>
           <div class="kpi">
             <span class="kpi-label">Sponsorship QI Impressions ${makeInfoIcon('Sponsorship QI Impressions')}</span>
-            <span class="kpi-value">${formatNum(qiImp)}</span>
+            <span class="kpi-value" title="${formatExact(qiImp)}">${formatNum(qiImp)}</span>
             <span class="kpi-change neutral">Quality-adjusted</span>
           </div>
           <div class="kpi">
@@ -140,13 +140,6 @@ function renderTVSection(brand) {
 }
 
 
-function getPreviousSeasonForPeriod(brand, period) {
-  const seasons = getAvailableSeasons(brand);
-  if (seasons.length < 2) return null;
-  if (period === 'all') return seasons[seasons.length - 2];
-  const idx = seasons.indexOf(period);
-  return idx > 0 ? seasons[idx - 1] : null;
-}
 
 function aggregateAssetRows(rows) {
   const byAsset = {};

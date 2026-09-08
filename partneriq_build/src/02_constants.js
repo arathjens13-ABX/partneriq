@@ -67,7 +67,15 @@ const PRELOADED_DATA = null;
 const VIEWER_MODE = false;
 /* VIEWER_MODE_END */
 // ============================================================
-// CHANGELOG — history of all versions and changes.
-// Add a new entry at the top of this array each time changes are made.
-// Source: 'Claude' | 'GPT' | 'Manual'
+// DASHBOARD VERSION
 // ============================================================
+// The single source of truth for the version users see. The footer renders
+// from this — it used to be hardcoded in shell.html as "v1.0 · May 1 2026",
+// 25 releases behind the real version, which is the number an AM would quote
+// back when reporting a problem.
+//
+// Version history lives in CHANGELOG.md, not in the dashboard. It used to be a
+// 1,400-line array rendered as an in-app page, which shipped ~92 KB of internal
+// development notes to every viewer. Update both together when you ship.
+const DASHBOARD_VERSION = 'v0.48';
+const DASHBOARD_VERSION_DATE = 'September 2026';
