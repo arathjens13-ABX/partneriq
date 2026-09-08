@@ -133,4 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   renderApp();
   if (loadedPreloaded) updateBrandDropdown('');
+
+  // Viewer onboarding: show the how-to intro on open (viewer mode only).
+  if (typeof maybeShowIntro === 'function') maybeShowIntro();
 });

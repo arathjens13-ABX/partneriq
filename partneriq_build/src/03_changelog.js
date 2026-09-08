@@ -1,5 +1,21 @@
 const CHANGELOG = [
   {
+    version: 'v0.47',
+    date: 'September 2026',
+    source: 'Claude',
+    title: 'How-to-use intro overlay for viewers',
+    changes: [
+      {
+        category: 'Onboarding',
+        items: [
+          `New animated "How to use" intro that greets viewers on open, replacing the old behavior where the Import/Export modal briefly flashed on load. Five steps walk through finding any partner (including non-contracted ones), finding the sections on a partner page, sorting columns and picking date ranges, and getting around with Back/Home`,
+          `Shown in viewer mode only (gated on VIEWER_MODE) so the builder working file is unaffected. Appears on every open, with a "Don't show again" checkbox that suppresses it for the session (no localStorage, per the offline-first rules) and a "?" relaunch button to reopen it anytime`,
+          `Self-contained new file 23_intro_section.js with namespaced .pqi-* styles in 01_styles.css; built into a #introRoot mount added to shell.html. Reuses the Partner / Not partner pill styles from the search filter`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.46',
     date: 'September 2026',
     source: 'Claude',
