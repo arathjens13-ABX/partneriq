@@ -669,66 +669,85 @@ function renderOrganicSocialPlaceholder(brand) {
 }
 
 
+// Determines which channel an uploaded file belongs to.
+//
+// HIGH BLAST RADIUS. Two rules matter here:
+//   1. Never guess. This used to end in `return 'organic'`, so any unrecognised
+//      file — a budget export, a mis-named file, someone's notes saved as CSV —
+//      was accepted as organic social, given a brand from its filename prefix,
+//      and folded into the totals while the file log reported success. Unknown
+//      files now return 'unknown' and surface as an error the user can act on.
+//   2. Match on tokens, not substrings. `lower.includes('tv')` matched
+//      "shortvideo_report.csv" and "Netvibes.csv"; the token forms below don't.
+//
+// `base` is `lower` minus the extension, so testing both is redundant — the
+// checks below use `base` alone.
 function detectFileType(filename, rows = []) {
-  const lower = filename.toLowerCase();
+  const lower = String(filename || '').toLowerCase();
   const base  = lower.replace(/\.(csv|xlsx|xls)$/i, '');
   const sample = rows && rows[0] ? rows[0] : {};
   const cols = Object.keys(sample).map(k => k.toLowerCase().trim());
+  // Column lookup that ignores the _1/_2 suffixes the CSV shim adds to
+  // duplicate headers, so schema detection is unaffected by them.
+  const hasCol = name => cols.some(c => c === name || c.replace(/_\d+$/, '') === name);
+  // Matches a token delimited by start/end or a non-alphanumeric separator, so
+  // "TV_signage" and "q3-tv-report" match but "shortvideo" does not.
+  const hasToken = tok => new RegExp(`(^|[^a-z0-9])${tok}([^a-z0-9]|$)`).test(base);
 
-  // Partner roster: Partners_ prefix
-  if (base.startsWith('partners_') || lower.startsWith('partners_')) return 'roster';
+  // ── Filename-prefix conventions ─────────────────────────────────────────
+  if (base.startsWith('partners_'))       return 'roster';
+  if (base.startsWith('tvaffidavit'))     return 'tvAffidavit';
+  if (base.startsWith('radioaffidavit'))  return 'radioAffidavit';
+  if (base.startsWith('sponsor_average_')) return 'ancLED';
+  if (base.startsWith('virtualsignage'))  return 'virtualSignage';
 
-  // Affidavits: TVAffidavit_ / RadioAffidavit_ prefix
-  if (base.startsWith('tvaffidavit') || lower.startsWith('tvaffidavit')) return 'tvAffidavit';
-  if (base.startsWith('radioaffidavit') || lower.startsWith('radioaffidavit')) return 'radioAffidavit';
+  // Survey subtypes — checked before the generic Survey_ catch-all
+  if (base.startsWith('generalsurvey_'))   return 'generalSurvey';
+  if (base.startsWith('modadeltadental_')) return 'partnerSurvey';
+  if (base.startsWith('program_'))         return 'programSurvey';
+  if (base.startsWith('survey_'))          return 'survey';
 
-  // ANC LED Report: SPONSOR_AVERAGE_<Arena>_<Asset>_<dates>.csv
-  if (base.startsWith('sponsor_average_') || lower.startsWith('sponsor_average_')) return 'ancLED';
-  if (cols.includes('sponsor name') && cols.includes('pre-game avg') && cols.includes('time total')) return 'ancLED';
+  // Web & Digital delivery reports — before the generic tv/paid fallbacks.
+  // Match both space-separated and underscore filename styles.
+  if (base.includes('delivery report blazers') || base.includes('delivery_report_blazers'))         return 'blazersWebDisplay';
+  if (base.includes('delivery report rosequarter') || base.includes('delivery_report_rosequarter')) return 'rqWebDisplay';
+  if (base.includes('pre-roll') || base.includes('pre_roll'))                                       return 'webPreRoll';
 
-  // Virtual Signage Schedule: filename starts with 'virtualsignage', or detected by column shape
-  if (base.startsWith('virtualsignage') || lower.startsWith('virtualsignage')) return 'virtualSignage';
-  if (cols.includes('home/away') && cols.includes('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
+  // Zoomph organic social — three file types by filename prefix
+  if (base.includes('brandedpartnerperformance')) return 'zoomphBrand';
+  if (base.includes('brandedcontentseries'))      return 'zoomphSeries';
+  if (base.includes('brandonasset'))              return 'zoomphAsset';
 
-  // New survey subtypes — checked before the generic Survey_ catch-all
-  // GeneralSurvey_: fan segment questions (beverages, game nights, bar spaces, TV segments)
-  if (base.startsWith('generalsurvey_') || lower.startsWith('generalsurvey_')) return 'generalSurvey';
-  // ModaDeltaDental_: partner-specific question battery for Moda Health and Delta Dental
-  if (base.startsWith('modadeltadental_') || lower.startsWith('modadeltadental_')) return 'partnerSurvey';
-  // Program_: in-game and community program awareness tracking
-  if (base.startsWith('program_') || lower.startsWith('program_')) return 'programSurvey';
+  // ── Column-schema detection ─────────────────────────────────────────────
+  if (hasCol('sponsor name') && hasCol('pre-game avg') && hasCol('time total')) return 'ancLED';
+  if (hasCol('home/away') && hasCol('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
+  if (hasCol('unaided recall') && hasCol('aided recall') && hasCol('survey')) return 'survey';
 
-  // Survey: Survey_ prefix or column-based detection
-  if (base.startsWith('survey_') || lower.startsWith('survey_')) return 'survey';
-  if (cols.includes('unaided recall') && cols.includes('aided recall') && cols.includes('survey')) return 'survey';
+  // Nielsen TV Ratings (viewership): schema-based, checked BEFORE the token tv
+  // match because these filenames usually contain "tv".
+  // NOTE: This file format will change. If detection breaks, look for
+  // 'hh rtg' + 'demo' + 'opponent' in the column headers.
+  // Source: DW > vw_viewership > vw_nielsen_tv_metrics
+  if (hasCol('hh rtg') && hasCol('demo') && hasCol('opponent')) return 'tvRatings';
 
-  // Web & Digital delivery reports — must be checked before generic tv/paid/organic fallbacks
-  // Match both space-separated ("Delivery Report Blazers") and underscore ("Delivery_Report_Blazers")
-  if (lower.includes('delivery report blazers') || lower.includes('delivery_report_blazers'))           return 'blazersWebDisplay';
-  if (lower.includes('delivery report rosequarter') || lower.includes('delivery_report_rosequarter'))   return 'rqWebDisplay';
-  if (lower.includes('pre-roll') || lower.includes('pre_roll')) return 'webPreRoll';
-
-  // Zoomph organic social — three file types detected by filename prefix
-  if (lower.includes('brandedpartnerperformance') || base.startsWith('brandedpartnerperformance')) return 'zoomphBrand';
-  if (lower.includes('brandedcontentseries') || base.startsWith('brandedcontentseries')) return 'zoomphSeries';
-  if (lower.includes('brandonasset') || base.startsWith('brandonasset')) return 'zoomphAsset';
-  // Also detect by columns if filename doesn't match
-  if (cols.includes('organic posts') && cols.includes('brand value') && cols.includes('social value')) {
+  if (hasCol('organic posts') && hasCol('brand value') && hasCol('social value')) {
     // Can't distinguish series vs asset vs brand from columns alone — default to brand
     return 'zoomphBrand';
   }
 
-  // Nielsen TV Ratings (viewership): schema-based, checked BEFORE the generic 'tv' filename match
-  // because this file often contains 'tv' in the name. Identify by column shape.
-  // NOTE: This file format will change. If detection breaks, look for 'hh rtg' + 'demo' + 'opponent'
-  // in the column headers. Source: DW > vw_viewership > vw_nielsen_tv_metrics
-  if (cols.includes('hh rtg') && cols.includes('demo') && cols.includes('opponent')) return 'tvRatings';
+  // ── Token-based filename fallbacks ──────────────────────────────────────
+  if (hasToken('tv') || hasToken('signage') || hasToken('visible')) return 'tv';
+  if (hasToken('paid') || hasToken('facebook') || hasToken('meta') ||
+      hasToken('admanager') || base.includes('ads manager')) return 'paid';
+  if (hasCol('amount spent (usd)') && hasCol('campaign name')) return 'paid';
+  if (hasCol('reporting starts') && hasCol('reporting ends') && hasCol('link clicks')) return 'paid';
 
-  if (lower.includes('tv') || lower.includes('signage') || lower.includes('visible')) return 'tv';
-  if (lower.includes('paid') || lower.includes('facebook') || lower.includes('meta') || lower.includes('admanager') || lower.includes('ads manager')) return 'paid';
-  if (cols.includes('amount spent (usd)') && cols.includes('campaign name')) return 'paid';
-  if (cols.includes('reporting starts') && cols.includes('reporting ends') && cols.includes('link clicks')) return 'paid';
-  return 'organic';
+  // Organic social is the per-brand fallback format, but only when the row
+  // shape actually looks like one — never as a catch-all for anything unknown.
+  if (hasCol('partner') && (hasCol('partnerexposuredate') || hasCol('impressions'))) return 'organic';
+  if (hasCol('brand') && hasCol('impressions') && hasCol('engagement')) return 'organic';
+
+  return 'unknown';
 }
 
 function extractBrandFromSocialFilename(filename) {
@@ -736,9 +755,6 @@ function extractBrandFromSocialFilename(filename) {
   return base.split('_')[0].split('-')[0].trim();
 }
 
-function extractBrandFromPaidFilename(filename) {
-  return extractBrandFromSocialFilename(filename) || 'Unknown Partner';
-}
 
 function parseCSV(text) {
   return Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data;
@@ -968,6 +984,20 @@ async function _ingestFileInner(file, fileId) {
     const unknown = rosterRows.filter(r => !DataStore.brands.has(r.Account));
     return { success: true, type: 'roster', rows: rosterRows.length, unknown: unknown.length, filename: file.name };
 
+  } else if (type === 'unknown') {
+    // detectFileType could not place this file. Report it rather than guessing:
+    // the old behaviour silently ingested anything unrecognised as organic
+    // social. Listing the columns we saw is what lets the user fix it — either
+    // by renaming the file or by telling us about a new export format.
+    const cols = Object.keys(rows[0] || {}).slice(0, 6);
+    const colHint = cols.length ? ` Columns seen: ${cols.join(', ')}${Object.keys(rows[0] || {}).length > 6 ? '…' : ''}` : ' The file appears to have no header row.';
+    return {
+      success: false,
+      type: 'unknown',
+      filename: file.name,
+      error: `Unrecognised file type — nothing was loaded. Rename the file to match a known convention (see the naming guide above).${colHint}`,
+    };
+
   } else {
     const brand = extractBrandFromSocialFilename(file.name);
     if (!brand) return { success: false, error: 'Could not extract brand from filename', filename: file.name };
@@ -1047,38 +1077,38 @@ async function handleFiles(fileList) {
   updateBrandDropdown(document.getElementById('brandSearch').value);
 }
 
+// One-line summary for a file-log entry, keyed by ingest type.
+//
+// Was a 16-branch nested ternary. A lookup means an unhandled type is visible
+// as "Loaded · N rows" instead of silently falling through to the organic
+// branch and mislabelling itself.
+const LOADED_FILE_DESCRIBERS = {
+  tv:              r => `TV · ${r.rows} rows`,
+  paid:            r => `Paid Social · ${r.brand || 'multiple brands'} · ${r.rows} rows${r.reviewCount ? ` · ${r.reviewCount} to review` : ''}`,
+  survey:          r => `Survey · ${r.rows} rows · ${r.phases} · ${r.seasons}`,
+  generalSurvey:   r => `General Survey (Fan Insights) · ${r.questions} questions · ${r.waves} waves · ${r.rows} answer rows${r.unmatched ? ` · ${r.unmatched} unmatched options` : ''}`,
+  partnerSurvey:   r => `Partner Survey (${r.partners}) · ${r.waves} waves · ${r.rows} answer rows`,
+  programSurvey:   r => `Programs Survey · ${r.programs} programs · ${r.waves} waves · ${r.sponsored} sponsored rows`,
+  zoomphBrand:     r => `Organic Social (Partner Perf) · ${r.rows} rows${r.unresolved ? ` · ${r.unresolved} unresolved` : ''}`,
+  zoomphSeries:    r => `Organic Social (Content Series) · ${r.rows} rows${r.unresolved ? ` · ${r.unresolved} unresolved` : ''}`,
+  zoomphAsset:     r => `Organic Social (Brand on Asset) · ${r.rows} rows${r.unresolved ? ` · ${r.unresolved} unresolved` : ''}`,
+  roster:          r => `Partner Roster · ${r.rows} partners${r.unknown ? ` · ${r.unknown} mismatches` : ''}`,
+  tvAffidavit:     r => `${r.channel} Affidavit · ${r.rows} rows`,
+  radioAffidavit:  r => `${r.channel} Affidavit · ${r.rows} rows`,
+  ancLED:          r => `ANC LED Report · ${r.arena} / ${r.asset} · ${r.rows} rows`,
+  virtualSignage:  r => `Virtual Signage Schedule · ${r.rows} games (${r.homeGames} home · ${r.awayGames} away) · ${r.brands} brands`,
+  blazersWebDisplay: r => `Web & Digital · Blazers.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
+  rqWebDisplay:    r => `Web & Digital · RoseQuarter.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
+  webPreRoll:      r => `Web & Digital · Pre-Roll Video · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
+  tvRatings:       r => `TV Ratings · ${r.games} games · ${r.seasons} · ${r.rows} demo rows`,
+  organic:         r => `Organic Social · ${r.brand} · ${r.rows} posts`,
+};
+
 function describeLoadedFile(r) {
-  return r.type === 'tv'
-        ? `TV · ${r.rows} rows`
-        : r.type === 'paid'
-          ? `Paid Social · ${r.brand || 'multiple brands'} · ${r.rows} rows${r.reviewCount ? ` · ${r.reviewCount} to review` : ''}`
-        : r.type === 'survey'
-          ? `Survey · ${r.rows} rows · ${r.phases} · ${r.seasons}`
-        : r.type === 'generalSurvey'
-          ? `General Survey (Fan Insights) · ${r.questions} questions · ${r.waves} waves · ${r.rows} answer rows${r.unmatched ? ` · ${r.unmatched} unmatched options` : ''}`
-        : r.type === 'partnerSurvey'
-          ? `Partner Survey (${r.partners}) · ${r.waves} waves · ${r.rows} answer rows`
-        : r.type === 'programSurvey'
-          ? `Programs Survey · ${r.programs} programs · ${r.waves} waves · ${r.sponsored} sponsored rows`
-        : (r.type === 'zoomphBrand' || r.type === 'zoomphSeries' || r.type === 'zoomphAsset')
-          ? `Organic Social (${r.type.replace('zoomph','').replace('Brand','Partner Perf').replace('Series','Content Series').replace('Asset','Brand on Asset')}) · ${r.rows} rows${r.unresolved ? ' · ' + r.unresolved + ' unresolved' : ''}`
-        : r.type === 'roster'
-          ? `Partner Roster · ${r.rows} partners${r.unknown ? ' · ' + r.unknown + ' mismatches' : ''}`
-        : (r.type === 'tvAffidavit' || r.type === 'radioAffidavit')
-          ? `${r.channel} Affidavit · ${r.rows} rows`
-        : r.type === 'ancLED'
-          ? `ANC LED Report · ${r.arena} / ${r.asset} · ${r.rows} rows`
-        : r.type === 'virtualSignage'
-          ? `Virtual Signage Schedule · ${r.rows} games (${r.homeGames} home · ${r.awayGames} away) · ${r.brands} brands`
-        : r.type === 'blazersWebDisplay'
-          ? `Web & Digital · Blazers.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`
-        : r.type === 'rqWebDisplay'
-          ? `Web & Digital · RoseQuarter.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`
-        : r.type === 'webPreRoll'
-          ? `Web & Digital · Pre-Roll Video · ${r.brands || 'unknown brands'} · ${r.rows} rows`
-        : r.type === 'tvRatings'
-          ? `TV Ratings · ${r.games} games · ${r.seasons} · ${r.rows} demo rows`
-        : `Organic Social · ${r.brand} · ${r.rows} posts`;
+  const describe = LOADED_FILE_DESCRIBERS[r && r.type];
+  if (!describe) return `Loaded · ${(r && r.rows) || 0} rows`;
+  try { return describe(r); }
+  catch (e) { return `Loaded · ${(r && r.rows) || 0} rows`; }
 }
 
 function renderFileLog() {
@@ -1097,7 +1127,7 @@ function renderFileLog() {
         </span>`;
       return `<div class="file-item success">
         <span class="file-item-name">${escapeHTML(r.filename)}${r.loadedAt ? ` <span class="file-item-date">· ${r.loadedAt}</span>` : ''}</span>
-        <span class="file-item-info">${describeLoadedFile(r)}</span>
+        <span class="file-item-info">${escapeHTML(describeLoadedFile(r))}</span>
         ${actions}
       </div>`;
     }

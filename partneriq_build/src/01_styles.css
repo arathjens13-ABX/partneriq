@@ -3091,8 +3091,8 @@ html[data-theme="light"],
 .pqi-step.active .pqi-num { background: linear-gradient(135deg, var(--accent), var(--accent-soft)); border-color: transparent; color: #fff; transform: scale(1.04); }
 .pqi-step.active .pqi-lab { font-weight: 600; }
 .pqi-railfoot { margin-top: auto; padding-top: 18px; }
-.pqi-dontshow { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-muted); cursor: pointer; user-select: none; }
-.pqi-dontshow input { accent-color: var(--accent); width: 14px; height: 14px; }
+.pqi-railhint { display: block; font-size: 11.5px; line-height: 1.5; color: var(--text-muted); user-select: none; }
+.pqi-railhint b { color: var(--text-dim); font-weight: 600; }
 
 /* Right side */
 .pqi-right { display: flex; flex-direction: column; min-width: 0; }
@@ -3275,3 +3275,75 @@ body.pqi-viewer .back-to-top { bottom: 92px; }
   .intro-help-fab { bottom: 20px; right: 20px; width: 40px; height: 40px; }
   body.pqi-viewer .back-to-top { bottom: 80px; right: 20px; }
 }
+
+/* ============================================================
+   NAMING & ALIASES PANEL — Data Health
+   ============================================================ */
+.naming-block { border-top: 1px solid var(--border-soft); padding: 14px 0; }
+.naming-block:first-of-type { border-top: none; padding-top: 0; }
+.naming-block-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px;
+}
+.naming-block-title {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.11em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.naming-block-count {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+.naming-block.warning .naming-block-count { color: var(--brand-red); }
+
+.naming-list { display: flex; flex-direction: column; }
+.naming-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px; align-items: center;
+  padding: 8px 10px; border-radius: 4px;
+}
+.naming-row:nth-child(odd) { background: var(--bg-elev-2); }
+.naming-row-main {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; min-width: 0; font-size: 12.5px;
+}
+.naming-variant { color: var(--text-dim); }
+.naming-arrow { color: var(--text-muted); font-family: var(--font-mono); }
+.naming-canonical { color: var(--text); font-weight: 500; }
+.naming-row-meta {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.naming-row-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.naming-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.naming-chip {
+  font-size: 11.5px; padding: 3px 9px; border-radius: 3px;
+  background: var(--bg-elev-2); border: 1px solid var(--border-soft);
+  color: var(--text-dim);
+}
+.naming-chip.warn { border-color: var(--brand-red); color: var(--brand-red); }
+.naming-empty { font-size: 12px; color: var(--text-muted); }
+.naming-more {
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted);
+  padding: 6px 2px;
+}
+
+@media (max-width: 720px) {
+  .naming-row { grid-template-columns: 1fr; gap: 6px; }
+}
+
+/* Alias-match note in the partner search dropdown */
+.brand-option-via {
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-muted); margin-left: 6px; white-space: nowrap;
+}
+/* Keyboard cursor in the partner search dropdown */
+.brand-option.kb-active { background: var(--bg-elev-2); outline: 1px solid var(--brand-red); outline-offset: -1px; }
+
+/* Links page cards are anchors — strip the default link styling and give
+   keyboard users a visible focus ring. */
+a.home-action { text-decoration: none; color: inherit; display: block; }
+a.home-action:focus-visible { outline: 2px solid var(--brand-red); outline-offset: 2px; }
+
+/* A section whose renderer threw — see renderSectionFailure() */
+.section-failed { border-left: 3px solid var(--negative); }

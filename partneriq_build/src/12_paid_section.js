@@ -271,7 +271,7 @@ function renderPaidPortfolioPage(main) {
               <th style="text-align:left;">Objective</th>
             </tr></thead>
             <tbody>
-              ${displayCampaignAggs.map((c, i) => `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${(c.brand||'').replace(/'/g, "\\'")}')">
+              ${displayCampaignAggs.map((c, i) => `<tr style="cursor:pointer;" data-brand-nav="${escapeAttr(c.brand || '')}">
                   <td class="num" style="color:var(--text-muted);">${i + 1}</td>
                   <td style="text-align:left;font-weight:500;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHTML(c.name)}">${escapeHTML(c.name)}</td>
                   <td style="text-align:left;color:var(--text-dim);">${escapeHTML(c.brand || '—')}</td>
@@ -306,7 +306,7 @@ function renderPaidPortfolioPage(main) {
               }).join('')}
             </tr></thead>
             <tbody>
-              ${displayPartnerAggs.map((p, i) => `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${p.brand.replace(/'/g, "\\'")}')">
+              ${displayPartnerAggs.map((p, i) => `<tr style="cursor:pointer;" data-brand-nav="${escapeAttr(p.brand)}">
                   <td class="num" style="color:var(--text-muted);">${i + 1}</td>
                   <td style="text-align:left;font-weight:500;">${p.brand}</td>
                   <td class="num" style="font-weight:500;">${formatNum(p.impressions)}</td>
@@ -673,14 +673,6 @@ function wireMultiPacingChart(brand, period) {
 }
 
 
-// Hidden campaign names per brand (Set of campaign name strings)
-const _ganttHiddenCampaigns = {};
-
-
-// Wire Gantt hover and filter checkboxes. Called after section renders.
-
-
-
 // ---- 2. Daily spend pacing chart (current FY vs prior FY cumulative) ----
 // Same concept as the TV Pace Chart — shows whether spend is tracking
 // ahead or behind vs the same point last year.
@@ -692,10 +684,6 @@ const PAID_PACING_METRICS = [
   { key: 'LinkClicks',    rowKey: 'LinkClicks',     label: 'Link Clicks', fmt: formatNum },
   { key: 'Results',       rowKey: 'Results',        label: 'Results',     fmt: formatNum },
 ];
-
-// Current metric key per brand — stored so toggle persists while section is open
-const _paidPacingMetric = {};
-
 
 
 
@@ -871,27 +859,6 @@ function renderPaidPlaceholder() {
   `;
 }
 
-function renderSurveyPlaceholder() {
-  const sectionId = 'section-survey';
-  const isOpen = !!openSections[sectionId];
-  document.getElementById('survey-slot').innerHTML = `
-    <section class="section collapsible ${isOpen ? 'open' : ''}" id="${sectionId}">
-      <button class="section-toggle" type="button" data-section-toggle="${sectionId}">
-        <svg class="section-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 6 15 12 9 18"/></svg>
-        <div>
-          <div class="section-title">Survey Research</div>
-          <div class="section-meta" style="margin-top: 2px;">Channel registered · Awaiting data schema</div>
-        </div>
-        <div class="section-toggle-meta">
-          <span class="section-summary-empty">no data loaded</span>
-        </div>
-      </button>
-      <div class="section-body">
-        <div class="section-unavailable">Survey data support is scaffolded. Share your survey file schema and this section will populate.</div>
-      </div>
-    </section>
-  `;
-}
 
 // ============================================================
 // BRAND SEARCH
@@ -918,6 +885,53 @@ function syncHeaderPartnersToggle() {
   if (box) box.checked = searchPartnersOnly;
 }
 
+// Ranked, alias-aware brand search. Returns [{ brand, via }] where `via` is the
+// alias that matched when it wasn't the canonical name itself.
+function searchBrands(brands, query) {
+  const q = String(query || '').trim().toLowerCase();
+  if (!q) return brands.map(b => ({ brand: b, via: null }));
+  const qCompact = compactBrandToken(q);
+
+  // Build canonical → [alias names that resolve to it] once per search.
+  const aliasesByCanonical = new Map();
+  const addAlias = (alias, canonical) => {
+    if (!alias || !canonical || alias === canonical) return;
+    let list = aliasesByCanonical.get(canonical);
+    if (!list) { list = []; aliasesByCanonical.set(canonical, list); }
+    list.push(alias);
+  };
+  Object.entries(getBrandMergeRules()).forEach(([alias, canonical]) => addAlias(alias, canonical));
+  Object.entries(DataStore.autoDetectedAliases || {}).forEach(([alias, canonical]) => addAlias(alias, canonical));
+
+  const scored = [];
+  brands.forEach(brand => {
+    const lower = brand.toLowerCase();
+    let score = -1;
+    let via = null;
+    if (lower === q || compactBrandToken(brand) === qCompact) score = 0;
+    else if (lower.startsWith(q)) score = 1;
+    else if (lower.includes(q)) score = 2;
+    else if (compactBrandToken(brand).includes(qCompact)) score = 3;
+
+    if (score === -1) {
+      // No canonical hit — try the aliases that roll up to this brand.
+      const aliases = aliasesByCanonical.get(brand) || [];
+      for (const alias of aliases) {
+        const al = alias.toLowerCase();
+        if (al === q)              { score = 4; via = alias; break; }
+        if (al.startsWith(q))      { score = 5; via = alias; break; }
+        if (al.includes(q))        { score = 6; via = alias; break; }
+        if (compactBrandToken(alias).includes(qCompact)) { score = 7; via = alias; break; }
+      }
+    }
+    if (score >= 0) scored.push({ brand, via, score });
+  });
+
+  return scored
+    .sort((a, b) => a.score - b.score || a.brand.localeCompare(b.brand))
+    .map(({ brand, via }) => ({ brand, via }));
+}
+
 function updateBrandDropdown(query = '') {
   const dropdown = document.getElementById('brandDropdown');
   const allBrands = DataStore.getBrandList();
@@ -925,9 +939,16 @@ function updateBrandDropdown(query = '') {
   // off reveals prospects and non-partner brands in the generic header search.
   const rosterActive = DataStore.partnerRoster && DataStore.partnerRoster.length > 0;
   const brandsToShow = (rosterActive && searchPartnersOnly) ? allBrands.filter(b => isCurrentPartner(b)) : allBrands;
-  const filtered = query
-    ? brandsToShow.filter(b => b.toLowerCase().includes(query.toLowerCase()))
-    : brandsToShow;
+  // Alias-aware, ranked search.
+  //
+  // Matching only canonical names meant an AM looking at a "Comcast" line in a
+  // CSV and typing "Comcast" got "No brands match" — the partner is stored as
+  // Xfinity. Every alias key and auto-detected variant that resolves to a brand
+  // is now searchable, and the row says which name matched.
+  //
+  // Ranking: exact, then prefix, then substring, then alias hit. Without it a
+  // mid-string match sorted identically to an exact one.
+  const filtered = query ? searchBrands(brandsToShow, query) : brandsToShow.map(b => ({ brand: b, via: null }));
 
   if (!filtered.length) {
     dropdown.innerHTML = `<div class="brand-option" style="color: var(--text-muted); cursor: default;">No brands match</div>`;
@@ -935,27 +956,68 @@ function updateBrandDropdown(query = '') {
     return;
   }
 
-  dropdown.innerHTML = filtered.map(b => {
+  dropdown.innerHTML = filtered.map(({ brand: b, via }, i) => {
     const chs = DataStore.channelsByBrand[b] || {};
     const tags = [chs.tv && 'TV', chs.organic && 'SOC', chs.paid && 'PAID', chs.survey && 'SRV'].filter(Boolean).join(' · ');
-    return `<div class="brand-option ${b === currentBrand ? 'selected' : ''}" data-brand="${b.replace(/"/g, '&quot;')}">
-      <span class="brand-option-main">${renderPartnerLogo(b, 20)}<span class="brand-option-name">${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
+    const viaNote = via ? `<span class="brand-option-via">matched “${escapeHTML(via)}”</span>` : '';
+    return `<div class="brand-option ${b === currentBrand ? 'selected' : ''}" role="option" id="brandOption-${i}" aria-selected="${b === currentBrand}" data-brand="${escapeAttr(b)}">
+      <span class="brand-option-main">${renderPartnerLogo(b, 20)}<span class="brand-option-name">${escapeHTML(b)}</span>${renderPartnerStatusPill(b)}${viaNote}</span><span class="brand-option-channels">${escapeHTML(tags)}</span>
     </div>`;
   }).join('');
 
   dropdown.querySelectorAll('.brand-option').forEach(el => {
-    el.addEventListener('click', () => {
-      currentBrand = el.dataset.brand;
-      currentPage = 'brand';
-      currentPeriod = null; // reset so it defaults to latest
-      openSections = {};    // collapsed by default on brand switch (cheapest behavior)
-      document.getElementById('brandSearch').value = currentBrand;
-      dropdown.classList.remove('active');
-      renderApp();
-    });
+    el.addEventListener('click', () => selectBrandFromDropdown(el.dataset.brand));
   });
 
+  // Reset the keyboard cursor whenever the list is rebuilt.
+  _brandDropdownIndex = -1;
   dropdown.classList.add('active');
+}
+
+// Commits a dropdown selection. Shared by mouse click and keyboard Enter so the
+// two paths can't drift.
+function selectBrandFromDropdown(brand) {
+  if (!brand) return;
+  currentBrand = brand;
+  currentPage = 'brand';
+  currentPeriod = null; // reset so it defaults to latest
+  openSections = {};    // collapsed by default on brand switch (cheapest behavior)
+  const search = document.getElementById('brandSearch');
+  if (search) search.value = currentBrand;
+  const dropdown = document.getElementById('brandDropdown');
+  if (dropdown) dropdown.classList.remove('active');
+  renderApp();
+}
+
+// Index of the keyboard-highlighted option, -1 when nothing is highlighted.
+// The dropdown was mouse-only: options are divs with click handlers, so there
+// was no way to pick a partner from the keyboard at all.
+let _brandDropdownIndex = -1;
+
+function moveBrandDropdownCursor(delta) {
+  const dropdown = document.getElementById('brandDropdown');
+  if (!dropdown || !dropdown.classList.contains('active')) return;
+  const options = [...dropdown.querySelectorAll('.brand-option[data-brand]')];
+  if (!options.length) return;
+  _brandDropdownIndex = (_brandDropdownIndex + delta + options.length) % options.length;
+  options.forEach((el, i) => el.classList.toggle('kb-active', i === _brandDropdownIndex));
+  const active = options[_brandDropdownIndex];
+  if (active) {
+    active.scrollIntoView({ block: 'nearest' });
+    const search = document.getElementById('brandSearch');
+    if (search) search.setAttribute('aria-activedescendant', active.id || '');
+  }
+}
+
+function getBrandDropdownCursorBrand() {
+  const dropdown = document.getElementById('brandDropdown');
+  if (!dropdown || !dropdown.classList.contains('active')) return null;
+  const options = [...dropdown.querySelectorAll('.brand-option[data-brand]')];
+  if (!options.length) return null;
+  // Enter with nothing highlighted picks the top-ranked match, which is what
+  // the ranking exists for.
+  const idx = _brandDropdownIndex >= 0 ? _brandDropdownIndex : 0;
+  return options[idx] ? options[idx].dataset.brand : null;
 }
 
 // ============================================================

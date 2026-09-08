@@ -43,7 +43,7 @@ function renderPartnerBrowsePage(main) {
           const chs = DataStore.channelsByBrand[brand] || {};
           const tags = [chs.tv && '📺', chs.organic && '📱', chs.paid && '💰', chs.survey && '📊'].filter(Boolean).join('  ');
           const isPartner = rosterActive && isCurrentPartner(brand);
-          return `<button type="button" onclick="selectBrandFromSurvey('${brand.replace(/'/g, "\\'")}')"
+          return `<button type="button" data-brand-nav="${escapeAttr(brand)}"
             style="text-align:left;background:var(--bg-elev);border:1px solid var(--border);border-radius:6px;
             padding:14px 16px;cursor:pointer;transition:border-color 0.15s,background 0.15s;width:100%;"
             onmouseenter="this.style.borderColor='var(--text-dim)';this.style.background='var(--bg-elev-2)'"
@@ -97,7 +97,7 @@ function _renderPartnerGrid(main, rosterActive, allBrands) {
         transition:border-color 0.15s;"
         onmouseenter="this.style.borderColor='var(--border)'"
         onmouseleave="this.style.borderColor='var(--border-soft)'">
-      <button type="button" onclick="selectBrandFromSurvey('${brand.replace(/'/g, "\'")}')"
+      <button type="button" data-brand-nav="${escapeAttr(brand)}"
         style="text-align:left;background:transparent;border:none;
         padding:14px 16px 10px;cursor:pointer;width:100%;display:block;">
         <div style="font-weight:500;font-size:13px;color:var(--text);margin-bottom:5px;display:flex;align-items:center;gap:8px;">
@@ -107,7 +107,7 @@ function _renderPartnerGrid(main, rosterActive, allBrands) {
       </button>
       <div style="padding:0 12px 10px;display:flex;justify-content:flex-end;">
         <button type="button"
-          onclick="event.stopPropagation(); openReportModal('${brand.replace(/'/g, "\'")}')"
+          data-report-brand="${escapeAttr(brand)}"
           style="background:transparent;border:1px solid var(--border-soft);border-radius:4px;
           color:var(--text-muted);font-family:var(--font-mono);font-size:10px;
           letter-spacing:0.06em;text-transform:uppercase;padding:4px 10px;cursor:pointer;
@@ -213,7 +213,7 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">⚖️ Partner Comparison</div>
           <div class="home-action-copy">Compare two to four partners side by side using consistent channel-specific metrics.</div>
         </div>
-        <div class="home-action" onclick="openReportModal();">
+        <div class="home-action" data-report-brand="">
           <div class="home-action-kicker">PDF export</div>
           <div class="home-action-title">📄 Partner Report Export</div>
           <div class="home-action-copy">Generate a clean one-page partner recap for any partner in a few clicks.</div>
@@ -222,11 +222,6 @@ function renderPortfolioHome(main) {
 
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-top:28px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);">Reference</div>
       <div class="home-actions">
-        <div class="home-action" onclick="currentBrand=null; currentPage='changelog'; renderApp();">
-          <div class="home-action-kicker">Version history</div>
-          <div class="home-action-title">📝 Changelog</div>
-          <div class="home-action-copy">Every version of PartnerIQ — what changed, when, and which session built it.</div>
-        </div>
         <div class="home-action" onclick="openDataHealthPage();">
           <div class="home-action-kicker">Quality control</div>
           <div class="home-action-title">🧪 Data Health</div>
@@ -352,7 +347,7 @@ function renderLinksPage(main) {
       ]
     },
     {
-      label: 'Digital &amp; Broadcast',
+      label: 'Digital & Broadcast',
       links: [
         {
           title: 'Triple Play Dashboard',
@@ -389,19 +384,22 @@ function renderLinksPage(main) {
 
   const totalLinks = groups.reduce((n, g) => n + g.links.length, 0);
 
+  // A real anchor, not a div with an onclick. The old version wasn't tabbable,
+  // couldn't be middle-clicked or opened in a new tab, had no "copy link
+  // address", and showed no destination on hover — and its hand-rolled escaping
+  // covered only "&", so an apostrophe in a URL would have broken the handler.
   function linkCard(l) {
-    const safeUrl = l.url.replace(/&/g, '&amp;');
     return `
-      <div class="home-action" onclick="window.open('${safeUrl}', '_blank', 'noopener,noreferrer');">
-        <div class="home-action-kicker">${l.source}</div>
-        <div class="home-action-title">${l.title} <span style="font-size:11px;opacity:0.5;">↗</span></div>
-        <div class="home-action-copy">${l.desc}</div>
-      </div>
+      <a class="home-action" href="${escapeAttr(l.url)}" target="_blank" rel="noopener noreferrer">
+        <div class="home-action-kicker">${escapeHTML(l.source)}</div>
+        <div class="home-action-title">${escapeHTML(l.title)} <span style="font-size:11px;opacity:0.5;">↗</span></div>
+        <div class="home-action-copy">${escapeHTML(l.desc)}</div>
+      </a>
     `;
   }
 
   const groupsHTML = groups.map((g, i) => `
-    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);${i > 0 ? 'margin-top:28px;' : ''}margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);">${g.label}</div>
+    <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);${i > 0 ? 'margin-top:28px;' : ''}margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border-soft);">${escapeHTML(g.label)}</div>
     <div class="home-actions">
       ${g.links.map(linkCard).join('')}
     </div>

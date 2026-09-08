@@ -73,10 +73,6 @@ function getSurveyPriorWave(brand, phase) {
   return [...rows].sort((a, b) => b.Season.localeCompare(a.Season))[1];
 }
 
-// Chronological trend for a brand+phase
-function getSurveyTrend(brand, phase) {
-  return [...getBrandSurveyData(brand, 'all', phase)].sort((a, b) => a.Season.localeCompare(b.Season));
-}
 
 // Recall metric YoY — same-phase comparison (Late→Late, Early→Early). `change` is a
 // percentage-point delta (curr - prev) expressed as a ratio (0.045 means +4.5 points), which
@@ -102,96 +98,7 @@ function isCurrentPartner(brand) {
   return roster.some(r => resolveCanonicalBrandName(r.Account || r.account || '') === canonical);
 }
 
-function getPartnerCategory(brand) {
-  const roster = getPartnerRoster();
-  const canonical = resolveCanonicalBrandName(brand);
-  const entry = roster.find(r => resolveCanonicalBrandName(r.Account || r.account || '') === canonical);
-  return entry ? (entry.Category || entry.category || null) : null;
-}
 
-// ---- Survey SVG trend chart ----
-function renderSurveyTrendChart(brand, phase) {
-  const waves = getSurveyTrend(brand, phase);
-  if (waves.length < 2) {
-    return `<div style="padding:28px 0; text-align:center; color:var(--text-muted); font-size:13px;">
-      Need at least two ${phase} survey waves to show a trend.
-    </div>`;
-  }
-
-  const W = 900, H = 260;
-  const pL = 58, pR = 20, pT = 22, pB = 46;
-  const cW = W - pL - pR, cH = H - pT - pB;
-  const xScale = i => pL + (i / Math.max(1, waves.length - 1)) * cW;
-  const yScale = v => pT + (1 - Math.max(0, Math.min(1, v))) * cH;
-
-  // Build grid and axes
-  const yTicks = [0, 0.25, 0.5, 0.75, 1.0];
-  let svg = `<svg class="survey-trend-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">`;
-  yTicks.forEach(v => {
-    const y = yScale(v);
-    svg += `<line class="survey-trend-grid" x1="${pL}" x2="${W-pR}" y1="${y}" y2="${y}"/>`;
-    svg += `<text class="survey-trend-tick" x="${pL-6}" y="${y+4}" text-anchor="end">${Math.round(v*100)}%</text>`;
-  });
-  svg += `<line class="survey-trend-axis" x1="${pL}" x2="${pL}" y1="${pT}" y2="${H-pB}"/>`;
-  svg += `<line class="survey-trend-axis" x1="${pL}" x2="${W-pR}" y1="${H-pB}" y2="${H-pB}"/>`;
-
-  // X-axis season labels
-  waves.forEach((w, i) => {
-    const x = xScale(i);
-    svg += `<text class="survey-trend-tick" x="${x}" y="${H-pB+16}" text-anchor="middle">${w.Season}</text>`;
-  });
-
-  // Lines — only draw if we have data points
-  function buildPath(metric) {
-    const pts = waves.map((w, i) => w[metric] !== null ? { x: xScale(i), y: yScale(w[metric]) } : null).filter(Boolean);
-    if (pts.length < 2) return '';
-    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  }
-
-  const dAided    = buildPath('AidedPct');
-  const dUnaided  = buildPath('UnaidedPct');
-  const dLocalHQ  = buildPath('LocalHQPct');
-  if (dUnaided) svg += `<path class="survey-line-unaided" d="${dUnaided}"/>`;
-  if (dLocalHQ) svg += `<path class="survey-line-localhq" d="${dLocalHQ}"/>`;
-  if (dAided)   svg += `<path class="survey-line-aided"   d="${dAided}"/>`;
-
-  // Interactive dots with embedded data attributes for hover. Each dot
-  // also gets a small percentage label so AMs can read values without hovering.
-  waves.forEach((w, i) => {
-    const x = xScale(i);
-    [['AidedPct','aided','var(--text)'],['UnaidedPct','unaided','var(--text-dim)'],['LocalHQPct','localhq','var(--positive)']].forEach(([metric, cls, color]) => {
-      if (w[metric] === null) return;
-      const y = yScale(w[metric]);
-      const rank = cls === 'aided' ? w.AidedRecallRank : cls === 'unaided' ? w.UnaidedRecallRank : w.LocalHQRecallRank;
-      const label = cls === 'aided' ? 'Aided' : cls === 'unaided' ? 'Unaided' : 'Local HQ';
-      const pctLabel = Math.round(w[metric] * 100) + '%';
-      svg += `<g class="survey-dot"
-        data-season="${w.Season}" data-phase="${w.Phase}" data-metric="${label}"
-        data-pct="${(w[metric]*100).toFixed(1)}" data-rank="${rank||'—'}"
-        data-responses="${w.TotalSurveyResponses||'—'}">
-        <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${color}" stroke="var(--bg)" stroke-width="1.5"/>
-        <text x="${x.toFixed(1)}" y="${(y - 9).toFixed(1)}" text-anchor="middle"
-          style="fill:${color};font-family:var(--font-mono);font-size:10px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:3px;stroke-linejoin:round;pointer-events:none;">${pctLabel}</text>
-      </g>`;
-    });
-  });
-
-  svg += `</svg>`;
-
-  const hasLocalHQ = waves.some(w => w.LocalHQPct !== null);
-  const legendItems = [
-    `<span class="survey-legend-item"><span class="survey-legend-swatch"></span>Aided Recall</span>`,
-    `<span class="survey-legend-item"><span class="survey-legend-swatch unaided"></span>Unaided Recall</span>`,
-    hasLocalHQ ? `<span class="survey-legend-item"><span class="survey-legend-swatch localhq"></span>Local HQ</span>` : '',
-  ].filter(Boolean).join('');
-
-  return `
-    <div class="survey-trend-wrap" id="survey-trend-wrap-${brand.replace(/[^a-z0-9]/gi,'-').toLowerCase()}">
-      ${svg}
-      <div class="survey-legend">${legendItems}</div>
-      <div class="quadrant-hover" id="survey-trend-hover" style="display:none;position:absolute;"></div>
-    </div>`;
-}
 
 // ---- Survey section on partner pages ----
 // Consolidated Survey Research rendering lives below the survey file accessors,
@@ -232,31 +139,6 @@ function renderSurveyWaveTable(brand) {
     </div>`;
 }
 
-function wireSurveyTrendHovers() {
-  const hover = document.getElementById('survey-trend-hover');
-  if (!hover) return;
-  document.querySelectorAll('.survey-dot').forEach(dot => {
-    dot.addEventListener('mouseenter', (e) => {
-      hover.style.display = 'block';
-      hover.innerHTML = `
-        <div class="hover-title">${dot.dataset.metric}</div>
-        <div class="hover-row"><span>Season</span><span class="val">${dot.dataset.season} ${dot.dataset.phase}</span></div>
-        <div class="hover-row"><span>Recall</span><span class="val">${dot.dataset.pct}%</span></div>
-        <div class="hover-row"><span>Rank</span><span class="val">#${dot.dataset.rank}</span></div>
-        <div class="hover-row"><span>Respondents</span><span class="val">${dot.dataset.responses}</span></div>
-      `;
-      hover.classList.add('visible');
-    });
-    dot.addEventListener('mousemove', (e) => {
-      const wrap = hover.closest('.survey-trend-wrap') || hover.parentElement;
-      const rect = (wrap || document.body).getBoundingClientRect();
-      let x = e.clientX - rect.left + 10;
-      let y = e.clientY - rect.top + 10;
-      hover.style.left = x + 'px'; hover.style.top = y + 'px';
-    });
-    dot.addEventListener('mouseleave', () => { hover.classList.remove('visible'); hover.style.display = 'none'; });
-  });
-}
 
 // ============================================================
 // SURVEY PORTFOLIO PAGE — tabbed layout
@@ -416,7 +298,7 @@ function renderBrandAwarenessTab(container, main) {
               const cls = yoy.change >= 0 ? 'up' : 'down';
               return `<span class="yoy-change ${cls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(1)}%</span>`;
             };
-            return `<tr style="cursor:pointer;" onclick="selectBrandFromSurvey('${r.Brand.replace(/'/g,"\'")}')">
+            return `<tr style="cursor:pointer;" data-brand-nav="${escapeAttr(r.Brand)}">
               <td class="num" style="color:var(--text-muted);">${idx + 1}</td>
               <td style="text-align:left;font-weight:500;">${r.Brand}${isPartner && rosterLoaded ? `<span class="brand-option-roster-dot" title="Current partner"></span>` : ''}</td>
               <td class="num" style="font-weight:500;">${r.UnaidedPct !== null ? Math.round(r.UnaidedPct*100)+'%' : '—'}</td>
@@ -614,19 +496,6 @@ function getGeneralSurveyWaves() {
   return [...new Set((DataStore.surveyGeneral || []).map(r => r.Survey).filter(Boolean))].sort();
 }
 
-// Returns all answer options for a given question + wave, sorted by Frequency desc
-function getGeneralSurveyOptions(question, wave) {
-  let rows = (DataStore.surveyGeneral || []).filter(r => r.Question === question);
-  if (wave) rows = rows.filter(r => r.Survey === wave);
-  // Deduplicate by AnswerOption within the same wave (Early+Late appear separately)
-  const seen = new Set();
-  return rows.filter(r => {
-    const key = r.AnswerOption + '||' + r.Survey;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).sort((a, b) => (b.Frequency || 0) - (a.Frequency || 0));
-}
 
 // Returns all general survey rows where _partner matches the given brand
 function getGeneralSurveyForBrand(brand) {
@@ -701,46 +570,9 @@ function getPartnerSurveyData(brand) {
   return (DataStore.surveyPartner || []).filter(r => r.Partner === brand);
 }
 
-function getPartnerSurveyQuestions(brand) {
-  const rows = getPartnerSurveyData(brand);
-  return [...new Set(rows.map(r => r.Question).filter(Boolean))];
-}
 
-function getPartnerSurveyWaves(brand) {
-  const rows = getPartnerSurveyData(brand);
-  return [...new Set(rows.map(r => r.Survey).filter(Boolean))].sort();
-}
 
-// Computes top-2 box % for a given question + wave, or % Yes for yes/no questions.
-// Returns a value 0–1 (or null if no data).
-function getPartnerSurveyTopBoxPct(brand, question, wave) {
-  const rows = (DataStore.surveyPartner || []).filter(r =>
-    r.Partner === brand && r.Question === question && r.Survey === wave
-  );
-  if (!rows.length) return null;
-  const total = rows[0].TotalResponses || rows.reduce((s, r) => s + (r.Frequency || 0), 0);
-  if (!total) return null;
 
-  const isYN = rows[0].IsYesNo;
-  const relevant = rows.filter(r => isYN ? r.IsYes : r.IsTopBox);
-  const freqSum = relevant.reduce((s, r) => s + (r.Frequency || 0), 0);
-  return total > 0 ? freqSum / total : null;
-}
-
-// Returns chronological trend for a question: [{Survey, Season, Phase, pct}]
-function getPartnerSurveyTrend(brand, question, phase) {
-  const waves = getPartnerSurveyWaves(brand)
-    .filter(w => !phase || w.includes(phase));
-  return waves.map(wave => {
-    const waveRows = (DataStore.surveyPartner || []).filter(r =>
-      r.Partner === brand && r.Question === question && r.Survey === wave
-    );
-    const season = waveRows[0]?.Season || '';
-    const wPhase = waveRows[0]?.Phase  || '';
-    const pct    = getPartnerSurveyTopBoxPct(brand, question, wave);
-    return { Survey: wave, Season: season, Phase: wPhase, pct };
-  });
-}
 
 // ============================================================
 // PROGRAMS SURVEY (File 3 — Program_) — normalization & accessors
@@ -813,26 +645,6 @@ function getProgramsForSponsor(brand) {
   return (DataStore.surveyPrograms || []).filter(r => r.Sponsor === brand);
 }
 
-// Returns all unique programs grouped by CoreName, with full wave history.
-// Shape: [{ coreName, questionKey, questionLabel, waves: [{Survey, Season, Phase, Sponsor, ProgramName, Frequency, AnswerPercentage}] }]
-function getAllProgramsGrouped(questionKey) {
-  const source = (DataStore.surveyPrograms || []).filter(r => !questionKey || r.QuestionKey === questionKey);
-  const grouped = new Map();
-  source.forEach(r => {
-    const key = r.CoreName + '||' + r.QuestionKey;
-    if (!grouped.has(key)) {
-      grouped.set(key, { coreName: r.CoreName, questionKey: r.QuestionKey, questionLabel: r.QuestionLabel, waves: [] });
-    }
-    grouped.get(key).waves.push({
-      Survey: r.Survey, Season: r.Season, Phase: r.Phase,
-      Sponsor: r.Sponsor, ProgramName: r.ProgramName,
-      Frequency: r.Frequency, AnswerPercentage: r.AnswerPercentage,
-    });
-  });
-  // Sort waves chronologically within each program
-  grouped.forEach(g => g.waves.sort((a, b) => a.Survey.localeCompare(b.Survey)));
-  return [...grouped.values()];
-}
 
 // Returns unique sorted wave list for programs data
 function getProgramWaves() {
@@ -1499,10 +1311,6 @@ function surveyPctChangeFromValues(curr, prev) {
   return curr - prev;
 }
 
-function surveyPctChangeFromDelta(curr, delta) {
-  if (curr === null || curr === undefined || delta === null || delta === undefined || Number.isNaN(curr) || Number.isNaN(delta)) return null;
-  return surveyPctChangeFromValues(curr, curr - delta);
-}
 
 function getSurveyChangeClass(change) {
   if (change === null || change === undefined || Number.isNaN(change) || !isFinite(change)) return 'neutral';
@@ -1530,17 +1338,7 @@ function formatSurveyKpiChangeLine(change, label) {
   };
 }
 
-function formatPointChange(v) {
-  return formatSurveyPctChangeText(v);
-}
 
-function formatSurveyComparisonDelta(v, prefix = '', currentValue = null) {
-  const change = currentValue !== null && currentValue !== undefined
-    ? surveyPctChangeFromDelta(currentValue, v)
-    : surveyPctChangeFromDelta(1, v);
-  const text = formatSurveyPctChangeText(change);
-  return prefix ? prefix + ': ' + text : text;
-}
 
 function getSurveyPointPhase(label) {
   const match = String(label || '').match(/\b(Early|Late)\b/i);
@@ -2027,12 +1825,6 @@ function openSurveyTrendModalFromChart(chartId) {
   openSurveyTrendModalPayload({ ...state.payload, series: selectedSeries, chartId: `${chartId}-modal` });
 }
 
-function openSurveyTrendModal(encodedPayload) {
-  let payload;
-  try { payload = JSON.parse(decodeURIComponent(encodedPayload)); }
-  catch (e) { return; }
-  openSurveyTrendModalPayload(payload);
-}
 
 function openSurveyTrendModalPayload(payload) {
   const existing = document.getElementById('surveyTrendModalBackdrop');
@@ -2110,421 +1902,7 @@ function hideSurveyTrendTooltip(event) {
   if (tip) tip.classList.remove('active');
 }
 
-// ============================================================
-// PARTNER PAGE — General Survey section (Fan Insights mentions)
-// ============================================================
-function renderGeneralSurveySection(brand) {
-  const slot = document.getElementById('insights-slot');
-  if (!slot) return;
 
-  const matches = getGeneralSurveyForBrand(brand);
-  if (!matches.length) return; // silently skip — no partner mentions
-
-  // Group by question
-  const byQuestion = new Map();
-  matches.forEach(r => {
-    if (!byQuestion.has(r.Question)) byQuestion.set(r.Question, []);
-    byQuestion.get(r.Question).push(r);
-  });
-
-  const sectionId = 'section-insights';
-  const isOpen = !!openSections[sectionId];
-
-  const summaryHTML = `
-    <div class="section-summary-stat">
-      <span class="label">Questions</span>
-      <span class="value">${byQuestion.size}</span>
-    </div>
-    <div class="section-summary-stat">
-      <span class="label">Answer options</span>
-      <span class="value">${[...new Set(matches.map(r => r.AnswerOption))].length}</span>
-    </div>`;
-
-  const questionsHtml = [...byQuestion.entries()].map(([q, rows]) => {
-    const waves = [...new Set(rows.map(r => r.Survey))].sort();
-    const optionKeys = [...new Set(rows.map(r => r.AnswerOption))];
-
-    const waveRows = optionKeys.map(opt => {
-      const waveData = waves.map(w => {
-        const match = rows.find(r => r.AnswerOption === opt && r.Survey === w);
-        return { wave: w, freq: match?.Frequency ?? null, pct: match?.Percentage ?? null };
-      });
-      const latestData = waveData[waveData.length - 1];
-      return { opt, waveData, latestFreq: latestData?.freq, latestPct: latestData?.pct };
-    }).sort((a, b) => (b.latestFreq || 0) - (a.latestFreq || 0));
-
-    const barsHtml = waveRows.map(({ opt, waveData, latestFreq, latestPct }) => {
-      const trendPoints = waveData.filter(d => d.freq !== null);
-      const trendNote = trendPoints.length >= 2
-        ? ` · ${waves.length} waves`
-        : '';
-      const pctLabel = latestPct !== null
-        ? `${Math.round(latestPct * 100)}%`
-        : (latestFreq ? formatNum(latestFreq) : '—');
-      return `
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px;">
-          <div style="width:200px;font-size:12px;color:var(--text);text-align:right;flex-shrink:0;">${escapeHTML(opt)}</div>
-          <div style="font-size:12px;color:var(--brand-red);font-family:var(--font-mono);font-weight:600;min-width:42px;">${pctLabel}</div>
-          <div style="font-size:11px;color:var(--text-muted);">${waves[waves.length-1]}${trendNote}</div>
-        </div>`;
-    }).join('');
-
-    return `
-      <div style="margin-bottom:18px;">
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;font-style:italic;">${escapeHTML(q)}</div>
-        ${barsHtml}
-      </div>`;
-  }).join('');
-
-  slot.innerHTML = `
-    <div class="section-block section-toggleable" id="${sectionId}">
-      <div class="section-block-header" data-section-toggle="${sectionId}">
-        <div class="section-block-title">
-          <span class="section-block-icon">📋</span>
-          <span>Fan Insights</span>
-        </div>
-        <div class="section-summary">${summaryHTML}</div>
-        <span class="section-toggle-icon">${isOpen ? '▼' : '▶'}</span>
-      </div>
-      <div class="section-block-body" style="display:${isOpen ? 'block' : 'none'};">
-        <div class="leaderboard-note">
-          Answer options mentioning or linked to ${escapeHTML(brand)} across all Fan Insights survey questions.
-          Partner links are auto-extracted or manually assigned via the survey assignment review.
-        </div>
-        <div style="padding:12px 0;">${questionsHtml}</div>
-      </div>
-    </div>`;
-
-  wireSectionToggles();
-}
-
-// ============================================================
-// PARTNER PAGE — Partner Survey section (Moda Health / Delta Dental)
-// ============================================================
-function renderPartnerSurveySection(brand) {
-  const slot = document.getElementById('partner-survey-slot');
-  if (!slot) return;
-
-  const validPartners = ['Moda Health', 'Delta Dental'];
-  if (!validPartners.includes(brand)) return;
-
-  const rows = getPartnerSurveyData(brand);
-  if (!rows.length) return;
-
-  const questions = getPartnerSurveyQuestions(brand);
-  const allWaves  = getPartnerSurveyWaves(brand);
-
-  const sectionId = 'section-partner-survey';
-  const isOpen = !!openSections[sectionId];
-
-  // Headline stats from latest wave (all phases combined)
-  const latestWave = allWaves[allWaves.length - 1] || '';
-  const firstQ     = questions[0] || '';
-  const latestPct  = getPartnerSurveyTopBoxPct(brand, firstQ, latestWave);
-
-  const summaryHTML = `
-    <div class="section-summary-stat">
-      <span class="label">Questions</span>
-      <span class="value">${questions.length}</span>
-    </div>
-    <div class="section-summary-stat">
-      <span class="label">Waves</span>
-      <span class="value">${allWaves.length}</span>
-    </div>`;
-
-  // Build a card per question
-  const questionCardsHtml = questions.map(q => {
-    const isYN   = (rows.find(r => r.Question === q) || {}).IsYesNo;
-    const metricLabel = isYN ? '% Yes' : 'Top-2 Box';
-    const trend  = getPartnerSurveyTrend(brand, q, null); // all phases
-    const latestTrend = trend[trend.length - 1];
-    const priorTrend  = trend.length >= 2 ? trend[trend.length - 2] : null;
-    const latestVal   = latestTrend?.pct ?? null;
-    const priorVal    = priorTrend?.pct ?? null;
-    const yoyDelta    = (latestVal !== null && priorVal !== null) ? latestVal - priorVal : null;
-
-    // Response breakdown for latest wave
-    const latestWaveQ = latestTrend?.Survey || '';
-    const breakdownRows = (DataStore.surveyPartner || [])
-      .filter(r => r.Partner === brand && r.Question === q && r.Survey === latestWaveQ)
-      .sort((a, b) => (b.Frequency || 0) - (a.Frequency || 0));
-    const totalResp = breakdownRows[0]?.TotalResponses || breakdownRows.reduce((s, r) => s + (r.Frequency || 0), 0);
-    const maxFreq = Math.max(...breakdownRows.map(r => r.Frequency || 0), 1);
-
-    // Mini trend SVG (top-2 box % over waves)
-    const trendSvg = renderPartnerSurveyTrendSvg(trend);
-
-    const breakdownHtml = breakdownRows.map(r => {
-      const freq = r.Frequency || 0;
-      const pct  = totalResp ? freq / totalResp : 0;
-      const barW = maxFreq > 0 ? Math.round((freq / maxFreq) * 100) : 0;
-      const isTop = r.IsTopBox || (r.IsYesNo && r.IsYes);
-      return `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
-          <div style="width:220px;font-size:11px;color:${isTop ? 'var(--text)' : 'var(--text-dim)'};text-align:right;flex-shrink:0;font-weight:${isTop ? 600 : 400};">${escapeHTML(r.Response)}</div>
-          <div style="flex:1;background:var(--bg-elev-2);border-radius:3px;height:14px;position:relative;overflow:hidden;">
-            <div style="position:absolute;left:0;top:0;height:100%;width:${barW}%;background:${isTop ? 'var(--brand-red)' : 'var(--border)'};border-radius:3px;"></div>
-          </div>
-          <div style="width:80px;font-size:11px;font-family:var(--font-mono);color:var(--text-dim);text-align:right;">
-            ${freq ? formatNum(freq) : '—'} <span style="color:var(--text-muted)">(${Math.round(pct * 100)}%)</span>
-          </div>
-        </div>`;
-    }).join('');
-
-    return `
-      <div class="card" style="margin-bottom:14px;">
-        <div class="card-header">
-          <div>
-            <span class="card-title" style="font-size:13px;">${escapeHTML(q)}</span>
-            <span class="card-sub">${metricLabel} · ${allWaves.length} waves</span>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:22px;font-weight:700;color:var(--text);">${latestVal !== null ? Math.round(latestVal * 100) + '%' : '—'}</div>
-            ${yoyDelta !== null ? `<div style="font-size:11px;">
-              ${formatSurveyPctChangeHTML(surveyPctChangeFromValues(latestVal, priorVal), 'vs ' + (priorTrend?.Survey || '—'))}
-            </div>` : ''}
-          </div>
-        </div>
-        ${trend.length >= 2 ? `<div style="margin-bottom:12px;">${trendSvg}</div>` : ''}
-        ${breakdownRows.length ? `
-          <div>
-            <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">
-              Response breakdown · ${escapeHTML(latestWaveQ)}${totalResp ? ` · ${formatNum(totalResp)} respondents` : ''}
-            </div>
-            ${breakdownHtml}
-          </div>` : ''}
-      </div>`;
-  }).join('');
-
-  slot.innerHTML = `
-    <div class="section-block section-toggleable" id="${sectionId}">
-      <div class="section-block-header" data-section-toggle="${sectionId}">
-        <div class="section-block-title">
-          <span class="section-block-icon">🔬</span>
-          <span>Partner Survey Questions</span>
-        </div>
-        <div class="section-summary">${summaryHTML}</div>
-        <span class="section-toggle-icon">${isOpen ? '▼' : '▶'}</span>
-      </div>
-      <div class="section-block-body" style="display:${isOpen ? 'block' : 'none'};">
-        <div class="leaderboard-note">
-          Survey questions specifically about ${escapeHTML(brand)} — familiarity, consideration, likelihood to recommend, and community perception.
-          Top-2 box scores highlight the most positive response buckets. Trend chart shows movement across all survey waves.
-        </div>
-        <div style="padding:12px 0;">${questionCardsHtml}</div>
-      </div>
-    </div>`;
-
-  wireSectionToggles();
-}
-
-// Small SVG trend chart for partner survey top-2 box % across waves
-function renderPartnerSurveyTrendSvg(trend) {
-  const filtered = trend.filter(t => t.pct !== null);
-  if (filtered.length < 2) return '';
-  const W = 500, H = 80, pL = 10, pR = 10, pT = 10, pB = 20;
-  const cW = W - pL - pR, cH = H - pT - pB;
-  const xScale = i => pL + (i / Math.max(filtered.length - 1, 1)) * cW;
-  const yScale = v => pT + (1 - Math.max(0, Math.min(1, v))) * cH;
-
-  let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-height:80px;" preserveAspectRatio="xMidYMid meet">`;
-  const pts = filtered.map((t, i) => `${xScale(i).toFixed(1)},${yScale(t.pct).toFixed(1)}`).join(' ');
-  svg += `<polyline points="${pts}" fill="none" stroke="var(--brand-red)" stroke-width="2" stroke-linejoin="round"/>`;
-  filtered.forEach((t, i) => {
-    const x = xScale(i), y = yScale(t.pct);
-    svg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="var(--brand-red)" stroke="var(--bg)" stroke-width="1.5"/>`;
-    svg += `<text x="${x.toFixed(1)}" y="${(y - 7).toFixed(1)}" text-anchor="middle" style="font-size:9px;fill:var(--text-dim);font-family:var(--font-mono);">${Math.round(t.pct * 100)}%</text>`;
-    svg += `<text x="${x.toFixed(1)}" y="${(H - 4).toFixed(1)}" text-anchor="middle" style="font-size:9px;fill:var(--text-muted);font-family:var(--font-mono);">${t.Survey.replace(' Early','E').replace(' Late','L')}</text>`;
-  });
-  svg += '</svg>';
-  return svg;
-}
-
-// ============================================================
-// PARTNER PAGE — Programs section
-// ============================================================
-function renderProgramsSurveySection(brand) {
-  const slot = document.getElementById('programs-slot');
-  if (!slot) return;
-
-  const programRows = getProgramsForSponsor(brand);
-  if (!programRows.length) return;
-
-  const sectionId = 'section-programs-survey';
-  const isOpen = !!openSections[sectionId];
-
-  // Group by CoreName
-  const grouped = new Map();
-  programRows.forEach(r => {
-    if (!grouped.has(r.CoreName)) grouped.set(r.CoreName, []);
-    grouped.get(r.CoreName).push(r);
-  });
-  // Sort each group chronologically
-  grouped.forEach(g => g.sort((a, b) => a.Survey.localeCompare(b.Survey)));
-
-  const uniquePrograms = grouped.size;
-  const latestWaveOverall = [...programRows].sort((a, b) => b.Survey.localeCompare(a.Survey))[0]?.Survey || '';
-  const latestRows = programRows.filter(r => r.Survey === latestWaveOverall);
-  const latestMaxFreq = Math.max(...latestRows.map(r => r.Frequency || 0), 1);
-
-  const summaryHTML = `
-    <div class="section-summary-stat">
-      <span class="label">Programs</span>
-      <span class="value">${uniquePrograms}</span>
-    </div>
-    <div class="section-summary-stat">
-      <span class="label">Latest wave</span>
-      <span class="value" style="font-size:11px;">${latestWaveOverall}</span>
-    </div>`;
-
-  const programCardsHtml = [...grouped.entries()].map(([coreName, waves]) => {
-    const latestWave = waves[waves.length - 1];
-    const priorWave  = waves.length >= 2 ? waves[waves.length - 2] : null;
-    const latestFreq = latestWave.Frequency;
-    const priorFreq  = priorWave?.Frequency ?? null;
-    const yoyDelta   = (latestFreq !== null && priorFreq !== null) ? latestFreq - priorFreq : null;
-    const totalResp  = latestWave.TotalResponses;
-    const latestPct  = latestWave.AnswerPercentage !== null
-      ? latestWave.AnswerPercentage
-      : (totalResp && latestFreq ? latestFreq / totalResp : null);
-
-    // Sponsor history — check if this coreName had a different sponsor in other waves
-    const allCoreRows = (DataStore.surveyPrograms || []).filter(r => r.CoreName === coreName);
-    const allSponsors = [...new Set(allCoreRows.map(r => r.Sponsor || '(no sponsor)'))];
-    const hadOtherSponsor = allSponsors.some(s => s !== brand && s !== '(no sponsor)');
-    const hadNoSponsor    = allSponsors.includes('(no sponsor)');
-    const sponsorNote = hadOtherSponsor
-      ? `<div class="leaderboard-note" style="margin:8px 0 0;">
-           ℹ️ This program has had other sponsors across waves: ${allSponsors.filter(s => s !== brand).map(s => `<em>${escapeHTML(s)}</em>`).join(', ')}
-         </div>`
-      : hadNoSponsor
-        ? `<div class="leaderboard-note" style="margin:8px 0 0;">
-             ℹ️ This program ran without a named sponsor in earlier waves before ${escapeHTML(brand)} became the presenting partner.
-           </div>`
-        : '';
-
-    // Small trend chart
-    const trendSvg = (() => {
-      if (waves.length < 2) return '';
-      const wFreqs = waves.map(w => w.Frequency || 0);
-      const mx = Math.max(...wFreqs, 1);
-      const W2 = 300, H2 = 50, pL2 = 5, pR2 = 5, pT2 = 8, pB2 = 14;
-      const cW2 = W2 - pL2 - pR2, cH2 = H2 - pT2 - pB2;
-      const pts = waves.map((w, i) => {
-        const x = pL2 + (i / Math.max(waves.length - 1, 1)) * cW2;
-        const y = pT2 + (1 - (w.Frequency || 0) / mx) * cH2;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      let s2 = `<svg viewBox="0 0 ${W2} ${H2}" style="width:100%;max-height:50px;" preserveAspectRatio="xMidYMid meet">`;
-      s2 += `<polyline points="${pts}" fill="none" stroke="var(--brand-red)" stroke-width="1.5" stroke-linejoin="round"/>`;
-      waves.forEach((w, i) => {
-        const x = pL2 + (i / Math.max(waves.length - 1, 1)) * cW2;
-        const y = pT2 + (1 - (w.Frequency || 0) / mx) * cH2;
-        s2 += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="var(--brand-red)" stroke="var(--bg)" stroke-width="1"/>`;
-        s2 += `<text x="${x.toFixed(1)}" y="${(H2 - 2).toFixed(1)}" text-anchor="middle" style="font-size:8px;fill:var(--text-muted);font-family:var(--font-mono);">${w.Survey.replace(' Early','E').replace(' Late','L')}</text>`;
-      });
-      s2 += '</svg>';
-      return s2;
-    })();
-
-    return `
-      <div class="card" style="margin-bottom:12px;">
-        <div class="card-header">
-          <div>
-            <span class="card-title">${escapeHTML(coreName)}</span>
-            <span class="card-sub">${latestWave.QuestionLabel} · ${waves.length} wave${waves.length===1?'':'s'} as ${escapeHTML(brand)}</span>
-          </div>
-          <div style="text-align:right;">
-            <div style="font-size:20px;font-weight:700;color:var(--text);">
-              ${latestFreq !== null ? formatNum(latestFreq) : '—'}
-            </div>
-            <div style="font-size:11px;color:var(--text-muted);">
-              ${latestPct !== null ? Math.round(latestPct * 100) + '% awareness' : 'responses'}
-              ${yoyDelta !== null ? `· ${formatSignedPercent(pctChange(latestFreq, priorFreq))}` : ''}
-            </div>
-          </div>
-        </div>
-        ${trendSvg ? `<div style="margin-top:8px;">${trendSvg}</div>` : ''}
-        ${sponsorNote}
-      </div>`;
-  }).join('');
-
-  slot.innerHTML = `
-    <div class="section-block section-toggleable" id="${sectionId}">
-      <div class="section-block-header" data-section-toggle="${sectionId}">
-        <div class="section-block-title">
-          <span class="section-block-icon">🎯</span>
-          <span>Programs & Community</span>
-        </div>
-        <div class="section-summary">${summaryHTML}</div>
-        <span class="section-toggle-icon">${isOpen ? '▼' : '▶'}</span>
-      </div>
-      <div class="section-block-body" style="display:${isOpen ? 'block' : 'none'};">
-        <div class="leaderboard-note">
-          In-game and community programs sponsored by ${escapeHTML(brand)} — awareness frequency across survey waves.
-          Programs that had different sponsors in other seasons are noted below.
-        </div>
-        <div style="padding:12px 0;">${programCardsHtml}</div>
-      </div>
-    </div>`;
-
-  wireSectionToggles();
-}
-function renderChangelogPage(main) {
-  const categoryClass = cat => {
-    const lower = (cat || '').toLowerCase();
-    if (lower.includes('fix') || lower.includes('bug')) return 'fix';
-    if (lower.includes('design') || lower.includes('layout') || lower.includes('visual')) return 'design';
-    if (lower.includes('alias') || lower.includes('data') || lower.includes('infra')) return 'data';
-    return 'feature';
-  };
-
-  const entriesHtml = CHANGELOG.map((entry, idx) => {
-    const isLatest = idx === 0;
-    const sourceClass = (entry.source || '').toLowerCase();
-    const groupsHtml = (entry.changes || []).map(group => `
-      <div class="changelog-group">
-        <div class="changelog-group-label ${categoryClass(group.category)}">${group.category}</div>
-        <ul class="changelog-items">
-          ${(group.items || []).map(item => `<li>${item}</li>`).join('')}
-        </ul>
-      </div>
-    `).join('');
-
-    return `
-      <div class="changelog-entry">
-        <div class="changelog-sidebar">
-          <div class="changelog-version ${isLatest ? 'latest' : ''}">${entry.version}</div>
-          <div class="changelog-date">${entry.date || ''}</div>
-          <span class="changelog-source-tag ${sourceClass}">${entry.source || 'Manual'}</span>
-        </div>
-        <div class="changelog-body">
-          <div class="changelog-title">${entry.title || ''}</div>
-          ${groupsHtml}
-        </div>
-      </div>
-    `;
-  }).join('');
-
-  main.innerHTML = `
-    <div class="changelog-page">
-      <section class="section">
-        <div class="section-header">
-          <h2 class="section-title">Changelog</h2>
-          <span class="section-meta">${CHANGELOG.length} versions · ${CHANGELOG[0] ? CHANGELOG[0].version : ''} latest</span>
-        </div>
-        <div style="margin-bottom: 28px;">
-          <p style="color: var(--text-dim); font-size: 13px; line-height: 1.6; max-width: 680px;">
-            Complete history of every version of PartnerIQ — what changed, when, and who made the change.
-            Source tags indicate whether changes were made in a Claude session, a ChatGPT session, or manually.
-            Add a new entry to the <code>CHANGELOG</code> constant at the top of the file when making future changes.
-          </p>
-        </div>
-        ${entriesHtml}
-      </section>
-    </div>
-  `;
-}
 
 
 // ============================================================

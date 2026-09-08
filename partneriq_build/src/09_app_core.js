@@ -56,26 +56,26 @@ function renderTVPortfolioPage(main) {
     <div class="home-grid">
       <div class="home-card">
         <div class="home-card-label">Total TV QIMV</div>
-        <div class="home-card-value">${formatCurrency(totalQimv)}</div>
-        ${prevQimv !== null ? `<div class="home-card-note">${formatSignedPercent(pctChangeFromValues(totalQimv, prevQimv))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
+        <div class="home-card-value" title="${formatExact(totalQimv, '$')}">${formatCurrency(totalQimv)}</div>
+        ${prevQimv !== null ? `<div class="home-card-note">${formatSignedPercent(pctChange(totalQimv, prevQimv))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
         <div class="home-card-note">${period === 'all' ? 'All seasons' : period} · TV visible signage</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Total QI Impressions</div>
-        <div class="home-card-value">${formatNum(totalImpressions)}</div>
-        ${prevImp !== null ? `<div class="home-card-note">${formatSignedPercent(pctChangeFromValues(totalImpressions, prevImp))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
+        <div class="home-card-value" title="${formatExact(totalImpressions)}">${formatNum(totalImpressions)}</div>
+        ${prevImp !== null ? `<div class="home-card-note">${formatSignedPercent(pctChange(totalImpressions, prevImp))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
         <div class="home-card-note">QI-adjusted impressions</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">QIMV per Minute</div>
         <div class="home-card-value">${totalQimvPerMin !== null ? formatCurrency(totalQimvPerMin) : '—'}</div>
-        ${(prevQimvPerMin !== null && totalQimvPerMin !== null) ? `<div class="home-card-note">${formatSignedPercent(pctChangeFromValues(totalQimvPerMin, prevQimvPerMin))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
+        ${(prevQimvPerMin !== null && totalQimvPerMin !== null) ? `<div class="home-card-note">${formatSignedPercent(pctChange(totalQimvPerMin, prevQimvPerMin))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
         <div class="home-card-note">Total QIMV ÷ total duration</div>
       </div>
       <div class="home-card">
         <div class="home-card-label">Total TV Duration</div>
         <div class="home-card-value">${formatDurationFromMinutes(totalDuration)}</div>
-        ${prevDuration !== null ? `<div class="home-card-note">${formatSignedPercent(pctChangeFromValues(totalDuration, prevDuration))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
+        ${prevDuration !== null ? `<div class="home-card-note">${formatSignedPercent(pctChange(totalDuration, prevDuration))} vs ${yoySets.priorSeason} · ${yoySets.basis}</div>` : ''}
         <div class="home-card-note">HH:MM:SS on-screen time</div>
       </div>
     </div>
@@ -134,6 +134,26 @@ function renderTVPortfolioPage(main) {
   wireInfoIcons();
 }
 
+// Visible failure card for a section whose renderer threw. Says which section,
+// what went wrong, and leaves the rest of the page usable.
+function renderSectionFailure(slotId, label, err) {
+  const slot = document.getElementById(slotId);
+  if (!slot) return;
+  const message = (err && err.message) ? err.message : 'Unknown error';
+  slot.innerHTML = `
+    <section class="section section-failed">
+      <div class="section-header">
+        <h2 class="section-title">${escapeHTML(label)}</h2>
+        <span class="section-meta">Could not be displayed</span>
+      </div>
+      <div class="section-unavailable">
+        This section failed to render, so it has been skipped — the rest of the page is unaffected.
+        This usually means a row in the source file has an unexpected shape.
+        <div class="comparison-basis block" style="margin-top:8px;">${escapeHTML(message)}</div>
+      </div>
+    </section>`;
+}
+
 function renderApp() {
   const main = document.getElementById('main');
   hideTooltip();
@@ -145,7 +165,7 @@ function renderApp() {
         <h1>A single pane of glass for brand performance.</h1>
         <p>Load your TV signage, social, and survey exports to see unified metrics, trends, and year-over-year comparisons across every partner in your portfolio.</p>
         <div class="empty-actions">
-          <button class="btn btn-primary" onclick="document.getElementById('loadMockBtn').click()">Load demo data</button>
+          ${VIEWER_MODE ? '' : `<button class="btn btn-primary" onclick="document.getElementById('loadMockBtn').click()">Load demo data</button>`}
           ${VIEWER_MODE ? '' : `<button class="btn" onclick="document.getElementById('dataBtn').click()">Import files</button>`}
         </div>
       </div>
@@ -163,7 +183,6 @@ function renderApp() {
     else if (currentPage === 'partners') renderPartnerBrowsePage(main);
     else if (currentPage === 'data-health') renderDataHealthPage(main);
     else if (currentPage === 'glossary') renderGlossaryPage(main);
-    else if (currentPage === 'changelog') renderChangelogPage(main);
     else if (currentPage === 'links') renderLinksPage(main);
     else renderPortfolioHome(main);
     wireSortableTables();
@@ -209,7 +228,7 @@ function renderApp() {
     ${renderBreadcrumb([{label:'Home', action:'openPortfolioHome();'}, {label: currentBrand}])}
     <div class="data-status">
       <div><span class="data-status-dot"></span> Data loaded locally · <strong>${DataStore.brands.size} BRANDS</strong> · <strong>${DataStore.tvSignage.length} TV ROWS</strong> · <strong>${Object.keys(DataStore.organicSocial).length} SOCIAL FILES</strong>${DataStore.surveys.length ? ` · <strong>${DataStore.surveys.length} SURVEY ROWS</strong>` : ''}${(DataStore.zoomphBrandPerf||[]).length ? ` · <strong>${DataStore.zoomphBrandPerf.length} ORGANIC SNAPSHOTS</strong>` : ''}${DataStore.partnerRoster.length ? ` · <strong>${DataStore.partnerRoster.length} PARTNERS</strong>` : ''}</div>
-      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em;">LAST UPDATE · ${new Date().toLocaleDateString()}</div>
+      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em;">LAST UPDATE · ${escapeHTML(getDataAsOfLabel())}</div>
     </div>
     ${renderDataFreshnessStrip(currentBrand)}
 
@@ -224,7 +243,7 @@ function renderApp() {
       </div>
       <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-end;">
         <div style="display:flex; gap:8px; align-items:center;">
-          <button class="btn" onclick="openReportModal('${currentBrand.replace(/'/g,"\\'")}');"
+          <button class="btn" data-report-brand="${escapeAttr(currentBrand)}"
             style="background:var(--brand-red);border-color:var(--brand-red);color:#fff;font-weight:600;"
             title="Customize and export a PDF-ready partnership report for this partner">
             ⬇ Export Report
@@ -273,27 +292,32 @@ function renderApp() {
     });
   });
 
-  renderTakeaways(currentBrand, latestSeason, prevSeason);
-  if (channels.tv) renderTVSection(currentBrand);
-  if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(currentBrand)) {
-    renderVirtualSignageSection(currentBrand);
-  }
-  // Only render organic/survey sections when the brand has actual data — avoids
-  // empty placeholder sections cluttering the page for partners not in those channels
-  if (channels.organic) renderOrganicSocialSection(currentBrand);
-  if (channels.paid) renderPaidSection(currentBrand);
-  if (typeof hasSurveyResearchDataForBrand === 'function' ? hasSurveyResearchDataForBrand(currentBrand) : channels.survey) {
-    renderSurveySection(currentBrand);
-  }
-  if (typeof hasANCLEDDataForBrand === 'function' && hasANCLEDDataForBrand(currentBrand)) {
-    renderANCLEDSection(currentBrand);
-  }
-  if (typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(currentBrand)) {
-    renderAffidavitsSection(currentBrand);
-  }
-  if (typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(currentBrand)) {
-    renderWebDigitalSection(currentBrand);
-  }
+  // Each section renders inside its own boundary. This app ingests arbitrary
+  // vendor CSVs, so a single malformed row used to abort renderApp() partway:
+  // every section below the failure silently never rendered, and the user got a
+  // half-blank page with no indication anything had gone wrong. Now a failing
+  // section shows what happened and the rest of the page still draws.
+  const sections = [
+    ['takeaways-slot',        'Top-line takeaways',        () => renderTakeaways(currentBrand, latestSeason, prevSeason)],
+    ['tv-slot',               'TV Visible Signage',        () => channels.tv && renderTVSection(currentBrand)],
+    ['virtual-signage-slot',  'On-Court Virtual Signage',  () => hasVirtualSignageDataForBrand(currentBrand) && renderVirtualSignageSection(currentBrand)],
+    // Sections only render when the brand has data in that channel — otherwise
+    // empty placeholders clutter the page for partners not in it.
+    ['social-slot',           'Organic Social',            () => channels.organic && renderOrganicSocialSection(currentBrand)],
+    ['paid-slot',             'Paid Social',               () => channels.paid && renderPaidSection(currentBrand)],
+    ['survey-slot',           'Survey Research',           () => hasSurveyResearchDataForBrand(currentBrand) && renderSurveySection(currentBrand)],
+    ['anc-led-slot',          'ANC LED',                   () => hasANCLEDDataForBrand(currentBrand) && renderANCLEDSection(currentBrand)],
+    ['affidavits-slot',       'TV / Radio Affidavits',     () => hasAffidavitDataForBrand(currentBrand) && renderAffidavitsSection(currentBrand)],
+    ['web-digital-slot',      'Web & Digital',             () => hasWebDisplayDataForBrand(currentBrand) && renderWebDigitalSection(currentBrand)],
+  ];
+  sections.forEach(([slotId, label, render]) => {
+    try {
+      render();
+    } catch (err) {
+      console.error(`Section "${label}" failed to render`, err);
+      renderSectionFailure(slotId, label, err);
+    }
+  });
 
   wireInfoIcons();
   wireSortableTables();

@@ -9,6 +9,11 @@
     if (value === '') return null;
     const trimmed = String(value).trim();
     if (/^(true|false)$/i.test(trimmed)) return /^true$/i.test(trimmed);
+    // Leave leading-zero values as strings. Coercing them destroyed identifier
+    // columns — a zip of "07030" became the number 7030, and store/campaign
+    // codes lost their padding — with no way to tell afterwards that it had
+    // happened. A single "0" is still a number; "0.5" still coerces.
+    if (/^-?0\d/.test(trimmed)) return value;
     if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
     return value;
   }
@@ -41,7 +46,19 @@
       let rows = parseRows(text);
       if (options.skipEmptyLines) rows = rows.filter(r => r.some(c => String(c || '').trim() !== ''));
       if (options.header) {
-        const headers = (rows.shift() || []).map(h => String(h || '').trim());
+        // Duplicate header names are suffixed (name, name_1, name_2) the way
+        // real PapaParse does. Assigning them to the same object key instead
+        // silently discarded every column but the last — the Nielsen exports
+        // carry repeated "Segment" columns, and the preseason detection that
+        // scans them could never see more than one.
+        const rawHeaders = (rows.shift() || []).map(h => String(h || '').trim());
+        const seen = Object.create(null);
+        const headers = rawHeaders.map(h => {
+          const base = h || '_';
+          if (seen[base] === undefined) { seen[base] = 0; return base; }
+          seen[base] += 1;
+          return `${base}_${seen[base]}`;
+        });
         const data = rows.map(r => {
           const obj = {};
           headers.forEach((h, i) => { obj[h] = options.dynamicTyping ? dynamicValue(r[i] ?? '') : (r[i] ?? ''); });
