@@ -1789,6 +1789,37 @@ footer {
   margin-left: 4px; vertical-align: middle; flex-shrink: 0;
 }
 
+/* Partner / Not-partner status pill next to a brand name (search + browse) */
+.partner-pill {
+  margin-left: 8px; flex-shrink: 0;
+  font-family: var(--font-mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: 20px; line-height: 1.4;
+  white-space: nowrap;
+}
+.partner-pill.is-partner {
+  color: var(--positive);
+  background: var(--brand-red-tint); background: rgba(111, 207, 151, 0.12);
+  border: 1px solid rgba(111, 207, 151, 0.35);
+}
+.partner-pill.is-prospect {
+  color: var(--accent-soft);
+  background: var(--brand-red-tint);
+  border: 1px solid var(--accent-line);
+}
+
+/* Header "Partners only" search toggle */
+.header-partners-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  flex-shrink: 0; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim);
+  cursor: pointer; user-select: none;
+  padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-elev);
+}
+.header-partners-toggle:hover { border-color: var(--text-muted); }
+.header-partners-toggle input[type=checkbox] { accent-color: var(--accent); cursor: pointer; margin: 0; }
+
 
 /* ================================================================
    CHANGELOG PAGE

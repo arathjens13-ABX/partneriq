@@ -683,7 +683,9 @@ function getCurrentUserPresets() {
     // Partner page (organic)
     partnerOrganicDateMode, partnerOrganicMonth, partnerOrganicStartMonth, partnerOrganicEndMonth,
     // Partner browse
-    partnerBrowseSearch, partnerBrowsePartnersOnly,
+    partnerBrowseSearch,
+    // Shared "current partners only" filter (search + browse + paid switcher)
+    searchPartnersOnly,
   };
 }
 
@@ -731,7 +733,9 @@ function applyUserPresets(presets) {
   if (p.partnerOrganicStartMonth !== undefined)    partnerOrganicStartMonth    = p.partnerOrganicStartMonth;
   if (p.partnerOrganicEndMonth !== undefined)      partnerOrganicEndMonth      = p.partnerOrganicEndMonth;
   if (p.partnerBrowseSearch !== undefined)         partnerBrowseSearch         = p.partnerBrowseSearch;
-  if (p.partnerBrowsePartnersOnly !== undefined)   partnerBrowsePartnersOnly   = p.partnerBrowsePartnersOnly;
+  // Shared partners-only filter; fall back to the legacy per-page key for older exports
+  if (p.searchPartnersOnly !== undefined)          searchPartnersOnly          = p.searchPartnersOnly;
+  else if (p.partnerBrowsePartnersOnly !== undefined) searchPartnersOnly       = p.partnerBrowsePartnersOnly;
 }
 
 function getSerializableDataStore() {

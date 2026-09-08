@@ -18,6 +18,10 @@ let comparisonMode = 'auto-match';
 // Tracks which collapsible sections are open, keyed by section id.
 // Resets every time the brand changes (cheapest behavior, no persistence).
 let openSections = {};
+// Shared "current partners only" filter — drives the header search dropdown,
+// the Partner Browse page, and the paid-section brand switcher. Default on.
+// Persisted in userPresets so it survives export into viewer mode.
+let searchPartnersOnly = true;
 let currentSurveyPhase = 'Early';
 let currentPartnerSurveyPhase = 'Early';
 let paidPortfolioPeriod = 'latest';

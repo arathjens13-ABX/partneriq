@@ -1,5 +1,21 @@
 const CHANGELOG = [
   {
+    version: 'v0.46',
+    date: 'September 2026',
+    source: 'Claude',
+    title: 'Unified "current partners only" search filter with Partner / Not partner pills',
+    changes: [
+      {
+        category: 'Partner search',
+        items: [
+          `Added a "Partners only" toggle next to the header search. It replaces the old hard-coded behavior where a loaded roster silently limited the generic search to current partners — turning it off now surfaces prospects and non-contracted brands in the top search, so you can look up anyone`,
+          `Every brand in the header search and Partner Browse now carries a green "Partner" or muted "Not partner" pill (replacing the small green dot), making contract status legible at a glance`,
+          `Unified the filter into one shared searchPartnersOnly state (default on) driving the header search, Partner Browse page, and paid brand switcher, so the toggles can no longer disagree. Persisted in userPresets and included in preloaded exports; older exports fall back to the legacy partnerBrowsePartnersOnly key. New helpers renderPartnerStatusPill() and syncHeaderPartnersToggle() in 12_paid_section.js`,
+        ]
+      }
+    ]
+  },
+  {
     version: 'v0.45',
     date: 'June 2026',
     source: 'Claude',

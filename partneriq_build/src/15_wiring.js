@@ -13,7 +13,15 @@ document.addEventListener('DOMContentLoaded', () => {
     brandSearchDebounce = setTimeout(() => updateBrandDropdown(search.value), 120);
   });
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.brand-selector-wrapper')) dropdown.classList.remove('active');
+    if (!e.target.closest('.brand-selector-wrapper') && !e.target.closest('#headerPartnersToggle')) dropdown.classList.remove('active');
+  });
+
+  // Header "Partners only" toggle — shared filter for search, browse, and paid switcher
+  const headerPartnersOnly = document.getElementById('headerPartnersOnly');
+  if (headerPartnersOnly) headerPartnersOnly.addEventListener('change', () => {
+    searchPartnersOnly = headerPartnersOnly.checked;
+    updateBrandDropdown(search.value);   // refresh the open dropdown immediately
+    renderApp();                          // keep browse page / pills in sync
   });
 
   const modal = document.getElementById('modalBackdrop');
