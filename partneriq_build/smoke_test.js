@@ -24,6 +24,8 @@ global.document = {
   documentElement: { dataset: {}, outerHTML: '' },
   body: makeEl(),
 };
+global.addEventListener = () => {};
+global.removeEventListener = () => {};
 global.window = global;
 global.confirm = () => true;
 global.prompt = () => null;
