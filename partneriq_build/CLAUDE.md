@@ -218,6 +218,30 @@ Then call `wireSectionToggles()` at the end of the render function. Track state 
 
 ---
 
+## Partner naming — how to add name mappings
+
+There are two ways a source spelling becomes a canonical partner name, and a
+third that needs no action:
+
+1. **Drop an alias sheet (preferred — no code).** Maintain a master list in a
+   spreadsheet with two columns — `Source Name`, `Canonical Name` — export it as
+   CSV named `Aliases*.csv` (or with those column headers) and drag it in. Every
+   row is written into `DataStore.brandMergeRules`, drives resolution across all
+   channels, and travels with an exported dashboard. Re-drop the same file to
+   update it; Remove reverts exactly the mappings it added. This is the intended
+   home for legal-name, sub-campaign, dealership-rollup, and typo mappings that
+   used to require editing code.
+2. **Edit the hardcoded defaults (code).** `BRAND_ALIAS_DEFAULTS` and
+   `CANONICAL_BRANDS` in `04_datastore.js` ship with the app. Use these only for
+   mappings that should be true for *every* export out of the box; per-refresh or
+   client-specific mappings belong in an alias sheet instead.
+3. **Nothing — it's automatic.** Case/spacing variants of a `CANONICAL_BRANDS`
+   entry, word-prefix families (`"Axiom Eco-Pest Control" → "Axiom"`), and
+   near-miss typos (surfaced in Data Health for one-click merge) resolve without
+   any entry.
+
+---
+
 ## Changelog
 
 Version history lives in `CHANGELOG.md`, not in the dashboard. It used to be a
@@ -245,6 +269,7 @@ When you ship a change:
 | Partner survey questions | Starts with `ModaDeltaDental_` |
 | Programs & community | Starts with `Program_` |
 | Partner roster | Starts with `Partners_` |
+| Brand aliases (name master list) | Starts with `Aliases`, `BrandAliases`, `PartnerAliases`, or `NameMap`; or has a `Canonical Name` / `Rolls Up To` / `Maps To` column paired with a `Source Name` / `Alias` / `Name` column |
 | Paid Social | Contains `paid`, `meta`, `facebook`, or `admanager` |
 | TV/Radio Affidavit | Detected by column schema |
 | ANC LED | Detected by column schema |
@@ -506,9 +531,9 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
-| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) and the `brandAliases` name-master-list type (filename prefix or a `Canonical Name`/`Rolls Up To`/`Maps To` + source-column schema) |
 | `ingestFile(file)` | Generates a file id, delegates to `_ingestFileInner`, attaches `fileId` to the result |
-| `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id |
+| `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id. The `brandAliases` branch stores no rows — it writes source→canonical mappings into `DataStore.brandMergeRules` and records the keys it added on the registry entry (`aliasKeys`) so Remove/Replace can revert exactly them |
 | `handleFiles(fileList)` | Batch entry point for drops/picks: consumes a pending replace, prompts on duplicate filenames, ingests each file, records registry entries, re-canonicalizes and re-renders |
 | `startReplaceFile(fileId)` | Arms `pendingReplaceFileId` and opens the file picker — the next picked file swaps in for the old one |
 | `describeLoadedFile(result)` | One-line summary string for a file-log entry (type, rows, brands…) |

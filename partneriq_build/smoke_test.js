@@ -108,6 +108,42 @@ function fakeFile(name, csv) { return { name, text: async () => csv }; }
     return ctx.DataStore.tvSignage.length === 0 && ctx.DataStore.loadedFiles.length === 0;
   })());
 
+  console.log('7. brand-alias CSV writes rules, resolves data, and reverts on remove');
+  ctx.DataStore.reset();
+  // A source file that uses a variant spelling the alias sheet will map.
+  const TV_VARIANT = 'Brand,Season,Location,Tool,Matchdate,QI Media Value ($),Sponsorship QI Impressions,Duration (Minutes),Source Exposures\n' +
+    'Widgets NW,2024-25,LED Ribbon,Broadcast,1/5/2025,1000,50000,2.5,10\n';
+  const tvRes = await ctx.ingestFile(fakeFile('TV_widgets.csv', TV_VARIANT));
+  ctx.DataStore.loadedFiles.push({ ...tvRes, loadedAt: '2026-09-08' });
+  check('variant brand present before aliasing', ctx.DataStore.brands.has('Widgets NW'));
+
+  const ALIAS_CSV = 'Source Name,Canonical Name\nWidgets NW,Widgets Northwest\nWidgets NW,Widgets Northwest\n,\nSame,Same\n';
+  await ctx.handleFiles([fakeFile('Aliases_master.csv', ALIAS_CSV)]);
+  const aliasEntry = ctx.DataStore.loadedFiles.find(f => f.type === 'brandAliases');
+  check('alias file registered as brandAliases', !!aliasEntry && aliasEntry.type === 'brandAliases');
+  check('one usable mapping recorded (dupes/blank/self-map skipped)', aliasEntry.rows === 1);
+  check('alias rule written to brandMergeRules', ctx.DataStore.brandMergeRules['Widgets NW'] === 'Widgets Northwest');
+  check('resolution now maps the variant', ctx.resolveCanonicalBrandName('Widgets NW') === 'Widgets Northwest');
+  check('TV rows re-canonicalized to the mapped name', ctx.DataStore.tvSignage.every(r => r.Brand === 'Widgets Northwest'));
+  check('brand set carries the canonical, not the variant',
+    ctx.DataStore.brands.has('Widgets Northwest') && !ctx.DataStore.brands.has('Widgets NW'));
+
+  console.log('8. alias rules travel with an export and survive hydrate');
+  const aliasSnap = JSON.parse(JSON.stringify(ctx.getSerializableDataStore()));
+  check('brandMergeRules exported', aliasSnap.brandMergeRules && aliasSnap.brandMergeRules['Widgets NW'] === 'Widgets Northwest');
+  check('alias registry entry exported', (aliasSnap.loadedFiles || []).some(f => f.type === 'brandAliases'));
+  ctx.__setPreloaded(aliasSnap);
+  ctx.loadPreloadedData();
+  check('alias rule restored on hydrate', ctx.resolveCanonicalBrandName('Widgets NW') === 'Widgets Northwest');
+
+  console.log('9. removing the alias file reverts its rules');
+  const aliasFileId = ctx.DataStore.loadedFiles.find(f => f.type === 'brandAliases').fileId;
+  ctx.removeFileDataById(aliasFileId);
+  ctx.canonicalizeAllBrandData();
+  check('alias rule dropped from brandMergeRules', ctx.DataStore.brandMergeRules['Widgets NW'] === undefined);
+  check('resolution no longer maps the variant', ctx.resolveCanonicalBrandName('Widgets NW') === 'Widgets NW');
+  check('a shipped default alias is untouched by all this', ctx.resolveCanonicalBrandName('Comcast') === 'Xfinity');
+
   console.log('6. reset clears the registry');
   ctx.DataStore.loadedFiles.push({ success: true, filename: 'x.csv', fileId: 'f-x' });
   ctx.DataStore.reset();

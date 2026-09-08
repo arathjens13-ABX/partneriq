@@ -443,6 +443,17 @@ function removeFileDataById(fileId) {
       if (!obj[brand].length) delete obj[brand];
     });
   });
+  // Alias-config files (brandAliases) hold no rows — they wrote source→canonical
+  // mappings into brandMergeRules. Revert exactly the keys this file added:
+  // restore a shipped default if the key overrode one, otherwise drop it. Keys
+  // the user never touched are left alone. Read the entry before it is filtered.
+  const removedAliasEntry = (DataStore.loadedFiles || []).find(f => f && f.fileId === fileId);
+  if (removedAliasEntry && Array.isArray(removedAliasEntry.aliasKeys) && DataStore.brandMergeRules) {
+    removedAliasEntry.aliasKeys.forEach(k => {
+      if (Object.prototype.hasOwnProperty.call(BRAND_ALIAS_DEFAULTS, k)) DataStore.brandMergeRules[k] = BRAND_ALIAS_DEFAULTS[k];
+      else delete DataStore.brandMergeRules[k];
+    });
+  }
   DataStore.loadedFiles = (DataStore.loadedFiles || []).filter(f => f.fileId !== fileId);
   // Row arrays were just replaced, so any derived index is stale. Callers decide
   // whether to re-canonicalize, but they must never see a stale index.

@@ -77,5 +77,5 @@ const VIEWER_MODE = false;
 // Version history lives in CHANGELOG.md, not in the dashboard. It used to be a
 // 1,400-line array rendered as an in-app page, which shipped ~92 KB of internal
 // development notes to every viewer. Update both together when you ship.
-const DASHBOARD_VERSION = 'v0.48';
+const DASHBOARD_VERSION = 'v0.49';
 const DASHBOARD_VERSION_DATE = 'September 2026';

@@ -97,6 +97,16 @@ t.eq('organic still detected by prefix',
   detectFileType('BrandedPartnerPerformance_Q1.csv', []), 'zoomphBrand');
 t.eq('organic detected by column shape',
   detectFileType('anything.csv', [{ Partner: 'X', PartnerExposureDate: '1/5/2025', Impressions: 10 }]), 'organic');
+t.eq('brand aliases by filename prefix',
+  detectFileType('Aliases_2026.csv', []), 'brandAliases');
+t.eq('brand aliases, BrandAliases prefix',
+  detectFileType('BrandAliases.csv', []), 'brandAliases');
+t.eq('brand aliases by column schema',
+  detectFileType('mapping.csv', [{ 'Source Name': 'MODA ASSIST', 'Canonical Name': 'Moda Health' }]), 'brandAliases');
+t.eq('brand aliases, "Rolls Up To" header',
+  detectFileType('x.csv', [{ Alias: 'POA', 'Rolls Up To': 'Pacific Office Automation' }]), 'brandAliases');
+t.eq('roster still wins over the alias schema',
+  detectFileType('Partners_2025.csv', [{ Account: 'Nike', Category: 'Apparel' }]), 'roster');
 
 // ────────────────────────────────────────────────────────────
 t.group('CSV shim — parsing fidelity');

@@ -706,6 +706,13 @@ function detectFileType(filename, rows = []) {
   const hasToken = tok => _fileWords.includes(tok);
 
   // ── Filename-prefix conventions ─────────────────────────────────────────
+  // Brand-alias master list — a sheet of source→canonical mappings, not a data
+  // channel. Checked first so an "Aliases…" file never falls through to a
+  // schema match. See the brandAliases ingest branch for the accepted columns.
+  if (base.startsWith('aliases') || base.startsWith('brandaliases') ||
+      base.startsWith('brand_aliases') || base.startsWith('partneraliases') ||
+      base.startsWith('partner_aliases') || base.startsWith('namemap') ||
+      base.startsWith('name_map')) return 'brandAliases';
   if (base.startsWith('partners_'))       return 'roster';
   if (base.startsWith('tvaffidavit'))     return 'tvAffidavit';
   if (base.startsWith('radioaffidavit'))  return 'radioAffidavit';
@@ -730,6 +737,15 @@ function detectFileType(filename, rows = []) {
   if (base.includes('brandonasset'))              return 'zoomphAsset';
 
   // ── Column-schema detection ─────────────────────────────────────────────
+  // Brand-alias master list by columns — a canonical-side header ('canonical
+  // name', 'rolls up to', 'maps to') plus a source-side header. These canonical
+  // headers appear in no other export, so this can never steal another file.
+  if ((hasCol('canonical name') || hasCol('canonical') || hasCol('rolls up to') ||
+       hasCol('rolls-up-to') || hasCol('maps to') || hasCol('canonical brand')) &&
+      (hasCol('source name') || hasCol('source') || hasCol('alias') ||
+       hasCol('variant') || hasCol('raw name') || hasCol('from') || hasCol('name'))) {
+    return 'brandAliases';
+  }
   if (hasCol('sponsor name') && hasCol('pre-game avg') && hasCol('time total')) return 'ancLED';
   if (hasCol('home/away') && hasCol('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
   if (hasCol('unaided recall') && hasCol('aided recall') && hasCol('survey')) return 'survey';
@@ -1004,6 +1020,42 @@ async function _ingestFileInner(file, fileId) {
     const unknown = rosterRows.filter(r => !DataStore.brands.has(r.Account));
     return { success: true, type: 'roster', rows: rosterRows.length, unknown: unknown.length, filename: file.name };
 
+  } else if (type === 'brandAliases') {
+    // A master list of name mappings maintained in a spreadsheet: each row says
+    // "this source spelling rolls up to this canonical name". Rows are written
+    // straight into DataStore.brandMergeRules — the same map the Brand Alias
+    // manager edits — so they drive resolution everywhere and travel with an
+    // exported dashboard. Nothing is stored as rows; the keys added are recorded
+    // on the registry entry so Remove/Replace can revert exactly them.
+    //
+    // Accepted columns (case-insensitive, first match wins):
+    //   source   → Source Name | Source | Alias | Variant | Raw Name | From | Name
+    //   canonical → Canonical Name | Canonical | Rolls Up To | Maps To |
+    //               Canonical Brand | Brand | Partner
+    const pick = (r, names) => {
+      for (const k of Object.keys(r)) {
+        const norm = k.toLowerCase().replace(/_\d+$/, '').trim();
+        if (names.includes(norm)) return r[k];
+      }
+      return '';
+    };
+    const SRC_COLS = ['source name', 'source', 'alias', 'variant', 'raw name', 'raw', 'from', 'name', 'original'];
+    const CAN_COLS = ['canonical name', 'canonical', 'rolls up to', 'rolls-up-to', 'maps to', 'to', 'canonical brand', 'official name', 'brand', 'partner'];
+    const addedKeys = [];
+    let skipped = 0;
+    rows.forEach(r => {
+      if (!r || typeof r !== 'object') return;
+      const s = String(pick(r, SRC_COLS) ?? '').trim();
+      const c = String(pick(r, CAN_COLS) ?? '').trim();
+      if (!s || !c) { if (s || c) skipped++; return; }         // half-filled row
+      if (compactBrandToken(s) === compactBrandToken(c)) { skipped++; return; } // self-map, no-op
+      DataStore.brandMergeRules[s] = c;
+      if (!addedKeys.includes(s)) addedKeys.push(s);
+    });
+    invalidateBrandCaches();
+    const partners = new Set(addedKeys.map(k => resolveCanonicalBrandName(DataStore.brandMergeRules[k]))).size;
+    return { success: true, type: 'brandAliases', rows: addedKeys.length, partners, skipped, aliasKeys: addedKeys, filename: file.name };
+
   } else if (type === 'unknown') {
     // detectFileType could not place this file. Report it rather than guessing:
     // the old behaviour silently ingested anything unrecognised as organic
@@ -1057,6 +1109,7 @@ async function handleFiles(fileList) {
   if (!files.length) return;
 
   let removedAny = false;
+  let aliasChanged = false;
   if (replacingFileId && getLoadedFileEntry(replacingFileId)) {
     removeFileDataById(replacingFileId);
     removedAny = true;
@@ -1077,11 +1130,13 @@ async function handleFiles(fileList) {
       // These ingests overwrite their whole collection — retire superseded log entries
       DataStore.loadedFiles = (DataStore.loadedFiles || []).filter(e => e.type !== result.type);
     }
+    if (result.success && result.type === 'brandAliases') aliasChanged = true;
     DataStore.loadedFiles.push(result);
   }
 
-  if (removedAny) {
-    // Full pipeline: drops brands that only existed in the removed data, then re-aliases
+  if (removedAny || aliasChanged) {
+    // Full pipeline: drops brands that only existed in removed data (or re-resolves
+    // every row through the new alias rules), then re-runs auto-detection.
     canonicalizeAllBrandData();
   } else {
     // After all files in this batch are ingested, run auto-detection so word-prefix
@@ -1113,6 +1168,7 @@ const LOADED_FILE_DESCRIBERS = {
   zoomphSeries:    r => `Organic Social (Content Series) · ${r.rows} rows${r.unresolved ? ` · ${r.unresolved} unresolved` : ''}`,
   zoomphAsset:     r => `Organic Social (Brand on Asset) · ${r.rows} rows${r.unresolved ? ` · ${r.unresolved} unresolved` : ''}`,
   roster:          r => `Partner Roster · ${r.rows} partners${r.unknown ? ` · ${r.unknown} mismatches` : ''}`,
+  brandAliases:    r => `Brand Aliases · ${r.rows} mapping${r.rows === 1 ? '' : 's'}${r.partners ? ` → ${r.partners} partner${r.partners === 1 ? '' : 's'}` : ''}${r.skipped ? ` · ${r.skipped} skipped` : ''}`,
   tvAffidavit:     r => `${r.channel} Affidavit · ${r.rows} rows`,
   radioAffidavit:  r => `${r.channel} Affidavit · ${r.rows} rows`,
   ancLED:          r => `ANC LED Report · ${r.arena} / ${r.asset} · ${r.rows} rows`,
