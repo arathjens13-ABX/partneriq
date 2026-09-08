@@ -33,6 +33,12 @@
           <input type="checkbox" id="headerPartnersOnly" checked />
           <span>Partners only</span>
         </label>
+        <button class="btn" id="introHelpBtn" style="display:none;" title="Replay the how-to-use walkthrough" onclick="if (typeof showIntro==='function') showIntro();">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          How to use
+        </button>
         <button class="btn" id="dataBtn" style="display:none;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -62,9 +68,23 @@
 
 </div>
 
-<!-- How-to-use intro overlay (viewer mode) -->
+<!-- How-to-use intro overlay (viewer mode) mounts here -->
 <div id="introRoot"></div>
-<button class="pqi-relaunch" id="introRelaunch" type="button" hidden onclick="showIntro()"><span class="pqi-q">?</span> How to use this dashboard</button>
+
+<!-- Runs during parse — before the multi-MB data/app scripts — so an exported
+     dashboard never flashes a stale-open modal, and viewer exports show the
+     branded pre-boot cover immediately until the intro takes over. -->
+<script>
+(function () {
+  try {
+    document.querySelectorAll('.modal-backdrop').forEach(function (m) { m.classList.remove('active'); });
+  } catch (e) {}
+  // Failsafe: never let the pre-boot cover trap a viewer if init stalls/fails.
+  setTimeout(function () {
+    try { document.documentElement.classList.remove('pqi-preboot'); } catch (e) {}
+  }, 6000);
+})();
+</script>
 
 <!-- Tooltip portal -->
 <div class="tooltip" id="tooltip"></div>

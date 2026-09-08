@@ -11,6 +11,11 @@ const CHANGELOG = [
           `New animated "How to use" intro that greets viewers on open, replacing the old behavior where the Import/Export modal briefly flashed on load. Five steps walk through finding any partner (including non-contracted ones), finding the sections on a partner page, sorting columns and picking date ranges, and getting around with Back/Home`,
           `Shown in viewer mode only (gated on VIEWER_MODE) so the builder working file is unaffected. Appears on every open, with a "Don't show again" checkbox that suppresses it for the session (no localStorage, per the offline-first rules) and a "?" relaunch button to reopen it anytime`,
           `Self-contained new file 23_intro_section.js with namespaced .pqi-* styles in 01_styles.css; built into a #introRoot mount added to shell.html. Reuses the Partner / Not partner pill styles from the search filter`,
+          `Fixed the import modal briefly flashing on a viewer's first load: exportPreloadedDashboard() serializes the live DOM while the Export button's own modal is open, so it was baking the modal open. It now strips open modals before snapshotting, and an inline script in shell.html closes any modal during parse (before the multi-MB data/app scripts), so existing and future exports no longer flash`,
+          `Viewer exports now show an instant branded pre-boot cover (html.pqi-preboot) that the intro takes over, so the intro — not a half-drawn dashboard — is the first thing seen on a large file; a 6s failsafe removes it if init stalls`,
+          `Replaced the placeholder "IQ" mark with the Trail Blazers logo in the intro rail and welcome hero, and matched the intro brand text to the header's logo type`,
+          `Moved the intro relaunch control from a floating bottom button to a "How to use" button in the header (viewer mode only)`,
+          `Widened the header partner search and stopped long partner names wrapping onto two lines in the dropdown (single-line rows with ellipsis)`,
         ]
       }
     ]

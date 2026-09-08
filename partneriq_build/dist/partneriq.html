@@ -3141,7 +3141,7 @@ html[data-theme="light"],
   background: linear-gradient(135deg, var(--accent), var(--accent-soft));
   color: #fff; font-family: var(--font-body); font-weight: 800; font-size: 13px;
 }
-.pqi-brandname { font-weight: 800; font-size: 16px; letter-spacing: .3px; }
+.pqi-brandname { font-weight: 600; font-size: 16px; letter-spacing: -0.01em; color: var(--text); }
 .pqi-eyebrow {
   font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.4px;
   text-transform: uppercase; color: var(--text-muted); margin: 22px 0 16px;
@@ -3195,8 +3195,8 @@ html[data-theme="light"],
 /* Scene atoms */
 .pqi-mini { width: 100%; max-width: 430px; }
 .pqi-mini-head { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 12px; text-align: center; }
-.pqi-hero-mark { width: 76px; height: 76px; border-radius: 20px; display: grid; place-items: center; margin: 0 auto 4px;
-  background: linear-gradient(135deg, var(--accent), var(--accent-soft)); color: #fff; font-weight: 800; font-size: 34px; animation: pqiFloat 4s ease-in-out infinite; }
+.pqi-hero-mark { display: grid; place-items: center; margin: 0 auto 4px; animation: pqiFloat 4s ease-in-out infinite; }
+.pqi-hero-mark .pqi-orglogo { filter: drop-shadow(0 10px 24px rgba(0,0,0,.35)); }
 @keyframes pqiFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-9px); } }
 .pqi-ring { position: absolute; width: 190px; height: 190px; border-radius: 50%; border: 1px solid var(--accent-line); opacity: .5; animation: pqiPulse 3s ease-out infinite; }
 .pqi-ring.two { animation-delay: 1.5s; }
@@ -3257,16 +3257,6 @@ html[data-theme="light"],
 .pqi-nbtn.press { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-soft)); border-color: transparent; transform: translateY(-2px); }
 .pqi-navhint { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-muted); letter-spacing: .3px; min-height: 16px; }
 
-/* Relaunch affordance (bottom-center, viewer mode) */
-.pqi-relaunch {
-  position: fixed; z-index: 800; bottom: 22px; left: 50%; transform: translateX(-50%);
-  display: inline-flex; align-items: center; gap: 9px;
-  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
-  padding: 10px 16px; color: var(--text-dim); font-size: 13px; font-family: var(--font-body);
-  cursor: pointer; box-shadow: 0 16px 40px -16px rgba(0,0,0,.5);
-}
-.pqi-relaunch:hover { color: var(--text); border-color: var(--text-muted); }
-.pqi-relaunch .pqi-q { color: var(--accent-soft); font-weight: 700; }
 body.pqi-open { overflow: hidden; }
 
 @media (max-width: 720px) {
@@ -3281,6 +3271,50 @@ body.pqi-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   .pqi-hero-mark, .pqi-ring, .pqi-caret { animation: none !important; }
   .pqi-ring { display: none; }
+}
+
+
+/* ================================================================
+   INTRO PRE-BOOT COVER — instant branded screen for viewer exports
+   Baked (class on <html>) only into viewer-mode exports; the real intro
+   or the dashboard removes it once JS runs. Kills the import-modal flash
+   window and makes the intro the first thing seen on a large file.
+   ================================================================ */
+html.pqi-preboot #modalBackdrop,
+html.pqi-preboot .modal-backdrop { display: none !important; }
+html.pqi-preboot body { overflow: hidden; }
+html.pqi-preboot body::before {
+  content: ""; position: fixed; inset: 0; z-index: 850;
+  background:
+    radial-gradient(120% 90% at 50% -10%, rgba(200,16,46,.16), transparent 55%),
+    var(--bg);
+}
+html.pqi-preboot body::after {
+  content: ""; position: fixed; z-index: 851; top: 50%; left: 50%;
+  width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent-soft);
+  animation: pqiSpin .8s linear infinite;
+}
+@keyframes pqiSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { html.pqi-preboot body::after { animation: none; } }
+
+/* ================================================================
+   HEADER SEARCH DROPDOWN — wider + single-line rows (no wrapping)
+   ================================================================ */
+.brand-selector-wrapper { min-width: 360px; }
+.brand-dropdown { min-width: 360px; }
+.brand-option { flex-wrap: nowrap; }
+.brand-option-main {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; flex: 1 1 auto;
+}
+.brand-option-name {
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.brand-option .partner-pill { flex: none; }
+.brand-option-channels { flex: none; white-space: nowrap; }
+@media (max-width: 900px) {
+  .brand-selector-wrapper, .brand-dropdown { min-width: 260px; }
 }
 
 </style>
@@ -3320,6 +3354,12 @@ body.pqi-open { overflow: hidden; }
           <input type="checkbox" id="headerPartnersOnly" checked />
           <span>Partners only</span>
         </label>
+        <button class="btn" id="introHelpBtn" style="display:none;" title="Replay the how-to-use walkthrough" onclick="if (typeof showIntro==='function') showIntro();">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          How to use
+        </button>
         <button class="btn" id="dataBtn" style="display:none;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -3349,9 +3389,23 @@ body.pqi-open { overflow: hidden; }
 
 </div>
 
-<!-- How-to-use intro overlay (viewer mode) -->
+<!-- How-to-use intro overlay (viewer mode) mounts here -->
 <div id="introRoot"></div>
-<button class="pqi-relaunch" id="introRelaunch" type="button" hidden onclick="showIntro()"><span class="pqi-q">?</span> How to use this dashboard</button>
+
+<!-- Runs during parse — before the multi-MB data/app scripts — so an exported
+     dashboard never flashes a stale-open modal, and viewer exports show the
+     branded pre-boot cover immediately until the intro takes over. -->
+<script>
+(function () {
+  try {
+    document.querySelectorAll('.modal-backdrop').forEach(function (m) { m.classList.remove('active'); });
+  } catch (e) {}
+  // Failsafe: never let the pre-boot cover trap a viewer if init stalls/fails.
+  setTimeout(function () {
+    try { document.documentElement.classList.remove('pqi-preboot'); } catch (e) {}
+  }, 6000);
+})();
+</script>
 
 <!-- Tooltip portal -->
 <div class="tooltip" id="tooltip"></div>
@@ -3540,6 +3594,11 @@ const CHANGELOG = [
           `New animated "How to use" intro that greets viewers on open, replacing the old behavior where the Import/Export modal briefly flashed on load. Five steps walk through finding any partner (including non-contracted ones), finding the sections on a partner page, sorting columns and picking date ranges, and getting around with Back/Home`,
           `Shown in viewer mode only (gated on VIEWER_MODE) so the builder working file is unaffected. Appears on every open, with a "Don't show again" checkbox that suppresses it for the session (no localStorage, per the offline-first rules) and a "?" relaunch button to reopen it anytime`,
           `Self-contained new file 23_intro_section.js with namespaced .pqi-* styles in 01_styles.css; built into a #introRoot mount added to shell.html. Reuses the Partner / Not partner pill styles from the search filter`,
+          `Fixed the import modal briefly flashing on a viewer's first load: exportPreloadedDashboard() serializes the live DOM while the Export button's own modal is open, so it was baking the modal open. It now strips open modals before snapshotting, and an inline script in shell.html closes any modal during parse (before the multi-MB data/app scripts), so existing and future exports no longer flash`,
+          `Viewer exports now show an instant branded pre-boot cover (html.pqi-preboot) that the intro takes over, so the intro — not a half-drawn dashboard — is the first thing seen on a large file; a 6s failsafe removes it if init stalls`,
+          `Replaced the placeholder "IQ" mark with the Trail Blazers logo in the intro rail and welcome hero, and matched the intro brand text to the header's logo type`,
+          `Moved the intro relaunch control from a floating bottom button to a "How to use" button in the header (viewer mode only)`,
+          `Widened the header partner search and stopped long partner names wrapping onto two lines in the dropdown (single-line rows with ellipsis)`,
         ]
       }
     ]
@@ -5736,7 +5795,16 @@ function exportPreloadedDashboard() {
 
   const viewerMode = document.getElementById('exportViewerMode') ? document.getElementById('exportViewerMode').checked : true;
   const payload = getSerializableDataStore();
+  // The Export button lives inside the import modal, so the modal is open right
+  // now. Serializing the live DOM would bake it in and flash it on the viewer's
+  // first load — strip transient open state before snapshotting. Viewer exports
+  // also get the pre-boot cover class so the intro is the first thing seen.
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active'));
+  const introRoot = document.getElementById('introRoot');
+  if (introRoot) introRoot.innerHTML = '';
+  document.documentElement.classList.toggle('pqi-preboot', viewerMode);
   let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+  document.documentElement.classList.remove('pqi-preboot'); // don't affect the live builder view
 
   const compressed = LZString.compressToBase64(JSON.stringify(payload));
   html = replaceExportBlock(html, 'PRELOADED_DATA_START', 'PRELOADED_DATA_END',
@@ -10820,7 +10888,7 @@ function updateBrandDropdown(query = '') {
     const chs = DataStore.channelsByBrand[b] || {};
     const tags = [chs.tv && 'TV', chs.organic && 'SOC', chs.paid && 'PAID', chs.survey && 'SRV'].filter(Boolean).join(' · ');
     return `<div class="brand-option ${b === currentBrand ? 'selected' : ''}" data-brand="${b.replace(/"/g, '&quot;')}">
-      <span style="display:flex;align-items:center;gap:6px;">${renderPartnerLogo(b, 20)}<span>${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
+      <span class="brand-option-main">${renderPartnerLogo(b, 20)}<span class="brand-option-name">${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
     </div>`;
   }).join('');
 
@@ -19602,6 +19670,18 @@ function _pqiSurvey() { return _pqiIcon('<path d="M9 11l3 3L22 4"/><path d="M21 
 function _pqiHome() { return _pqiIcon('<path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/><path d="M21 22H3"/>', 13); }
 function _pqiChevron() { return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:6px;vertical-align:-1px"><polyline points="6 9 12 15 18 9"/></svg>`; }
 
+// Trail Blazers org logo (from the embedded PARTNER_LOGOS), sized for the intro.
+// Falls back to a "PIQ" wordmark plate if the logo isn't present.
+function _pqiOrgLogo(size) {
+  const px = size || 26;
+  try {
+    if (typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS['TrailBlazers'] && PARTNER_LOGOS['TrailBlazers'].data) {
+      return `<img class="pqi-orglogo" src="${PARTNER_LOGOS['TrailBlazers'].data}" alt="Portland Trail Blazers" style="width:${px}px;height:${px}px;object-fit:contain;flex:none;">`;
+    }
+  } catch (e) {}
+  return `<span class="pqi-brandmark" style="width:${px}px;height:${px}px;font-size:${Math.round(px*0.42)}px;">PIQ</span>`;
+}
+
 // ============================================================
 // Overlay construction
 // ============================================================
@@ -19614,7 +19694,7 @@ function buildIntroOverlay() {
       <div class="pqi-card">
         <button class="pqi-skip" id="pqiSkip" type="button">Skip intro ✕</button>
         <div class="pqi-rail">
-          <div class="pqi-brandline"><span class="pqi-brandmark">IQ</span><span class="pqi-brandname">PartnerIQ</span></div>
+          <div class="pqi-brandline">${_pqiOrgLogo(28)}<span class="pqi-brandname">PartnerIQ</span></div>
           <div class="pqi-eyebrow">How to use · ${INTRO_STEPS.length} steps</div>
           <ul class="pqi-steps" id="pqiSteps"><span class="pqi-spine"><i id="pqiSpine"></i></span></ul>
           <div class="pqi-railfoot">
@@ -19682,7 +19762,7 @@ function _introBuildScene(kind) {
   el.className = 'pqi-scene'; el.dataset.kind = kind;
   if (kind === 'welcome') {
     el.innerHTML = `<span class="pqi-ring"></span><span class="pqi-ring two"></span>
-      <div class="pqi-hero-mark">IQ</div>
+      <div class="pqi-hero-mark">${_pqiOrgLogo(72)}</div>
       <div class="pqi-chips">
         <span class="pqi-chip">TV Signage</span><span class="pqi-chip">Paid Social</span>
         <span class="pqi-chip">Organic</span><span class="pqi-chip">Survey</span><span class="pqi-chip">Web &amp; Digital</span>
@@ -19854,8 +19934,8 @@ function showIntro() {
   if (!buildIntroOverlay()) return;
   document.body.classList.add('pqi-open');
   introGo(0);
-  const relaunch = document.getElementById('introRelaunch');
-  if (relaunch) relaunch.hidden = true;
+  // The real intro has taken over — drop the instant pre-boot cover.
+  document.documentElement.classList.remove('pqi-preboot');
 }
 
 function hideIntro() {
@@ -19869,16 +19949,18 @@ function hideIntro() {
     const root = document.getElementById('introRoot');
     if (root) root.innerHTML = '';
     document.body.classList.remove('pqi-open');
-    const relaunch = document.getElementById('introRelaunch');
-    if (relaunch) relaunch.hidden = false;
   }, 400);
 }
 
-// Auto-shows once on load in viewer mode, unless suppressed this session.
+// Auto-shows on load in viewer mode, unless suppressed this session. The
+// "How to use" header button (viewer-only) reopens it any time.
 function maybeShowIntro() {
-  const relaunch = document.getElementById('introRelaunch');
-  if (relaunch) relaunch.hidden = !VIEWER_MODE; // relaunch affordance is viewer-only
-  if (!VIEWER_MODE || introSuppressed) return;
+  const helpBtn = document.getElementById('introHelpBtn');
+  if (helpBtn) helpBtn.style.display = VIEWER_MODE ? '' : 'none';
+  if (!VIEWER_MODE || introSuppressed) {
+    document.documentElement.classList.remove('pqi-preboot'); // reveal the dashboard
+    return;
+  }
   showIntro();
 }
 
