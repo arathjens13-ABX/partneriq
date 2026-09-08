@@ -60,7 +60,8 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`vsConservativeEstimate`, `computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
 | `22_tv_ratings_section.js` | TV Ratings Dashboard — Nielsen broadcast viewership data; `DataStore.tvRatings[]`; **file format WILL change** — detection is column-schema-based (`HH Rtg` + `Demo` + `Opponent`), ingest and normalize logic is in `14_organic_section.js`; data source: DW > vw_viewership > vw_nielsen_tv_metrics |
-| `shell.html` | Static HTML shell — `<header>`, `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), footer; concatenated with the JS/CSS files at export time |
+| `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
+| `shell.html` | Static HTML shell — `<header>` (incl. the "Partners only" search toggle), `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), the intro mount (`#introRoot`) + relaunch button, footer; concatenated with the JS/CSS files at export time |
 
 ---
 
@@ -665,6 +666,21 @@ A per-file index of every significant function. Use this to jump directly to the
 | `wireTVRatingsPage()` | Wires season selector, metric toggle, YoY toggle, opponent sort, games sort |
 
 **State variables declared here:** `tvRatingsSeasonFilter`, `tvRatingsChartMetric`, `tvRatingsYoY`, `tvRatingsOpponentSort`, `tvRatingsGamesSort`
+
+---
+
+### `23_intro_section.js` — How-to-use intro overlay (viewer onboarding)
+
+| Function | What it does |
+|----------|-------------|
+| `maybeShowIntro()` | Load-time entry point (called from `15_wiring.js`): shows the intro on open when `VIEWER_MODE` is true and it isn't session-suppressed; toggles the `?` relaunch button's visibility |
+| `showIntro()` | Builds and opens the overlay, starts at step 0; also wired to the relaunch button |
+| `hideIntro()` | Animates the overlay out, clears timers/keyboard handler, restores the relaunch button |
+| `buildIntroOverlay()` | Renders the overlay markup (rail, stage, controls) into `#introRoot` and wires its buttons/steps |
+| `introGo(n)` | Navigates to step `n` — swaps copy, rebuilds the animated scene, updates rail/dots/spine |
+| `_introBuildScene(kind)` / `_introRunScene(kind, el)` | Build and animate each step's scene (`welcome`, `search`, `sections`, `sortfilter`, `nav`) |
+
+**State variables declared here:** `_introStep`, `_introTimers`, `introSuppressed` (session-only "Don't show again"). **Constant:** `INTRO_STEPS`.
 
 ---
 
