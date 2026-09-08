@@ -11,6 +11,18 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.49 — Brand alias sheet: maintain partner name mappings in a spreadsheet
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- New drag-and-drop file type for partner name mappings, so renaming partners no longer means editing code. Keep a master list in a spreadsheet with two columns — `Source Name`, `Canonical Name` — export it as CSV and drop it in; every row is applied as a brand alias across all channels. This is the intended home for the mappings that auto-detection can't guess on its own: legal names (`Les Schwab Tire Centers → Les Schwab`), sub-campaigns (`MODA ASSIST → Moda Health`), dealership rollups, and typos
+- Detected by filename (`Aliases*.csv`, `BrandAliases*.csv`, `PartnerAliases*.csv`, `NameMap*.csv`) or by columns — any of `Canonical Name` / `Rolls Up To` / `Maps To` / `Canonical Brand` paired with a source column (`Source Name` / `Alias` / `Variant` / `Name` / `From`). Column matching is case-insensitive and flexible so a sheet exported from anywhere just works. Blank rows, duplicate keys, and rows that map a name to itself are skipped and counted
+- Mappings are written into the same `brandMergeRules` the Brand Alias manager edits, so they drive resolution everywhere, show up in the alias manager, and travel with an exported dashboard — no separate step to persist them. Re-drop the same file to update it; Remove/Replace reverts exactly the mappings that file added (restoring a shipped default if it overrode one), leaving hand-added aliases and defaults untouched
+- Loading an alias sheet re-canonicalizes all loaded rows immediately, so existing data snaps to the new names without a reload
+- Tests: file-type detection cases in `unit_test.js`; a full ingest → resolve → export → hydrate → remove → revert lifecycle in `smoke_test.js`
+
 ## v0.47 — How-to-use intro overlay for viewers
 
 *September 2026 · Claude*
