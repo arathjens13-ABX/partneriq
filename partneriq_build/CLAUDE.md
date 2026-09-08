@@ -39,13 +39,12 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 |------|---------------|
 | `00_vendor_shims.js` | Vendored libraries (PapaParse CSV shim, LZ-string compression) |
 | `01_styles.css` | All CSS, design tokens, theme variables |
-| `02_constants.js` | Global constants, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
-| `03_changelog.js` | Full version history array |
+| `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
 | `04_datastore.js` | `DataStore` object, file ingest, import/export, preloaded data hydration |
 | `05_paid_constants.js` | Paid social campaign parsing constants and alias maps |
 | `06_helpers.js` | Shared formatting and utility functions |
 | `07_paid_assignment.js` | Paid campaign-to-partner assignment logic |
-| `08_home_pages.js` | Home page, partner browse, data health, glossary, changelog renderers |
+| `08_home_pages.js` | Home page, partner browse, links page |
 | `09_app_core.js` | `renderApp()`, routing, partner page shell, channel tag nav |
 | `10_tv_section.js` | TV Visible Signage section and portfolio page |
 | `11_portfolio_pages.js` | Portfolio-level pages (TV, Paid, Organic, Survey portfolios) |
@@ -57,7 +56,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `17_general_survey_assignment.js` | General survey question-to-partner assignment |
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
-| `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`vsConservativeEstimate`, `computeVSLocationMeans`), portfolio and partner-page renderers |
+| `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
 | `22_tv_ratings_section.js` | TV Ratings Dashboard — Nielsen broadcast viewership data; `DataStore.tvRatings[]`; **file format WILL change** — detection is column-schema-based (`HH Rtg` + `Demo` + `Opponent`), ingest and normalize logic is in `14_organic_section.js`; data source: DW > vw_viewership > vw_nielsen_tv_metrics |
 | `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
@@ -71,7 +70,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 |---------|-----|
 | `fetch()` to any remote URL | Breaks the offline-first guarantee |
 | `<script src="...">` CDN tags | No external calls — ever |
-| `localStorage` / `sessionStorage` | Data lives in DataStore only |
+| `localStorage` / `sessionStorage` | Data lives in DataStore only. This is absolute — it also means per-viewer UI preferences (theme, "don't show this again") cannot persist across loads. Don't add a control that implies they do. |
 | ES module `import` / `export` | Everything is global scope by design |
 | `<form>` elements | Cause page reloads; use `onclick`/`onchange` |
 | `npm`, `node_modules`, any build tool | No build step — ever |
@@ -90,7 +89,7 @@ Changes to these affect the entire app. Flag them in your plan and state what do
 | `detectFileType()` | `14_organic_section.js` | All file ingestion — wrong detection silently drops data |
 | `canonicalizeAllBrandData()` | `04_datastore.js` | Brand name resolution across every channel |
 | `getSerializableDataStore()` | `04_datastore.js` | Export — missing keys means data loss on reload |
-| `hydrateFromPreloaded()` | `04_datastore.js` | Import — missing keys means data loss on load |
+| `loadPreloadedData()` | `04_datastore.js` | Import — missing keys means data loss on load |
 | `wireSortableTables()` | `07_paid_assignment.js` | All table sort interactivity |
 | `wireSectionToggles()` | `06_helpers.js` | All collapsible section open/close |
 | `normalizeSeasonLabel()` | `04_datastore.js` | Season matching across TV, paid, and survey |
@@ -118,7 +117,7 @@ Changes to these affect the entire app. Flag them in your plan and state what do
 Any time you add or rename a key in `DataStore`, tick all four before finishing:
 - [ ] `DataStore` initial declaration / `reset()`
 - [ ] `getSerializableDataStore()` — included in exports
-- [ ] `hydrateFromPreloaded()` — restored on load
+- [ ] `loadPreloadedData()` — restored on load
 - [ ] **Function / Code Map** — update the `04_datastore.js` sub-table if any functions were added or changed
 
 ### Export / Sharing
@@ -178,7 +177,7 @@ For small changes, don't scan the whole codebase. Use this table:
 | `var(--positive)` | Positive delta (green) |
 | `var(--negative)` | Negative delta (red) |
 | `var(--font-mono)` | Monospace — labels, kickers, numbers |
-| `var(--font-sans)` | Body / UI font |
+| `var(--font-body)` | Body / UI font |
 
 ---
 
@@ -219,27 +218,17 @@ Then call `wireSectionToggles()` at the end of the render function. Track state 
 
 ---
 
-## Changelog entry template
+## Changelog
 
-Add at the **top** of the `CHANGELOG` array in `03_changelog.js`:
+Version history lives in `CHANGELOG.md`, not in the dashboard. It used to be a
+1,400-line array in `03_changelog.js` rendered as an in-app page, which shipped
+~92 KB of internal development notes to every viewer export.
 
-```js
-{
-  version: 'v0.XX',
-  date: 'Month YYYY',
-  source: 'Claude',          // 'Claude' | 'GPT' | 'Manual'
-  title: 'Short session title',
-  changes: [
-    {
-      category: 'Category Name',
-      items: [
-        `Description of change one`,
-        `Description of change two`,
-      ]
-    }
-  ]
-},
-```
+When you ship a change:
+1. Add a section at the top of `CHANGELOG.md` (`## v0.XX — Short title`, then
+   `*Month YYYY · Claude*`, then `### Category` with bullet points).
+2. Bump `DASHBOARD_VERSION` in `src/02_constants.js` to match — the footer
+   renders from it.
 
 ---
 
@@ -288,6 +277,13 @@ A per-file index of every significant function. Use this to jump directly to the
 | `resolveCanonicalBrandName(value)` | Returns the canonical brand string for any raw name; applies alias rules and auto-detected prefix groups |
 | `resolveAndTrackRaw(row, field, rawField)` | Canonicalizes one field in a row object and stores the original in `rawField` |
 | `compactBrandToken(value)` | Lowercased, punctuation-stripped token used for fuzzy brand matching |
+| `CANONICAL_BRANDS` | The preferred spelling of every known partner. Any incoming name whose compact token matches one resolves to the spelling here, so case/spacing variants ("NIKE", "DeltaDental") need no alias entry |
+| `invalidateBrandCaches()` | Clears the resolution memo and the alias lookup maps. Called from `canonicalizeAllBrandData()`, which is the single choke point — no mutation site needs to call it directly |
+| `getBrandLookup()` | Builds (and caches) the compact-token → canonical maps used by resolution |
+| `brandTokenSimilarity(a, b)` | 0..1 similarity of two brand names on their compact tokens |
+| `findNearMissBrandPairs(names)` | Returns `{a, b, similarity}` for name pairs that look like the same partner spelled two ways, excluding pairs already merged or explicitly kept apart |
+| `collectRawBrandObservations()` | Every raw brand string ingested, with its channels and what it resolves to |
+| `getBrandNamingReport()` | The full naming health report: near-misses, single-channel brands, missing/orphan logos, roster mismatches |
 | `detectWordPrefixGroups(brandNames, blockedSet)` | Auto-detects brand families by shared word prefix (e.g. "Toyota Dealers" → "Toyota") |
 | `getBrandMergeRules()` | Returns the active alias rules map from `DataStore.brandAliasRules` |
 | `DataStore.reset()` | Clears all data arrays, rules, and presets back to defaults |
@@ -300,8 +296,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `normalizeSeasonLabel(str)` | Normalizes season strings to a canonical format for cross-channel matching |
 | `normalizeLoadedRows()` | Post-load hook: type-coerces numeric/date columns across all channels |
 | `getSerializableDataStore()` | Returns a plain object snapshot of DataStore for embedding in an export |
-| `hydrateFromPreloaded(data)` | Restores DataStore from an embedded `PRELOADED_DATA` object on load |
-| `loadPreloadedData()` | Top-level boot function: calls `hydrateFromPreloaded`, normalizes, canonicalizes |
+| `loadPreloadedData()` | Top-level boot: resets DataStore, copies every `PRELOADED_DATA` key in, normalizes, canonicalizes, restores user presets. **There is no separate `hydrateFromPreloaded` — this is the whole import path.** |
 | `generateFileId()` | Returns a unique id for one uploaded file; stamped onto every ingested row as `_fileId` |
 | `tagRowsWithFile(rows, fileId)` | Sets `_fileId` on each row object; returns the same array for chaining |
 | `getLoadedFileEntry(fileId)` | Returns the `DataStore.loadedFiles` registry entry for a file id, or null |
@@ -331,7 +326,10 @@ A per-file index of every significant function. Use this to jump directly to the
 | `parsePaidCampaignName(campaignName, explicitPartner)` | Extracts partner, season, objective, and confidence from a structured campaign name string. Tolerant of `_`, `-`, and space separators; embedded brand prefixes match case- and punctuation-insensitively |
 | `findRuleMatchInCampaign(campaignName)` | Checks saved assignment rules before heuristic parsing |
 | `normalizePaidRow(row, fallbackBrand)` | Coerces a raw paid CSV row into a standardized paid row object |
-| `getBrandTVData(brand, season)` | Returns TV signage rows for a brand/season (excludes virtual branding rows) |
+| `getBrandTVData(brand, season)` | Returns TV signage rows for a brand/season from the index (excludes virtual branding rows). **Returns the index's own array — treat as read-only, `slice()` before sorting** |
+| `invalidateTVIndex()` / `buildTVIndex()` / `getTVIndex()` | brand → season → rows index backing `getBrandTVData`. Rebuilt lazily; dropped by `canonicalizeAllBrandData()` |
+| `formatExact(n, prefix)` | Unabbreviated value for tooltips on headline figures |
+| `escapeAttr(value)` | Escaping for an HTML attribute value — use with `data-*` instead of interpolating into inline `onclick` |
 | `getBrandSocialData(brand, season)` | Returns organic social rows for a brand/season |
 | `getBrandPaidData(brand, season)` | Returns aggregated paid social rows for a brand/season |
 | `getBrandPaidDailyRows(brand, season)` | Returns daily-granularity paid rows for pacing charts |
@@ -345,13 +343,11 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `showErrorToast(msg)` | Displays a brief in-app error notification (bottom-center toast, auto-dismisses after 4 s) |
 | `getUniqueMatchdates(rows)` | Returns sorted unique Matchdate strings from a TV row set |
-| `getMatchdateCountForBrandSeason(brand, season)` | Game count for a brand in a given season (used for YoY normalization) |
 | `getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit)` | Returns prior-season TV rows capped to the same game count as the current season |
 | `getYoYRowSets(brand, period)` | Returns `{ current, prior }` TV row sets for a brand/period, prior normalized by matchdate count |
 | `computeYoYForMetric(brand, period, metricKey)` | Returns `{ curr, prev, change }` for one TV metric |
 | `getAssetRanking(location, season)` | Returns all brands sorted by QIMV for a given asset location |
 | `getBrandRankOnAsset(brand, location, season)` | Returns ordinal rank of a brand on a specific asset |
-| `getBrandOverallRank(brand, season)` | Returns a brand's overall TV rank across all locations |
 | `showTooltip(event, html)` / `hideTooltip()` | Portal tooltip display — position next to cursor |
 | `attachDefinitionTooltip(el, term)` | Attaches a glossary-definition tooltip to an element |
 | `attachAssetRankTooltip(el, brand, location, season)` | Attaches a rank-context tooltip to a TV asset cell |
@@ -372,14 +368,17 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `getTVRowsForPeriod(period)` | Returns TV rows for a period; strips virtual branding rows via `_isVBRow` |
 | `getPortfolioSeasons()` | Returns sorted distinct seasons across TV + survey data |
-| `getPortfolioLatestSeason()` | Returns the most recent season string |
 | `getSocialRowsForPeriod(period)` | Returns organic social rows filtered to a period |
 | `getPreviousPortfolioSeason(season)` | Returns the season immediately before the given one |
 | `getPortfolioYoYRowSets(period)` | Returns `{ current, prior }` row sets for portfolio-level TV YoY |
 | `getSelectedHomePeriod()` | Returns the active period selector value from the home page filter |
 | `aggregateBy(rows, keyName)` | Groups an array of rows by a key and sums numeric columns |
-| `pctChangeFromValues(curr, prev)` | Simple signed pct change; safe for zero/null inputs |
 | `formatSignedPercent(change, opts)` | Formats a ratio as `+12.3 %` with sign; respects `invert` flag |
+| `CHANNEL_REGISTRY` | The one list of every data channel — `{ key, label, rows(brand), dateFields }`. Adding a channel here is all that's needed for it to appear in Data Health and the freshness strip |
+| `getChannelFreshnessSummary(brand)` | Row counts and date coverage per channel, driven by `CHANNEL_REGISTRY` |
+| `getLatestDataDate()` / `getDataAsOfLabel()` | Newest date across all loaded channels, and the label for the "LAST UPDATE" stamp |
+| `renderNamingHealthPanel()` | The Data Health "Naming & aliases" panel |
+| `mergeNamingSuggestion(variant, canonical)` / `keepNamingSuggestionApart(variant)` | Accept or dismiss one near-miss suggestion |
 | `formatDurationFromMinutes(minutes)` | Converts a decimal minute count to `HH:MM:SS` |
 | `renderSimpleLeaderboardTable(rows, columns, tableId)` | Builds a sortable leaderboard `<table>` from a rows + columns spec |
 | `wireSortableTables()` | Binds click handlers on all `[data-sort-key]` `<th>` elements |
@@ -416,6 +415,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderApp()` | **Main router** — reads `currentBrand` / `currentPage` and delegates to the right renderer |
 | `renderTVPortfolioPage(main)` | Renders the TV Visible Signage portfolio page (lives here because it references many channels) |
 | `renderTakeaways(brand, latestSeason, prevSeason)` | Renders the "Key takeaways" YoY summary block on partner pages |
+| `renderSectionFailure(slotId, label, err)` | Visible failure card for a section whose renderer threw — `renderApp()` wraps every section in its own boundary so one bad row can't blank the page |
 
 > **Global state declared here:** `currentBrand`, `currentPage`, `currentPeriod`, `comparisonMode`, `openSections`
 
@@ -454,8 +454,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `filterOrganicPortfolioRowsByDate(rows)` | Applies active date filter to organic portfolio rows |
 | `sortOrganicPortfolioRows(rows)` | Applies current sort to the organic leaderboard |
 | `getOrganicPortfolioDateLabel()` | Returns a human-readable date range label for the organic filter |
-| `getAllPaidFiscalSeasons()` | Returns distinct seasons from all paid rows |
-| `getPaidRowsForPeriod(period)` | Returns paid rows filtered to a given period |
 
 ---
 
@@ -471,6 +469,9 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPaidPlaceholder()` | "No paid data" empty state |
 | `getPacingMetricKey(brand)` / `setPacingMetricKey(brand, key)` | Get/set the active pacing metric for a brand's chart |
 | `updateBrandDropdown(query)` | Filters and renders the header partner search dropdown; respects the shared `searchPartnersOnly` filter |
+| `searchBrands(brands, query)` | Ranked, alias-aware search — matches alias keys and auto-detected variants too, so "Comcast" finds Xfinity. Returns `[{ brand, via }]` |
+| `selectBrandFromDropdown(brand)` | Commits a dropdown selection; shared by click and keyboard Enter |
+| `moveBrandDropdownCursor(delta)` / `getBrandDropdownCursorBrand()` | Arrow-key navigation in the search dropdown |
 | `renderPartnerStatusPill(brand)` | Returns a "Partner" / "Not partner" status pill for a brand (empty until a roster is loaded); used in header search and Partner Browse |
 | `syncHeaderPartnersToggle()` | Syncs the header "Partners only" checkbox to `searchPartnersOnly` and shows it only when a roster is loaded; called from `renderApp()` |
 
@@ -484,18 +485,15 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `renderSurveyPortfolioPage(main)` | Full Survey portfolio page with brand awareness tab |
 | `renderBrandAwarenessTab(container, main)` | Brand awareness leaderboard and survey wave overview |
-| `renderSurveyTrendChart(brand, phase)` | SVG line chart of survey metric trends across waves |
 | `renderSurveyWaveTable(brand)` | Wave-by-wave metric table for a brand |
-| `wireSurveyTrendHovers()` | Tooltip hovers on the survey trend chart |
 | `getBrandSurveyData(brand, season, phase)` | Returns filtered survey rows for a brand |
 | `getSurveySeasons()` | Returns distinct survey seasons |
 | `getSurveyLatestWave(brand, phase)` | Most recent wave row for a brand |
 | `getSurveyPriorWave(brand, phase)` | Second-most-recent wave for YoY comparison |
-| `getSurveyTrend(brand, phase)` | Full ordered trend array across all waves |
 | `getSurveyMetricYoY(brand, phase, metric)` | YoY delta for a single survey metric |
 | `normalizeSurveyRow(row)` | Coerces raw CSV columns to typed survey row |
 | `parseSurveyPct(val)` / `parseSurveyInt(val)` | Survey-specific numeric parsers |
-| `getPartnerRoster()` / `isCurrentPartner(brand)` / `getPartnerCategory(brand)` | Roster lookups |
+| `getPartnerRoster()` / `isCurrentPartner(brand)` | Roster lookups |
 | `selectBrandFromSurvey(brand)` | Navigates to a partner page from the survey portfolio |
 
 ---
@@ -553,7 +551,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `reportDelta(pct, invert)` | Returns a colour-coded delta badge for the report |
 | `surveyBar(pct, rank, label, total)` | Renders an SVG bar for survey metrics in the report |
 | `renderOrgLogo(size)` | Renders the org logo SVG at a given size |
-| `renderPartnerLogo(brand, size)` | Renders a partner initial-avatar at a given size |
+| `renderPartnerLogo(brand, size)` | Renders a partner logo, falling back to an initial-avatar |
+| `lookupPartnerLogo(brand)` | Resolves a brand to a baked-in logo, matching on compact token so filenames need not be byte-identical |
 | `REPORT_SECTION_DEFS` | Constant array defining all reportable sections (key, icon, label) |
 
 ---
@@ -607,7 +606,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getVirtualBrandingTVRows(brand, location)` | Filters TV rows to virtual branding rows, optionally by brand/location |
 | `computeVSQimvYoY(brand)` | YoY for virtual signage QIMV using TV VB rows by season; returns `{ curr, prev, change, basis }` or null when < 2 seasons exist |
 | `computeVSLocationMeans()` | Computes per-position simple means from home-game TV actuals (used for away-game estimates and the averages table) |
-| `vsConservativeEstimate(vals)` | Returns `floor(min(mean, median))` — the estimation strategy for away games |
 | `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates |
 | `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals |
 | `computeVSLocationAverages()` | Delegates to `computeVSLocationMeans()` for the averages display table |
@@ -640,7 +638,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPreRollSubsection(brand, rows)` | Pre-roll video breakdown: KPIs, monthly bar chart, game-by-game table |
 | `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |
 | `parseWebNum(v)` / `parseWebPct(v)` | Web & Digital numeric parsers (support K/M/B suffixes and `%`-formatted CTR) |
-| `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix (bypasses PapaParse's header issues with date-row exports) |
+| `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix — these delivery reports carry preamble rows above the header |
 
 ---
 
@@ -690,13 +688,14 @@ A per-file index of every significant function. Use this to jump directly to the
 2. - [ ] Add ingest branch in `ingestFile()` (`14_organic_section.js`)
 3. - [ ] Add channel array/object to `DataStore` (`04_datastore.js`)
 4. - [ ] Add to `getSerializableDataStore()` (`04_datastore.js`)
-5. - [ ] Add to `hydrateFromPreloaded()` (`04_datastore.js`)
+5. - [ ] Add to `loadPreloadedData()` (`04_datastore.js`)
 6. - [ ] Call `DataStore.registerBrand(brand, 'channelKey')` during ingest
 7. - [ ] Create `XX_xxx_section.js` for the partner-page renderer
 8. - [ ] Add `<div id="xxx-slot">` in the partner page HTML template (`09_app_core.js`)
 9. - [ ] Add a channel tag entry in the `channelTags` array (`09_app_core.js`)
-10. - [ ] Add to file log renderer in `renderFileLog()` (`14_organic_section.js`)
-11. - [ ] Add home quick link card if it deserves portfolio-level visibility (`08_home_pages.js`)
-12. - [ ] Add the new file row to the **file responsibility table** (the `| File | Responsibility |` table in "What this project is")
-13. - [ ] Add a new sub-table for `XX_xxx_section.js` to the **Function / Code Map** section, and update any existing sub-tables whose functions were modified (typically `04_datastore.js` and `14_organic_section.js`)
-14. - [ ] Update `CHANGELOG`
+10. - [ ] Add to `LOADED_FILE_DESCRIBERS` so the file log describes it (`14_organic_section.js`)
+11. - [ ] Add an entry to `CHANNEL_REGISTRY` (`07_paid_assignment.js`) — this is what puts it on Data Health and the partner freshness strip
+12. - [ ] Add home quick link card if it deserves portfolio-level visibility (`08_home_pages.js`)
+13. - [ ] Add the new file row to the **file responsibility table** (the `| File | Responsibility |` table in "What this project is")
+14. - [ ] Add a new sub-table for `XX_xxx_section.js` to the **Function / Code Map** section, and update any existing sub-tables whose functions were modified (typically `04_datastore.js` and `14_organic_section.js`)
+15. - [ ] Add an entry to `CHANGELOG.md` and bump `DASHBOARD_VERSION`
