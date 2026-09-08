@@ -3260,9 +3260,14 @@ html.pqi-preboot body::after {
   background: linear-gradient(135deg, var(--accent), var(--accent-soft));
   color: #fff; border: none; cursor: pointer;
   box-shadow: 0 10px 26px -8px var(--accent-line), 0 2px 6px rgba(0,0,0,.3);
-  transition: transform .18s, box-shadow .18s, filter .18s;
+  /* Rest at reduced opacity so it never obscures content behind it; brighten on hover/focus. */
+  opacity: 0.55;
+  transition: opacity .18s, transform .18s, box-shadow .18s, filter .18s;
 }
-.intro-help-fab:hover { transform: translateY(-2px); filter: brightness(1.06); box-shadow: 0 16px 34px -10px var(--accent-line), 0 3px 8px rgba(0,0,0,.35); }
+.intro-help-fab:hover, .intro-help-fab:focus-visible {
+  opacity: 1; transform: translateY(-2px); filter: brightness(1.06);
+  box-shadow: 0 16px 34px -10px var(--accent-line), 0 3px 8px rgba(0,0,0,.35);
+}
 .intro-help-fab:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
 /* When the how-to fab is present (viewer mode), lift back-to-top above it. */
 body.pqi-viewer .back-to-top { bottom: 92px; }
