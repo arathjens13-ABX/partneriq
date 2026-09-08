@@ -807,7 +807,16 @@ function exportPreloadedDashboard() {
 
   const viewerMode = document.getElementById('exportViewerMode') ? document.getElementById('exportViewerMode').checked : true;
   const payload = getSerializableDataStore();
+  // The Export button lives inside the import modal, so the modal is open right
+  // now. Serializing the live DOM would bake it in and flash it on the viewer's
+  // first load — strip transient open state before snapshotting. Viewer exports
+  // also get the pre-boot cover class so the intro is the first thing seen.
+  document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active'));
+  const introRoot = document.getElementById('introRoot');
+  if (introRoot) introRoot.innerHTML = '';
+  document.documentElement.classList.toggle('pqi-preboot', viewerMode);
   let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+  document.documentElement.classList.remove('pqi-preboot'); // don't affect the live builder view
 
   const compressed = LZString.compressToBase64(JSON.stringify(payload));
   html = replaceExportBlock(html, 'PRELOADED_DATA_START', 'PRELOADED_DATA_END',

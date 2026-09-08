@@ -939,7 +939,7 @@ function updateBrandDropdown(query = '') {
     const chs = DataStore.channelsByBrand[b] || {};
     const tags = [chs.tv && 'TV', chs.organic && 'SOC', chs.paid && 'PAID', chs.survey && 'SRV'].filter(Boolean).join(' · ');
     return `<div class="brand-option ${b === currentBrand ? 'selected' : ''}" data-brand="${b.replace(/"/g, '&quot;')}">
-      <span style="display:flex;align-items:center;gap:6px;">${renderPartnerLogo(b, 20)}<span>${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
+      <span class="brand-option-main">${renderPartnerLogo(b, 20)}<span class="brand-option-name">${b}</span>${renderPartnerStatusPill(b)}</span><span class="brand-option-channels">${tags}</span>
     </div>`;
   }).join('');
 

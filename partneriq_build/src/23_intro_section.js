@@ -57,6 +57,18 @@ function _pqiSurvey() { return _pqiIcon('<path d="M9 11l3 3L22 4"/><path d="M21 
 function _pqiHome() { return _pqiIcon('<path d="m3 9 9-7 9 7"/><path d="M9 22V12h6v10"/><path d="M21 22H3"/>', 13); }
 function _pqiChevron() { return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:6px;vertical-align:-1px"><polyline points="6 9 12 15 18 9"/></svg>`; }
 
+// Trail Blazers org logo (from the embedded PARTNER_LOGOS), sized for the intro.
+// Falls back to a "PIQ" wordmark plate if the logo isn't present.
+function _pqiOrgLogo(size) {
+  const px = size || 26;
+  try {
+    if (typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS['TrailBlazers'] && PARTNER_LOGOS['TrailBlazers'].data) {
+      return `<img class="pqi-orglogo" src="${PARTNER_LOGOS['TrailBlazers'].data}" alt="Portland Trail Blazers" style="width:${px}px;height:${px}px;object-fit:contain;flex:none;">`;
+    }
+  } catch (e) {}
+  return `<span class="pqi-brandmark" style="width:${px}px;height:${px}px;font-size:${Math.round(px*0.42)}px;">PIQ</span>`;
+}
+
 // ============================================================
 // Overlay construction
 // ============================================================
@@ -67,9 +79,9 @@ function buildIntroOverlay() {
     <div class="pqi-backdrop" id="pqiBackdrop"></div>
     <div class="pqi-overlay" id="pqiOverlay" role="dialog" aria-modal="true" aria-label="How to use PartnerIQ">
       <div class="pqi-card">
-        <button class="pqi-skip" id="pqiSkip" type="button">Skip intro ✕</button>
+        <button class="pqi-skip" id="pqiSkip" type="button">Skip</button>
         <div class="pqi-rail">
-          <div class="pqi-brandline"><span class="pqi-brandmark">IQ</span><span class="pqi-brandname">PartnerIQ</span></div>
+          <div class="pqi-brandline">${_pqiOrgLogo(28)}<span class="pqi-brandname">PartnerIQ</span></div>
           <div class="pqi-eyebrow">How to use · ${INTRO_STEPS.length} steps</div>
           <ul class="pqi-steps" id="pqiSteps"><span class="pqi-spine"><i id="pqiSpine"></i></span></ul>
           <div class="pqi-railfoot">
@@ -137,7 +149,7 @@ function _introBuildScene(kind) {
   el.className = 'pqi-scene'; el.dataset.kind = kind;
   if (kind === 'welcome') {
     el.innerHTML = `<span class="pqi-ring"></span><span class="pqi-ring two"></span>
-      <div class="pqi-hero-mark">IQ</div>
+      <div class="pqi-hero-mark">${_pqiOrgLogo(72)}</div>
       <div class="pqi-chips">
         <span class="pqi-chip">TV Signage</span><span class="pqi-chip">Paid Social</span>
         <span class="pqi-chip">Organic</span><span class="pqi-chip">Survey</span><span class="pqi-chip">Web &amp; Digital</span>
@@ -309,8 +321,8 @@ function showIntro() {
   if (!buildIntroOverlay()) return;
   document.body.classList.add('pqi-open');
   introGo(0);
-  const relaunch = document.getElementById('introRelaunch');
-  if (relaunch) relaunch.hidden = true;
+  // The real intro has taken over — drop the instant pre-boot cover.
+  document.documentElement.classList.remove('pqi-preboot');
 }
 
 function hideIntro() {
@@ -324,15 +336,20 @@ function hideIntro() {
     const root = document.getElementById('introRoot');
     if (root) root.innerHTML = '';
     document.body.classList.remove('pqi-open');
-    const relaunch = document.getElementById('introRelaunch');
-    if (relaunch) relaunch.hidden = false;
   }, 400);
 }
 
-// Auto-shows once on load in viewer mode, unless suppressed this session.
+// Auto-shows on load in viewer mode, unless suppressed this session. The
+// "How to use" header button (viewer-only) reopens it any time.
 function maybeShowIntro() {
-  const relaunch = document.getElementById('introRelaunch');
-  if (relaunch) relaunch.hidden = !VIEWER_MODE; // relaunch affordance is viewer-only
-  if (!VIEWER_MODE || introSuppressed) return;
+  // The floating "?" relaunch button lives bottom-right in viewer mode; the
+  // body class lifts the back-to-top button above it so they never overlap.
+  const fab = document.getElementById('introHelpFab');
+  if (fab) fab.style.display = VIEWER_MODE ? '' : 'none';
+  document.body.classList.toggle('pqi-viewer', !!VIEWER_MODE);
+  if (!VIEWER_MODE || introSuppressed) {
+    document.documentElement.classList.remove('pqi-preboot'); // reveal the dashboard
+    return;
+  }
   showIntro();
 }
