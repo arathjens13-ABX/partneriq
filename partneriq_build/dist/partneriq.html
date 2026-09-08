@@ -12999,9 +12999,20 @@ function detectFileType(filename, rows = []) {
   // Column lookup that ignores the _1/_2 suffixes the CSV shim adds to
   // duplicate headers, so schema detection is unaffected by them.
   const hasCol = name => cols.some(c => c === name || c.replace(/_\d+$/, '') === name);
-  // Matches a token delimited by start/end or a non-alphanumeric separator, so
-  // "TV_signage" and "q3-tv-report" match but "shortvideo" does not.
-  const hasToken = tok => new RegExp(`(^|[^a-z0-9])${tok}([^a-z0-9]|$)`).test(base);
+  // Tokenize the ORIGINAL-case filename on both non-alphanumeric separators and
+  // CamelCase boundaries, so "TVVisibleSignage" → ["tv","visible","signage"],
+  // "TV_signage" → ["tv","signage"], and "shortvideo" stays ["shortvideo"].
+  // Matching whole tokens (not substrings) is what keeps "shortvideo" from
+  // reading as TV, while the CamelCase split is what makes separator-free names
+  // like the real "TVVisibleSignage" export resolve correctly.
+  const _fileWords = String(filename || '')
+    .replace(/\.(csv|xlsx|xls)$/i, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')     // camelCase:  tvVisible → tv Visible
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')  // ACRONYMWord: TVVisible → TV Visible
+    .split(/[^a-zA-Z0-9]+/)
+    .filter(Boolean)
+    .map(w => w.toLowerCase());
+  const hasToken = tok => _fileWords.includes(tok);
 
   // ── Filename-prefix conventions ─────────────────────────────────────────
   if (base.startsWith('partners_'))       return 'roster';
@@ -13042,6 +13053,15 @@ function detectFileType(filename, rows = []) {
   if (hasCol('organic posts') && hasCol('brand value') && hasCol('social value')) {
     // Can't distinguish series vs asset vs brand from columns alone — default to brand
     return 'zoomphBrand';
+  }
+
+  // TV Visible Signage by column schema — distinctive enough (Brand + Matchdate
+  // + a QI/Tool column) that TV data survives even if the filename convention
+  // changes. TV has no partner-neutral overlap with the Nielsen ratings schema,
+  // which is matched above and needs 'hh rtg' + 'demo' + 'opponent'.
+  if (hasCol('brand') && (hasCol('matchdate') || hasCol('match date')) &&
+      (hasCol('tool') || hasCol('qi media value ($)') || hasCol('sponsorship qi impressions'))) {
+    return 'tv';
   }
 
   // ── Token-based filename fallbacks ──────────────────────────────────────

@@ -83,6 +83,9 @@ t.check('memoization is transparent',
 t.group('detectFileType — no silent misclassification');
 t.eq('roster by prefix',                detectFileType('Partners_2025.csv', []), 'roster');
 t.eq('tv by explicit token',            detectFileType('TV_signage.csv', []), 'tv');
+t.eq('tv CamelCase, no separators',     detectFileType('TVVisibleSignage.csv', []), 'tv');
+t.eq('tv CamelCase with a date suffix', detectFileType('TVVisibleSignage 2024-25.csv', []), 'tv');
+t.eq('tv by column schema, odd name',   detectFileType('export_final_v3.csv', [{ Brand: 'X', Tool: 'Broadcast', Matchdate: '1/5/2025' }]), 'tv');
 t.eq('paid by token',                   detectFileType('Q3_paid_meta.csv', []), 'paid');
 t.eq('survey by prefix',                detectFileType('Survey_Wave1.csv', []), 'survey');
 t.eq('general survey by prefix',        detectFileType('GeneralSurvey_W1.csv', []), 'generalSurvey');
