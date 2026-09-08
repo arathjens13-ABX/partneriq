@@ -79,7 +79,7 @@ function buildIntroOverlay() {
     <div class="pqi-backdrop" id="pqiBackdrop"></div>
     <div class="pqi-overlay" id="pqiOverlay" role="dialog" aria-modal="true" aria-label="How to use PartnerIQ">
       <div class="pqi-card">
-        <button class="pqi-skip" id="pqiSkip" type="button">Skip intro ✕</button>
+        <button class="pqi-skip" id="pqiSkip" type="button">Skip</button>
         <div class="pqi-rail">
           <div class="pqi-brandline">${_pqiOrgLogo(28)}<span class="pqi-brandname">PartnerIQ</span></div>
           <div class="pqi-eyebrow">How to use · ${INTRO_STEPS.length} steps</div>
@@ -342,8 +342,11 @@ function hideIntro() {
 // Auto-shows on load in viewer mode, unless suppressed this session. The
 // "How to use" header button (viewer-only) reopens it any time.
 function maybeShowIntro() {
-  const helpBtn = document.getElementById('introHelpBtn');
-  if (helpBtn) helpBtn.style.display = VIEWER_MODE ? '' : 'none';
+  // The floating "?" relaunch button lives bottom-right in viewer mode; the
+  // body class lifts the back-to-top button above it so they never overlap.
+  const fab = document.getElementById('introHelpFab');
+  if (fab) fab.style.display = VIEWER_MODE ? '' : 'none';
+  document.body.classList.toggle('pqi-viewer', !!VIEWER_MODE);
   if (!VIEWER_MODE || introSuppressed) {
     document.documentElement.classList.remove('pqi-preboot'); // reveal the dashboard
     return;

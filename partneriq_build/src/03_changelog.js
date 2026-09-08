@@ -14,7 +14,7 @@ const CHANGELOG = [
           `Fixed the import modal briefly flashing on a viewer's first load: exportPreloadedDashboard() serializes the live DOM while the Export button's own modal is open, so it was baking the modal open. It now strips open modals before snapshotting, and an inline script in shell.html closes any modal during parse (before the multi-MB data/app scripts), so existing and future exports no longer flash`,
           `Viewer exports now show an instant branded pre-boot cover (html.pqi-preboot) that the intro takes over, so the intro — not a half-drawn dashboard — is the first thing seen on a large file; a 6s failsafe removes it if init stalls`,
           `Replaced the placeholder "IQ" mark with the Trail Blazers logo in the intro rail and welcome hero, and matched the intro brand text to the header's logo type`,
-          `Moved the intro relaunch control from a floating bottom button to a "How to use" button in the header (viewer mode only)`,
+          `Intro relaunch is a compact floating "?" button in the bottom-right corner (viewer mode only), stacked above the back-to-top button so they never overlap; shortened the overlay's "Skip intro" control to "Skip"`,
           `Widened the header partner search and stopped long partner names wrapping onto two lines in the dropdown (single-line rows with ellipsis)`,
         ]
       }

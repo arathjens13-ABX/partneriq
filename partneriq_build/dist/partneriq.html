@@ -3317,6 +3317,30 @@ html.pqi-preboot body::after {
   .brand-selector-wrapper, .brand-dropdown { min-width: 260px; }
 }
 
+
+/* ================================================================
+   INTRO RELAUNCH — floating "?" button, bottom-right (viewer mode)
+   Small footprint so it sits in the corner gutter, clear of the
+   centered content column. Stacks above the back-to-top button.
+   ================================================================ */
+.intro-help-fab {
+  position: fixed; bottom: 28px; right: 28px; z-index: 91;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft));
+  color: #fff; border: none; cursor: pointer;
+  box-shadow: 0 10px 26px -8px var(--accent-line), 0 2px 6px rgba(0,0,0,.3);
+  transition: transform .18s, box-shadow .18s, filter .18s;
+}
+.intro-help-fab:hover { transform: translateY(-2px); filter: brightness(1.06); box-shadow: 0 16px 34px -10px var(--accent-line), 0 3px 8px rgba(0,0,0,.35); }
+.intro-help-fab:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
+/* When the how-to fab is present (viewer mode), lift back-to-top above it. */
+body.pqi-viewer .back-to-top { bottom: 92px; }
+@media (max-width: 600px) {
+  .intro-help-fab { bottom: 20px; right: 20px; width: 40px; height: 40px; }
+  body.pqi-viewer .back-to-top { bottom: 80px; right: 20px; }
+}
+
 </style>
 </head>
 </head>
@@ -3354,12 +3378,6 @@ html.pqi-preboot body::after {
           <input type="checkbox" id="headerPartnersOnly" checked />
           <span>Partners only</span>
         </label>
-        <button class="btn" id="introHelpBtn" style="display:none;" title="Replay the how-to-use walkthrough" onclick="if (typeof showIntro==='function') showIntro();">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
-          </svg>
-          How to use
-        </button>
         <button class="btn" id="dataBtn" style="display:none;">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -3374,6 +3392,11 @@ html.pqi-preboot body::after {
   <main id="main"></main>
 
   <button class="back-to-top" id="backToTop" title="Back to top">↑</button>
+  <button class="intro-help-fab" id="introHelpFab" type="button" title="How to use this dashboard" aria-label="How to use this dashboard" style="display:none;" onclick="if (typeof showIntro==='function') showIntro();">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+  </button>
 <footer id="app-footer">PartnerIQ · v1.0 · May 1 2026 · Confidential · Contact Anders for issues or additions </footer>
 
 <!-- Partner Report Export modal -->
@@ -3597,7 +3620,7 @@ const CHANGELOG = [
           `Fixed the import modal briefly flashing on a viewer's first load: exportPreloadedDashboard() serializes the live DOM while the Export button's own modal is open, so it was baking the modal open. It now strips open modals before snapshotting, and an inline script in shell.html closes any modal during parse (before the multi-MB data/app scripts), so existing and future exports no longer flash`,
           `Viewer exports now show an instant branded pre-boot cover (html.pqi-preboot) that the intro takes over, so the intro — not a half-drawn dashboard — is the first thing seen on a large file; a 6s failsafe removes it if init stalls`,
           `Replaced the placeholder "IQ" mark with the Trail Blazers logo in the intro rail and welcome hero, and matched the intro brand text to the header's logo type`,
-          `Moved the intro relaunch control from a floating bottom button to a "How to use" button in the header (viewer mode only)`,
+          `Intro relaunch is a compact floating "?" button in the bottom-right corner (viewer mode only), stacked above the back-to-top button so they never overlap; shortened the overlay's "Skip intro" control to "Skip"`,
           `Widened the header partner search and stopped long partner names wrapping onto two lines in the dropdown (single-line rows with ellipsis)`,
         ]
       }
@@ -19692,7 +19715,7 @@ function buildIntroOverlay() {
     <div class="pqi-backdrop" id="pqiBackdrop"></div>
     <div class="pqi-overlay" id="pqiOverlay" role="dialog" aria-modal="true" aria-label="How to use PartnerIQ">
       <div class="pqi-card">
-        <button class="pqi-skip" id="pqiSkip" type="button">Skip intro ✕</button>
+        <button class="pqi-skip" id="pqiSkip" type="button">Skip</button>
         <div class="pqi-rail">
           <div class="pqi-brandline">${_pqiOrgLogo(28)}<span class="pqi-brandname">PartnerIQ</span></div>
           <div class="pqi-eyebrow">How to use · ${INTRO_STEPS.length} steps</div>
@@ -19955,8 +19978,11 @@ function hideIntro() {
 // Auto-shows on load in viewer mode, unless suppressed this session. The
 // "How to use" header button (viewer-only) reopens it any time.
 function maybeShowIntro() {
-  const helpBtn = document.getElementById('introHelpBtn');
-  if (helpBtn) helpBtn.style.display = VIEWER_MODE ? '' : 'none';
+  // The floating "?" relaunch button lives bottom-right in viewer mode; the
+  // body class lifts the back-to-top button above it so they never overlap.
+  const fab = document.getElementById('introHelpFab');
+  if (fab) fab.style.display = VIEWER_MODE ? '' : 'none';
+  document.body.classList.toggle('pqi-viewer', !!VIEWER_MODE);
   if (!VIEWER_MODE || introSuppressed) {
     document.documentElement.classList.remove('pqi-preboot'); // reveal the dashboard
     return;
