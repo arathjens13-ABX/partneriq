@@ -15,7 +15,7 @@ const BRAND_ALIAS_DEFAULTS = {
   'MichelobUltra': 'Michelob Ultra',
   'ULTRA': 'Michelob Ultra',
   'ABInBev': 'Michelob Ultra',
-  'UmpquaBank': 'Umpqua Bank',
+  'UmpquaBank': 'Columbia Bank',
   'CocaCola': 'Coca-Cola',
   'AlaskaAir': 'Alaska Airlines',
   'AlaskaAirlines': 'Alaska Airlines',
@@ -164,8 +164,29 @@ const BRAND_ALIAS_DEFAULTS = {
   // PCL Construction — not tracked anywhere yet
   'PCL Construction Services': 'PCL Construction',
   'PCL CONSTRUCTION': 'PCL Construction',
-  'Umpqua Bank Final Score': 'Umpqua Bank',
-  'Umpqua Bank Suite Level': 'Umpqua Bank',
+  // Umpqua Bank merged into Columbia Banking System — all Umpqua names roll up
+  // to Columbia Bank. "Umpqua Bank" is intentionally NOT a canonical spelling
+  // (see CANONICAL_BRANDS) so these aliases win.
+  'Umpqua Bank': 'Columbia Bank',
+  'Umpqua Bank Final Score': 'Columbia Bank',
+  'Umpqua Bank Suite Level': 'Columbia Bank',
+  // Bare-name base for the season-suffix strip (e.g. "Umpqua 2025-26" →
+  // strip → "Umpqua" → here). "Spirit Mountain" and "Moda" already resolve.
+  'Umpqua': 'Columbia Bank',
+  'Coke': 'Coca-Cola',
+  'Coke Sprite': 'Coca-Cola',
+  // Boys & Girls Club — the "and"/"&" variants compact to different tokens,
+  // so the canonical-spelling list can't merge them; map the word form here.
+  'Boys and Girls Club': 'Boys & Girls Club',
+  'Boys And Girls Club': 'Boys & Girls Club',
+  // Spelling corrections — the bare name resolves to the correct canonical, and
+  // the misspelled forms (seen in older hand-added aliases) auto-correct too.
+  'Deschutes': 'Deschutes Brewing',
+  'Deshutes': 'Deschutes Brewing',
+  'Deshutes Brewing': 'Deschutes Brewing',
+  'Windermere': 'Windermere Real Estate',
+  'Windemere': 'Windermere Real Estate',
+  'Windemere Real Estate': 'Windermere Real Estate',
   // Tire Rack / Globe Life — new brands found in TVVisibleSignage,
   // not in Partners_Current_List (so "Partners only" will correctly hide them)
   'TIRERACK.com': 'Tire Rack',
@@ -201,6 +222,7 @@ const CANONICAL_BRANDS = [
   'Athletic Brewing',
   'Axiom',
   'Boyds Coffee',
+  'Boys & Girls Club',
   'Brightside Windows',
   'Coca-Cola',
   'Columbia Bank',
@@ -208,43 +230,54 @@ const CANONICAL_BRANDS = [
   'Daimler',
   "Dave's Hot Chicken",
   'Delta Dental',
+  'Deschutes Brewing',
   'Directors Mortgage',
   'DSP Connections',
   'ECR',
+  'Eleven Media',
   'Evolv',
   'First Tech',
   'Ford',
   'Fred Meyer',
   'Gatorade',
+  'Globe Life',           // non-partner (TVVisibleSignage); canonical spelling only
   'Goldberg And Loren',
+  'Hemplers',
   'Hop Valley',
   'Hornitos',
   'Jamba Juice',
+  'Kimberly Clark',
+  'Legends Casino',
   'Les Schwab',
   'Luckin Coffee',
   'Lyft',
   "McDonald's",
+  "McDonald's 100 Pt Play",  // distinct contracted activation — separate from McDonald's
   'Michelob Ultra',
   'Moda Health',
   'Nike',
   'Nuna',
   'Pacific Office Automation',
   'Paylocity',
+  'PCL Construction',
   'Pendleton',
   'Polar',
   'Providence Health',
   'Rebound Orthopedics',
   'Riverside',
+  'Servicemaster',
   'Shift4',
   'Shine Vodka',
   'Spirit Mountain Casino',
   'Sprite',
   'State Farm',
+  'Structured Communications',
   'Ticketmaster',
+  'Tire Rack',            // non-partner (TVVisibleSignage); canonical spelling only
   'Toyota',
   'Travel & Leisure',
-  'Umpqua Bank',
   'Vortex Legacy Group',
+  'Windermere Real Estate',
   'Xfinity',
   'ZoomInfo',
 ];
@@ -369,7 +402,22 @@ function _resolveCanonicalBrandNameUncached(raw, skipAutoDetect) {
   // 3. Compact alias key match (case/punctuation variants of known alias keys)
   const aliasMatch = byCompactAlias.get(compact);
   if (aliasMatch) return aliasMatch;
-  // 4. Auto-detected word-prefix match (e.g. "Axiom Eco-Pest Control" → "Axiom")
+  // 4. Trailing season-suffix strip — "Umpqua 2025-26" → resolve("Umpqua").
+  //    Source files often append the season to the partner name, and that
+  //    suffix changes every year. Stripping it and re-resolving the base means
+  //    every season (this year's AND next year's) is handled by the base
+  //    alias alone — no per-season hand entry. Gated so it can't misfire:
+  //    the separator before the season must be a space/underscore (never the
+  //    hyphen inside "2025-26"), the token must parse as a real season, and
+  //    the stripped base must resolve to something OTHER than itself — so a
+  //    plain name that merely ends in a number is left untouched. Runs after
+  //    the explicit alias/canonical checks above, so a real rule always wins.
+  const seasonSplit = raw.match(/^(.*\S)[\s_]+(\S+)$/);
+  if (seasonSplit && parseFlexibleSeasonToken(seasonSplit[2])) {
+    const base = resolveCanonicalBrandName(seasonSplit[1], skipAutoDetect);
+    if (base && base !== seasonSplit[1]) return base;
+  }
+  // 5. Auto-detected word-prefix match (e.g. "Axiom Eco-Pest Control" → "Axiom")
   //    Populated by detectWordPrefixGroups after data loads; lower priority than explicit rules.
   if (!skipAutoDetect && typeof DataStore !== 'undefined' && DataStore.autoDetectedAliases) {
     const autoMatch = DataStore.autoDetectedAliases[raw];

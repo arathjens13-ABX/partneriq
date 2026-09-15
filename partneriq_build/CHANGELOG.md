@@ -11,6 +11,38 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.52 — Spelling corrections and the Umpqua/Columbia merger
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- Fixed two misspelled canonical targets that had been living as hand-added aliases: **Deschutes Brewing** (was "Deshutes Brewing") and **Windermere Real Estate** (was "Windemere Real Estate"). Both are now canonical spellings in `CANONICAL_BRANDS`, and the misspelled forms are mapped as aliases too, so any old data carrying them auto-corrects
+- Rolled **Umpqua Bank into Columbia Bank**, reflecting the Umpqua/Columbia Banking System merger. All Umpqua names — `Umpqua`, `Umpqua Bank`, `UmpquaBank`, the sub-campaigns, and season-suffixed forms like `Umpqua 2025-26` — now resolve to `Columbia Bank`. `Umpqua Bank` was removed from `CANONICAL_BRANDS` so the merge aliases win
+- Updated `05_paid_constants.js` (`UmpquaBank`) to match
+
+## v0.51 — Season-suffixed names resolve automatically, every year
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- `resolveCanonicalBrandName()` now strips a trailing season token before resolving, so names like `Spirit Mountain 2024-25`, `Umpqua 2025-26`, `Moda 2025-26`, and `Coke Sprite 2025-26` fold into their partner automatically. Because the suffix (not the base) is what changes each year, this handles **future seasons too** — `Umpqua 2026-27`, `2027-28`, `FY28` all resolve with no new entry. Previously each season's spelling had to be hand-mapped on every dashboard rebuild
+- The strip is gated to stay safe: the separator before the season must be a space or underscore (never the hyphen inside `2025-26`), the token must parse as a real season via `parseFlexibleSeasonToken()`, and the stripped base must resolve to a *different* name — so a plain brand that merely ends in a number is untouched. It runs *after* the exact alias/canonical checks, so an explicit rule always wins
+- Added the bare-name bases the strip resolves through: `Umpqua → Umpqua Bank`, `Coke`/`Coke Sprite → Coca-Cola` (`Spirit Mountain` and `Moda` already resolved)
+- `Boys and Girls Club → Boys & Girls Club` (the `and`/`&` forms compact to different tokens, so the canonical list can't merge them on its own); added `Boys & Girls Club` to `CANONICAL_BRANDS`
+- New unit tests pin the strip, a future-season case, the FY form, and the "plain trailing number is not a season" guard
+
+## v0.50 — Canonical spellings for the newly-tracked brands
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- Added the ten brands introduced by the v0.49 alias sweep to `CANONICAL_BRANDS` (`04_datastore.js`): Eleven Media, Globe Life, Hemplers, Kimberly Clark, Legends Casino, McDonald's 100 Pt Play, PCL Construction, Servicemaster, Structured Communications, Tire Rack. Previously they were alias *targets* only, so a case/spacing variant not already spelled out (e.g. `SERVICEMASTER` vs `Service Master`) would land as a brand-new name needing yet another hand-written alias. Listing the canonical form closes that gap — every compact-token variant now folds in automatically
+- Globe Life and Tire Rack are not on the current partner list; they're included for spelling consistency only, and "Partners only" filters still hide them (roster remains the authority on partner status). `McDonald's 100 Pt Play` is kept as its own canonical, separate from `McDonald's`, matching the v0.49 alias intent
+- Purely additive — no existing entry changed, no function touched
+
 ## v0.49 — Brand alias sweep: fewer manual merges after every rebuild
 
 *September 2026 · Claude*
