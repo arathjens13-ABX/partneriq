@@ -198,6 +198,7 @@ const BRAND_ALIAS_DEFAULTS = {
   'Daimler 50k Trees': 'Daimler',
   'Daimler Generic': 'Daimler',
   "DAIMLER 3'S FOR TREES": 'Daimler',
+  "Hyatt": 'Hyatt Regency',
 };
 
 // ============================================================
