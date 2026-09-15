@@ -21,8 +21,8 @@ const PAID_SOCIAL_PARTNER_ALIASES = {
   DirectorsMortgage: 'Directors Mortgage', DirectrosMortgage: 'Directors Mortgage',
   // Pacific Office Automation
   PacificOfficeAutomation: 'Pacific Office Automation', POA: 'Pacific Office Automation',
-  // Umpqua Bank
-  UmpquaBank: 'Umpqua Bank',
+  // Umpqua Bank — merged into Columbia Banking System
+  UmpquaBank: 'Columbia Bank',
   // Coca-Cola
   CocaCola: 'Coca-Cola',
   // Alaska Airlines — 'Alaska' added so compound names like AlaskaDOTM resolve correctly

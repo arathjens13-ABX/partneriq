@@ -15,7 +15,7 @@ const BRAND_ALIAS_DEFAULTS = {
   'MichelobUltra': 'Michelob Ultra',
   'ULTRA': 'Michelob Ultra',
   'ABInBev': 'Michelob Ultra',
-  'UmpquaBank': 'Umpqua Bank',
+  'UmpquaBank': 'Columbia Bank',
   'CocaCola': 'Coca-Cola',
   'AlaskaAir': 'Alaska Airlines',
   'AlaskaAirlines': 'Alaska Airlines',
@@ -164,17 +164,29 @@ const BRAND_ALIAS_DEFAULTS = {
   // PCL Construction — not tracked anywhere yet
   'PCL Construction Services': 'PCL Construction',
   'PCL CONSTRUCTION': 'PCL Construction',
-  'Umpqua Bank Final Score': 'Umpqua Bank',
-  'Umpqua Bank Suite Level': 'Umpqua Bank',
-  // Bare-name bases for the season-suffix strip (e.g. "Umpqua 2025-26" →
+  // Umpqua Bank merged into Columbia Banking System — all Umpqua names roll up
+  // to Columbia Bank. "Umpqua Bank" is intentionally NOT a canonical spelling
+  // (see CANONICAL_BRANDS) so these aliases win.
+  'Umpqua Bank': 'Columbia Bank',
+  'Umpqua Bank Final Score': 'Columbia Bank',
+  'Umpqua Bank Suite Level': 'Columbia Bank',
+  // Bare-name base for the season-suffix strip (e.g. "Umpqua 2025-26" →
   // strip → "Umpqua" → here). "Spirit Mountain" and "Moda" already resolve.
-  'Umpqua': 'Umpqua Bank',
+  'Umpqua': 'Columbia Bank',
   'Coke': 'Coca-Cola',
   'Coke Sprite': 'Coca-Cola',
   // Boys & Girls Club — the "and"/"&" variants compact to different tokens,
   // so the canonical-spelling list can't merge them; map the word form here.
   'Boys and Girls Club': 'Boys & Girls Club',
   'Boys And Girls Club': 'Boys & Girls Club',
+  // Spelling corrections — the bare name resolves to the correct canonical, and
+  // the misspelled forms (seen in older hand-added aliases) auto-correct too.
+  'Deschutes': 'Deschutes Brewing',
+  'Deshutes': 'Deschutes Brewing',
+  'Deshutes Brewing': 'Deschutes Brewing',
+  'Windermere': 'Windermere Real Estate',
+  'Windemere': 'Windermere Real Estate',
+  'Windemere Real Estate': 'Windermere Real Estate',
   // Tire Rack / Globe Life — new brands found in TVVisibleSignage,
   // not in Partners_Current_List (so "Partners only" will correctly hide them)
   'TIRERACK.com': 'Tire Rack',
@@ -218,6 +230,7 @@ const CANONICAL_BRANDS = [
   'Daimler',
   "Dave's Hot Chicken",
   'Delta Dental',
+  'Deschutes Brewing',
   'Directors Mortgage',
   'DSP Connections',
   'ECR',
@@ -263,8 +276,8 @@ const CANONICAL_BRANDS = [
   'Tire Rack',            // non-partner (TVVisibleSignage); canonical spelling only
   'Toyota',
   'Travel & Leisure',
-  'Umpqua Bank',
   'Vortex Legacy Group',
+  'Windermere Real Estate',
   'Xfinity',
   'ZoomInfo',
 ];

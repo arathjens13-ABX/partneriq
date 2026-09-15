@@ -11,6 +11,16 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.52 — Spelling corrections and the Umpqua/Columbia merger
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- Fixed two misspelled canonical targets that had been living as hand-added aliases: **Deschutes Brewing** (was "Deshutes Brewing") and **Windermere Real Estate** (was "Windemere Real Estate"). Both are now canonical spellings in `CANONICAL_BRANDS`, and the misspelled forms are mapped as aliases too, so any old data carrying them auto-corrects
+- Rolled **Umpqua Bank into Columbia Bank**, reflecting the Umpqua/Columbia Banking System merger. All Umpqua names — `Umpqua`, `Umpqua Bank`, `UmpquaBank`, the sub-campaigns, and season-suffixed forms like `Umpqua 2025-26` — now resolve to `Columbia Bank`. `Umpqua Bank` was removed from `CANONICAL_BRANDS` so the merge aliases win
+- Updated `05_paid_constants.js` (`UmpquaBank`) to match
+
 ## v0.51 — Season-suffixed names resolve automatically, every year
 
 *September 2026 · Claude*
