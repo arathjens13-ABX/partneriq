@@ -91,6 +91,92 @@ const BRAND_ALIAS_DEFAULTS = {
   'Dave\'s Hot Chicken': "Dave's Hot Chicken",
   'Travel and Leisure': 'Travel & Leisure',
   'Travel + Leisure': 'Travel & Leisure',
+
+  // ==========================================================
+  // Added 2026-09-14 — full sweep of this season's raw exports:
+  // RadioAffidavit_partner_summary, TVAffidavit_partner_summary,
+  // VirtualSignage25_26, all 9 SPONSOR_AVERAGE_Moda_Center_* files,
+  // BrandOnAsset, BrandedPartnerPerformance, BrandedContentSeries,
+  // TVVisibleSignage. These are truncated radio filenames, asset-suffixed
+  // sub-campaign names, and a handful of brands not tracked anywhere yet.
+  // ==========================================================
+  'Goldberg & Loren': 'Goldberg And Loren',
+  'Golderg & Loren': 'Goldberg And Loren',       // typo seen in source data
+  'GOLDBERG & LOREN-Radio Game Bro': 'Goldberg And Loren',
+  'COLUMBIA BANK-Radio Game Broadc': 'Columbia Bank',
+  'ECR-Radio Game Broadcast': 'ECR',
+  'FRED MEYER STORES': 'Fred Meyer',
+  'FRED MEYER STORES-Radio Game Br': 'Fred Meyer',
+  'FRED MEYER REWARDS': 'Fred Meyer',
+  'Fred Meyer Family Funday': 'Fred Meyer',
+  // Hemplers — not tracked anywhere yet; canonical established here
+  'HEMPLER FOODS GROUP-Radio Game': 'Hemplers',
+  "Hempler's": 'Hemplers',
+  'LES SCHWAB TIRE CENTERS-Radio G': 'Les Schwab',
+  'Les Schwab Offers': 'Les Schwab',
+  'LES SCHWAB 5050': 'Les Schwab',
+  "MCDONALD'S-Radio Game Broadcast": "McDonald's",
+  'McDonalds App': "McDonald's",
+  // McDonald's 100 Pt Play is its own contracted activation per
+  // Partners_Current_List.csv — kept SEPARATE from "McDonald's"
+  'McDonalds 100pt Play': "McDonald's 100 Pt Play",
+  'McDonalds 100 Point Play': "McDonald's 100 Pt Play",
+  "McDonald's 100 Point Play": "McDonald's 100 Pt Play",
+  'MODA HEALTH-Radio Game Broadcas': 'Moda Health',
+  'NORTHWEST FORD STORES-Radio Gam': 'Ford',
+  'PNW TOYOTA DEALERS ASSOC-Radio': 'Toyota',
+  'Toyota Dealers': 'Toyota',
+  'Toyota Generic': 'Toyota',
+  'TOYOTA HC SHOT': 'Toyota',
+  // Servicemaster — not tracked anywhere yet; canonical established here
+  'SERVICEMASTER BUILDING MAINTENA': 'Servicemaster',
+  'Servicemaster Building Maintenance': 'Servicemaster',
+  'SERVICEMASTER': 'Servicemaster',
+  'TICKETMASTER-Radio Game Broadca': 'Ticketmaster',
+  'TicketMaster Seat Upgrade': 'Ticketmaster',
+  'VORTEX LEGACY GROUP-Radio Game': 'Vortex Legacy Group',
+  'Axiom Eco-Pest Control': 'Axiom',
+  'AXIOM ECO-PEST CONTROL': 'Axiom',
+  'Axiom Pest Control': 'Axiom',
+  'AXIOM BLOCK': 'Axiom',
+  'AXIOM FIRST BLOCK': 'Axiom',
+  'AXIOM STOP TRACKER': 'Axiom',
+  // "First Tech" alone doesn't compact-match "First Tech Credit Union"
+  'FIRST TECH': 'First Tech',
+  'First Tech Challenge': 'First Tech',
+  'First Tech Game Ball Delivery': 'First Tech',
+  'First Tech Blazers Credit/Debit Card': 'First Tech',
+  'Pendleton Whisky': 'Pendleton',
+  'Pendelton Whiskey': 'Pendleton',            // typo seen in source data
+  'Polar Seltzer': 'Polar',
+  'POLAR SELTZER': 'Polar',
+  // Eleven Media — not tracked anywhere yet; canonical established here
+  'Eleven Sports Media Inc.': 'Eleven Media',
+  'Eleven Sports Media': 'Eleven Media',
+  // Kimberly Clark — not tracked anywhere yet; canonical established here
+  'Kimberly-Clark Professional': 'Kimberly Clark',
+  // Legends Casino — not tracked anywhere yet; canonical established here
+  'LEGENDS CASINO': 'Legends Casino',
+  'Legends': 'Legends Casino',
+  // Structured Communications — not tracked anywhere yet
+  'Structured Communication': 'Structured Communications',
+  'The Structured Communications Stand': 'Structured Communications',
+  // PCL Construction — not tracked anywhere yet
+  'PCL Construction Services': 'PCL Construction',
+  'PCL CONSTRUCTION': 'PCL Construction',
+  'Umpqua Bank Final Score': 'Umpqua Bank',
+  'Umpqua Bank Suite Level': 'Umpqua Bank',
+  // Tire Rack / Globe Life — new brands found in TVVisibleSignage,
+  // not in Partners_Current_List (so "Partners only" will correctly hide them)
+  'TIRERACK.com': 'Tire Rack',
+  'Globe Life Insurance': 'Globe Life',
+  // Brand name embedded as a SUFFIX, not a prefix — detectWordPrefixGroups
+  // can't catch these since it only matches shared word prefixes
+  'The Trail - Alaska Airlines': 'Alaska Airlines',
+  'Threes for Trees - Daimler': 'Daimler',
+  'Daimler 50k Trees': 'Daimler',
+  'Daimler Generic': 'Daimler',
+  "DAIMLER 3'S FOR TREES": 'Daimler',
 };
 
 // ============================================================

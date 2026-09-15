@@ -11,6 +11,17 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.49 — Brand alias sweep: fewer manual merges after every rebuild
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- Added ~50 new entries to `BRAND_ALIAS_DEFAULTS` (`04_datastore.js`) from a full read-through of this season's raw exports: `RadioAffidavit_partner_summary`, `TVAffidavit_partner_summary`, `VirtualSignage25_26`, all 9 `SPONSOR_AVERAGE_Moda_Center_*` files, `BrandOnAsset`, `BrandedPartnerPerformance`, `BrandedContentSeries`, and `TVVisibleSignage`
+- Covers three gaps the existing auto-detect (`detectWordPrefixGroups`) can't close on its own: truncated radio-report filenames (e.g. `FRED MEYER STORES-Radio Game Br`), asset/sub-campaign suffixes (`MODA HEALTH-Radio Game Broadcas`, `AXIOM STOP TRACKER`), and brand names embedded as a *suffix* rather than a prefix (`The Trail - Alaska Airlines`, `Threes for Trees - Daimler`) — prefix-only detection can't catch those
+- Established canonical spellings for several brands not tracked anywhere before: Hemplers, Servicemaster, Eleven Media, Kimberly Clark, Legends Casino, Structured Communications, PCL Construction, Tire Rack, Globe Life
+- Purely additive — no existing alias entry changed, no function touched. All source files these aliases come from are already wired into `detectFileType()` (by filename prefix or column schema), so the new entries take effect on the very next load of this season's exports
+
 ## v0.47 — How-to-use intro overlay for viewers
 
 *September 2026 · Claude*
