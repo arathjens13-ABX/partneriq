@@ -11,6 +11,16 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.50 — Canonical spellings for the newly-tracked brands
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- Added the ten brands introduced by the v0.49 alias sweep to `CANONICAL_BRANDS` (`04_datastore.js`): Eleven Media, Globe Life, Hemplers, Kimberly Clark, Legends Casino, McDonald's 100 Pt Play, PCL Construction, Servicemaster, Structured Communications, Tire Rack. Previously they were alias *targets* only, so a case/spacing variant not already spelled out (e.g. `SERVICEMASTER` vs `Service Master`) would land as a brand-new name needing yet another hand-written alias. Listing the canonical form closes that gap — every compact-token variant now folds in automatically
+- Globe Life and Tire Rack are not on the current partner list; they're included for spelling consistency only, and "Partners only" filters still hide them (roster remains the authority on partner status). `McDonald's 100 Pt Play` is kept as its own canonical, separate from `McDonald's`, matching the v0.49 alias intent
+- Purely additive — no existing entry changed, no function touched
+
 ## v0.49 — Brand alias sweep: fewer manual merges after every rebuild
 
 *September 2026 · Claude*
