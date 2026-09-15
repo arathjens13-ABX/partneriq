@@ -11,6 +11,18 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.51 — Season-suffixed names resolve automatically, every year
+
+*September 2026 · Claude*
+
+### Naming & aliases
+
+- `resolveCanonicalBrandName()` now strips a trailing season token before resolving, so names like `Spirit Mountain 2024-25`, `Umpqua 2025-26`, `Moda 2025-26`, and `Coke Sprite 2025-26` fold into their partner automatically. Because the suffix (not the base) is what changes each year, this handles **future seasons too** — `Umpqua 2026-27`, `2027-28`, `FY28` all resolve with no new entry. Previously each season's spelling had to be hand-mapped on every dashboard rebuild
+- The strip is gated to stay safe: the separator before the season must be a space or underscore (never the hyphen inside `2025-26`), the token must parse as a real season via `parseFlexibleSeasonToken()`, and the stripped base must resolve to a *different* name — so a plain brand that merely ends in a number is untouched. It runs *after* the exact alias/canonical checks, so an explicit rule always wins
+- Added the bare-name bases the strip resolves through: `Umpqua → Umpqua Bank`, `Coke`/`Coke Sprite → Coca-Cola` (`Spirit Mountain` and `Moda` already resolved)
+- `Boys and Girls Club → Boys & Girls Club` (the `and`/`&` forms compact to different tokens, so the canonical list can't merge them on its own); added `Boys & Girls Club` to `CANONICAL_BRANDS`
+- New unit tests pin the strip, a future-season case, the FY form, and the "plain trailing number is not a season" guard
+
 ## v0.50 — Canonical spellings for the newly-tracked brands
 
 *September 2026 · Claude*

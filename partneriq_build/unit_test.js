@@ -74,7 +74,15 @@ t.eq('canonical passes through',        resolveCanonicalBrandName("McDonald's"),
 t.eq('case variant of a canonical',     resolveCanonicalBrandName('NIKE'), 'Nike');
 t.eq('lowercase variant of canonical',  resolveCanonicalBrandName('nike'), 'Nike');
 t.eq('no-space variant of canonical',   resolveCanonicalBrandName('DeltaDental'), 'Delta Dental');
-t.eq('unknown name is preserved',       resolveCanonicalBrandName('Unknown Brand Co'), 'Unknown Brand Co');
+t.eq('season suffix stripped (Spirit)', resolveCanonicalBrandName('Spirit Mountain 2024-25'), 'Spirit Mountain Casino');
+t.eq('season suffix stripped (Umpqua)', resolveCanonicalBrandName('Umpqua 2025-26'), 'Umpqua Bank');
+t.eq('season suffix stripped (Moda)',   resolveCanonicalBrandName('Moda 2025-26'), 'Moda Health');
+t.eq('season suffix stripped (Coke)',   resolveCanonicalBrandName('Coke Sprite 2025-26'), 'Coca-Cola');
+t.eq('future season strips the same',   resolveCanonicalBrandName('Umpqua 2027-28'), 'Umpqua Bank');
+t.eq('FY-form season strips too',       resolveCanonicalBrandName('Moda FY26'), 'Moda Health');
+t.eq('and/& variant maps',              resolveCanonicalBrandName('Boys and Girls Club'), 'Boys & Girls Club');
+t.eq('bare number is NOT a season stub',resolveCanonicalBrandName('Studio 54'), 'Studio 54');
+t.eq('trailing year alone not stripped',resolveCanonicalBrandName('Unknown Brand Co'), 'Unknown Brand Co');
 t.eq('empty stays empty',               resolveCanonicalBrandName(''), '');
 t.check('memoization is transparent',
   resolveCanonicalBrandName('Moda') === resolveCanonicalBrandName('Moda'));
