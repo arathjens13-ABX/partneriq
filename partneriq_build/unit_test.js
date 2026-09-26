@@ -242,6 +242,30 @@ t.check('tvRatings is no longer exported', !('tvRatings' in evalIn(ctx, `getSeri
 t.group('TV Ratings files are recognised and declined');
 t.eq('Nielsen schema detected', detectFileType('vw_nielsen_tv_metrics.csv', [{ 'HH Rtg': 1, Demo: 'HH', Opponent: 'PHX' }]), 'tvRatings');
 
+t.group('partner report — model and document');
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.zoomphBrandPerf = [
+    { Brand: 'Nike', _reportMonth: '2025-06', ViewsImpressions: 999, BrandValue: 999, Engagements: 1, OrganicPosts: 1 },
+    { Brand: 'Nike', _reportMonth: '2025-07', ViewsImpressions: 217, BrandValue: 5, Engagements: 10, OrganicPosts: 3 },
+    { Brand: 'Nike', _reportMonth: '2025-08', ViewsImpressions: 28,  BrandValue: 1, Engagements: 4,  OrganicPosts: 2 },
+  ];
+  DataStore.surveys = [
+    { Brand: 'Nike', Survey: '2025-26 Early', Season: '2025-26', Phase: 'Early', UnaidedPct: 0.3, UnaidedRecallRank: 2, AidedPct: 0, AidedRecallRank: null, LocalHQPct: null },
+  ];
+  canonicalizeAllBrandData(true);
+})()`);
+const rm = JSON.parse(evalIn(ctx, `JSON.stringify((() => { const m = buildReportModel('Nike', '2025-26'); return { organic: m.sections.organic.totals, orgCount: m.sections.organic.count, tv: m.sections.tv.available, survey: m.sections.survey.kpis.map(k => k.value) }; })())`));
+t.eq('organic sums the season\'s monthly reports (Jul–Jun)', rm.organic.views, 245);
+t.eq('June belongs to the previous season',                 rm.orgCount, '2 reports');
+t.eq('sections without data are unavailable, not zero',     rm.tv, false);
+t.eq('0% with no rank reads as "not asked"',                rm.survey[1], '—');
+const docHtml = evalIn(ctx, `renderReportDocument(buildReportModel('Nike', '2025-26'), {})`);
+t.check('document embeds the design-system fonts',          docHtml.includes('font-family:"League Gothic"') && docHtml.includes('data:font/woff2;base64,'));
+t.check('document is light only (no dark theme)',           !/prefers-color-scheme|data-theme="dark"/.test(docHtml));
+t.check('document names the partner and season',            docHtml.includes('<title>Nike — Partnership report 2025-26</title>'));
+t.check('dashboard source never closes its own <script>',   !evalIn(ctx, `RPT_PAGINATE_JS`).includes('</script'));
+
 t.group('version constant');
 t.check('DASHBOARD_VERSION is defined', typeof ctx.DASHBOARD_VERSION === 'string' && /^v\d+\.\d+$/.test(ctx.DASHBOARD_VERSION));
 

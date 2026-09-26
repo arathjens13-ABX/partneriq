@@ -11,6 +11,43 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.55 — Partner report rebuilt on the design system
+
+*September 2026 · Claude*
+
+### Builder
+
+- The four-step wizard (partner → season → sections → confirm, preview only after a new tab opened) is replaced by **one screen**: partner and season at the top, the section list, options, and a **live preview** of the exact pages that will print
+- Each section shows how much data it has ("38 broadcasts", "10 reports"); sections with nothing for the chosen season are greyed out ("No 2023-24 data") instead of printing zeros
+- Expand a section to choose its takeaways and add a note; toggles for "Compare with last season" and the methodology page; a running page count
+- **Save as PDF** prints the preview itself — no pop-up window to be blocked — with "Partner — Partnership report 2025-26" as the suggested file name
+- Opens from the Home tile (defaults to the top current partner by QI media value), a partner page, or the partner browse grid; Escape closes it even when the preview has focus
+
+### Report
+
+- Built on the **Trail Blazers Dashboards design system**: League Gothic figures and titles, Trade Gothic text, its colour tokens, 12px text floor, the ReportSheet pattern (3px red rule, red-underlined section heads, ▸ insight bullets), the stacked lockup on the cover and the wordmark in the footer. Fonts and logos are embedded (`brand/`, `24_report_brand_assets.js`), so it renders the same offline
+- **Light only**, whatever the dashboard theme
+- Charts per the design system: QI media value by season and by location, organic brand value by month, recall by survey wave (with a table of every wave); one highlighted mark, direct value labels, nothing that needs hovering
+- Executive summary (3+ sections): total QI media value as the hero figure, three supporting tiles, and the lead takeaway from each section
+- Estimates are marked: virtual signage tiles carry an "Est." flag and a banner when nothing was measured; organic partners Zoomph doesn't track get a "Not measured" note instead of $0
+- Methodology page defines only the metrics in the report
+
+### Pagination
+
+- The report lays itself out onto US Letter pages in the browser, so the preview is exactly what prints. A chart, table, tile row or takeaway list is never split across pages; headings stay with what follows; a section's takeaways never open a page on their own; a page tightens its spacing to absorb a small overflow; pages that open mid-section say "Section (continued)"; every page has a footer with page numbers
+- Checked across all 56 current partners and 471 section combinations with the new `report_layout_check.js`: no overflow, no empty pages, no text under 12px, every non-final page at least 63% full. The old report printed Moda Health on 6 dark pages with a blank last page; the new one is 7 full light pages with charts
+
+### Numbers
+
+- The report follows the **season you pick** — most sections used to ignore it and always show the latest
+- Organic social now sums the season's monthly reports (it showed only the latest month, e.g. 11.6M views labelled "2026-04" instead of the season's 114M)
+- Survey scores of 0% with no rank show "—" (the brand wasn't asked about), not 0%
+- TV comparisons use the like-for-like broadcast window from v0.53, and the TV rank says "brands on TV" (it counts every brand, not only partners)
+
+### Removed
+
+- The dark report template, the old wizard and ~400 lines of its styles
+
 ## v0.54 — TV Ratings removed, light mode by default, export rebuilt
 
 *September 2026 · Claude*

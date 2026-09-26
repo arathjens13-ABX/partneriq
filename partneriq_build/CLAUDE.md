@@ -52,12 +52,13 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `13_survey_section.js` | Survey Research partner section |
 | `14_organic_section.js` | Organic Social section, file ingest helpers |
 | `15_wiring.js` | All event listener wiring, modal logic, app init |
-| `16_report_template.js` | PDF partner report template |
+| `16_report_template.js` | Partner report: one-screen builder with live preview, design-system document, per-season model, in-document Letter paginator |
 | `17_general_survey_assignment.js` | General survey question-to-partner assignment |
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
+| `24_report_brand_assets.js` | **Generated** by `brand/make_assets.py` from `brand/` — the design system's fonts (WOFF2) and logos as `REPORT_BRAND_ASSETS`. Never edit by hand |
 | `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
 | `shell.html` | Static HTML shell — `<header>` (incl. the "Partners only" search toggle), `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), the intro mount (`#introRoot`) + relaunch button, footer; concatenated with the JS/CSS files at export time |
 
@@ -541,10 +542,29 @@ A per-file index of every significant function. Use this to jump directly to the
 
 ---
 
-### `16_report_template.js` — PDF partner report
+### `16_report_template.js` — Partner report (builder, document, model)
+
+Three layers. The report is styled with the **Trail Blazers Dashboards design system** (League Gothic / Trade Gothic, its colour tokens and chart rules) and is **light only** — it never follows the dashboard theme. Fonts and logos come from `REPORT_BRAND_ASSETS` (`24_report_brand_assets.js`).
 
 | Function | What it does |
 |----------|-------------|
+| `REPORT_SECTION_DEFS` | Report sections in print order (`key`, `label`) |
+| `buildReportModel(brand, season)` | Every figure for one partner and **one season**: `{ sections: { key: { available, count, kpis, chart?, bars?, table?, banner?, insights, source, totals } } }`. Unavailable sections are `{ available: false }` so the builder greys them out instead of printing zeros |
+| `rptBuildTV` / `rptBuildVS` / `rptBuildOrganic` / `rptBuildSurvey` / `rptBuildPaid` / `rptBuildANC` / `rptBuildAffidavit` / `rptBuildWeb` | Per-section builders; each returns `null` when there's nothing to show. They call the same accessors as the dashboard pages (e.g. `computeYoYForMetric`, `getVirtualSignagePartnerStats`) so report and screen always agree |
+| `getReportSeasonsForBrand(brand)` | Seasons with anything reportable, newest first |
+| `rptCurrentSeason()` | The season single-season exports (affidavits, ANC LED, RoseQuarter.com, VS schedule) belong to: the newest TV season |
+| `rptSeasonOfMonth(ym)` / `rptSurveyPct(pct, rank)` | Month → July–June season; a 0% survey score with no rank reads as "not asked" (`null`) |
+| `renderReportDocument(model, opts)` | Self-contained HTML document; `opts = { sections, insights: {key:[idx]}, notes: {key:text}, compare, methodology }` |
+| `rptSectionBlocks` / `rptSummaryBlocks` | Build the blocks for one section / the executive summary (only when 3+ sections are selected) |
+| `rptSvgColumns` / `rptSvgLine` / `rptBarListHTML` / `rptTableHTML` / `rptKpiHTML` | Design-system charts and tiles, drawn at printed size (12px floor, one highlighted mark, direct labels) |
+| `RPT_PAGINATE_JS` | In-document paginator: loads the fonts, then moves blocks onto 816×1056 Letter pages. Blocks never split; `data-keep="next"` glues a heading to what follows; a section's takeaways never open a page alone (widow rule); a page may tighten its spacing to absorb a small overflow; pages opening mid-section say "Section (continued)". Resolves `window.reportReady` with the page count |
+| `openReportModal(brand)` / `closeReportModal()` | The one-screen builder: partner, season, sections (takeaways + note per section), options, live preview |
+| `rbRenderPanel()` / `rbRefreshPreview(immediate)` / `rbPrint()` | Builder panel, debounced preview rebuild (keeps scroll), and Save as PDF — prints the preview iframe, no pop-up |
+| `renderPartnerLogo(brand, size)` / `lookupPartnerLogo(brand)` | Partner logos (also used by partner pages and browse) |
+
+**Checking layout after a change:** `node report_layout_check.js <preloaded-dashboard.html>` (optional, needs Playwright) renders every current partner across many section combinations and fails on any page overflow, empty page or text under 12px.
+
+----------|-------------|
 | `generatePartnerReport(brand, options)` | Builds the full HTML report; `options = { sections:{key:bool}, takeaways:{key:[idx,...]} }` controls which sections and takeaway bullets render; multi-page by default (no single-page height cap) |
 | `gatherReportData(brand)` | Aggregates all channel data for a brand into a single report object |
 | `openPartnerReport(brand, options)` | Entry point: calls `generatePartnerReport(brand, options)` and opens result in a new tab |
