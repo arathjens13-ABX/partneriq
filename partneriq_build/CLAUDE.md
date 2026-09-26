@@ -39,7 +39,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 |------|---------------|
 | `00_vendor_shims.js` | Vendored libraries (PapaParse CSV shim, LZ-string compression) |
 | `01_styles.css` | All CSS, design tokens, theme variables |
-| `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
+| `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE`, `HOME_TEAM_PATTERN` (home/away detection for TV YoY) |
 | `04_datastore.js` | `DataStore` object, file ingest, import/export, preloaded data hydration |
 | `05_paid_constants.js` | Paid social campaign parsing constants and alias maps |
 | `06_helpers.js` | Shared formatting and utility functions |
@@ -343,8 +343,12 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `showErrorToast(msg)` | Displays a brief in-app error notification (bottom-center toast, auto-dismisses after 4 s) |
 | `getUniqueMatchdates(rows)` | Returns sorted unique Matchdate strings from a TV row set |
-| `getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit)` | Returns prior-season TV rows capped to the same game count as the current season |
-| `getYoYRowSets(brand, period)` | Returns `{ current, prior }` TV row sets for a brand/period, prior normalized by matchdate count |
+| `isHomeBroadcast(row)` | `true`/`false` from the "Away @ Home" Match string (via `HOME_TEAM_PATTERN`); `null` when the row names no fixture |
+| `splitMatchdatesByVenue(rows)` | Sorted unique matchdates split into `{ home, away, unknown }` |
+| `getMatchedPriorWindow(currRows, priorRows)` | Prior-season dates that line up with the current season: first N home + first M away, matching the current season's venue counts. Falls back to plain first-N when the current season has dates of unknown venue |
+| `describePriorWindow(win, priorSeason)` | Human-readable label for a prior window ("first 38 home broadcasts of 2024-25") |
+| `getPortfolioPriorWindow(currSeason, priorSeason)` | Portfolio-level `getMatchedPriorWindow`, memoised per TV index build. Used by both portfolio and partner YoY so they share one window |
+| `getYoYRowSets(brand, period)` | Returns `{ currRows, priorRows, basis, matched, … }` for a brand/period; in auto-match mode the prior set is the brand's rows inside `getPortfolioPriorWindow` |
 | `computeYoYForMetric(brand, period, metricKey)` | Returns `{ curr, prev, change }` for one TV metric |
 | `getAssetRanking(location, season)` | Returns all brands sorted by QIMV for a given asset location |
 | `getBrandRankOnAsset(brand, location, season)` | Returns ordinal rank of a brand on a specific asset |
@@ -370,7 +374,10 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getPortfolioSeasons()` | Returns sorted distinct seasons across TV + survey data |
 | `getSocialRowsForPeriod(period)` | Returns organic social rows filtered to a period |
 | `getPreviousPortfolioSeason(season)` | Returns the season immediately before the given one |
-| `getPortfolioYoYRowSets(period)` | Returns `{ current, prior }` row sets for portfolio-level TV YoY |
+| `getPortfolioYoYRowSets(period)` | Returns `{ currRows, priorRows, basis, … }` for portfolio-level TV YoY; auto-match uses `getPortfolioPriorWindow` |
+| `spreadsheetSerialToDate(value)` | Converts a raw Excel day count (e.g. `46113` → Apr 1, 2026) to a Date; `null` for anything else |
+| `fixSpreadsheetDateString(value)` | Rewrites a raw serial as `M/D/YYYY`; other values pass through. Applied to survey `Date` fields at ingest and on load |
+| `parseDateLoose(value)` | Lenient date parse used by freshness/coverage; handles serials and rejects years outside 1990–2100 |
 | `getSelectedHomePeriod()` | Returns the active period selector value from the home page filter |
 | `aggregateBy(rows, keyName)` | Groups an array of rows by a key and sums numeric columns |
 | `formatSignedPercent(change, opts)` | Formats a ratio as `+12.3 %` with sign; respects `invert` flag |
@@ -454,6 +461,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `filterOrganicPortfolioRowsByDate(rows)` | Applies active date filter to organic portfolio rows |
 | `sortOrganicPortfolioRows(rows)` | Applies current sort to the organic leaderboard |
 | `getOrganicPortfolioDateLabel()` | Returns a human-readable date range label for the organic filter |
+| `getOrganicPortfolioRowsForTab(tab)` | Leaderboard rows for a tab. **Sums monthly reports** across the window (Zoomph reports are monthly, not running totals); `perf` rolls up by brand, `series`/`assets` by brand + name |
+| `getOrganicPortfolioBrandValueYoY(brand, curr)` | Brand Value vs the same window a year earlier; `null` in "All months" mode |
 
 ---
 
@@ -600,14 +609,15 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `ingestVirtualSignageSchedule(rows)` | Parses and stores the schedule CSV into `DataStore.virtualSignageSchedule` |
 | `isVirtualBrandingRow(r)` | Returns `true` for TV rows where `Tool="Virtual Branding"` — used to strip these from the regular TV section |
-| `normalizeVSDate(str)` | Normalizes `M/D/YY` or `M/D/YYYY` to `YYYY-MM-DD` for cross-source matching |
-| `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → TV metrics map for home-game actuals lookup |
+| `normalizeVSDate(str)` | Normalizes `M/D/YY`, `M/D/YYYY` or `YYYY-MM-DD` (TV Matchdate) to `YYYY-MM-DD` for cross-source matching |
+| `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → `{ total, byBrand }` map of TV actuals for home-game lookup |
+| `vsSlotValue(slot, brand)` | The measured value for one slot: the scheduled brand's own rows when credited, else the slot total. Stops shared slots double-crediting |
 | `getLatestSeasonVSRows()` | Returns virtual branding TV rows for the most recent season only |
 | `getVirtualBrandingTVRows(brand, location)` | Filters TV rows to virtual branding rows, optionally by brand/location |
 | `computeVSQimvYoY(brand)` | YoY for virtual signage QIMV using TV VB rows by season; returns `{ curr, prev, change, basis }` or null when < 2 seasons exist |
-| `computeVSLocationMeans()` | Computes per-position simple means from home-game TV actuals (used for away-game estimates and the averages table) |
-| `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates |
-| `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals |
+| `computeVSLocationMeans()` | Per-position means from home-game TV actuals, one value per game slot (the scheduled brand's value on shared slots). Used for away-game estimates and the averages table |
+| `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates; carries `measuredGames/Qimv` and `estimatedGames/Qimv` separately |
+| `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals, including the measured/estimated split and `unmeasuredBrands` |
 | `computeVSLocationAverages()` | Delegates to `computeVSLocationMeans()` for the averages display table |
 | `groupVSPartnerStats(partnerStats)` | Groups sub-brands by shared prefix into brand-family aggregates |
 | `hasVirtualSignageDataForBrand(brand)` | Guard for the partner-page section |

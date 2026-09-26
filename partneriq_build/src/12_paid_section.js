@@ -1,13 +1,23 @@
 function renderPaidPortfolioPage(main) {
-  const allRows = getAllPaidRows();
-  const partnerRows = allRows.filter(r => r.Brand && r.Brand !== UNASSIGNED_PAID_KEY);
-
-  if (!partnerRows.length) {
+  const everyRow = getAllPaidRows();
+  if (!everyRow.some(r => r.Brand && r.Brand !== UNASSIGNED_PAID_KEY)) {
     main.innerHTML = `<div class="empty-state"><h1>No paid social data loaded.</h1><p>Upload a Facebook Ads Manager CSV to populate this page. Files are detected by the keywords "paid", "meta", "facebook", or "admanager" in the filename.</p></div>`;
     return;
   }
 
-  // -- Date-range filter (replaces the old fiscal-year selector) ----------
+  // -- Season filter -------------------------------------------------------
+  // One export can span several seasons (Paid_social_2025_April30_2026 runs
+  // Jul 2024 – Apr 2026), so totals default to the latest season rather than
+  // silently adding two seasons together. Season comes from the campaign name.
+  const paidSeasons = [...new Set(everyRow.map(r => r.Season).filter(s => s && s !== 'Unknown'))].sort();
+  const latestPaidSeason = paidSeasons[paidSeasons.length - 1] || 'all';
+  if (paidPortfolioPeriod !== 'all' && !paidSeasons.includes(paidPortfolioPeriod)) paidPortfolioPeriod = 'latest';
+  const activeSeason = paidPortfolioPeriod === 'latest' ? latestPaidSeason : paidPortfolioPeriod;
+  const seasonLabel = activeSeason === 'all' ? 'All seasons' : activeSeason;
+  const allRows = activeSeason === 'all' ? everyRow : everyRow.filter(r => r.Season === activeSeason);
+  const partnerRows = allRows.filter(r => r.Brand && r.Brand !== UNASSIGNED_PAID_KEY);
+
+  // -- Date-range filter -----------------------------------------------------
   // Discover the months present in the data so we can drive the Month / Range UI.
   const allMonthsSet = new Set();
   partnerRows.forEach(r => {
@@ -19,7 +29,7 @@ function renderPaidPortfolioPage(main) {
   const earliestMonth = allDateMonths[0] || '';
   const latestMonth   = allDateMonths[allDateMonths.length - 1] || '';
 
-  if (paidPortfolioDateMode === 'month' && !paidPortfolioMonth) paidPortfolioMonth = latestMonth;
+  if (paidPortfolioDateMode === 'month' && !allDateMonths.includes(paidPortfolioMonth)) paidPortfolioMonth = latestMonth;
   if (paidPortfolioDateMode === 'range') {
     if (!paidPortfolioStartMonth) paidPortfolioStartMonth = earliestMonth;
     if (!paidPortfolioEndMonth)   paidPortfolioEndMonth   = latestMonth;
@@ -119,6 +129,8 @@ function renderPaidPortfolioPage(main) {
   const needsReview = assignSummary.medium + assignSummary.unassigned;
   const unassignedRows = allRows.filter(r => !r.Brand || r.Brand === UNASSIGNED_PAID_KEY);
   const unassignedSpend = sum(unassignedRows, 'AmountSpentUSD');
+  const seasonSpend = sum(allRows, 'AmountSpentUSD');
+  const unassignedCampaigns = new Set(unassignedRows.map(r => r.CampaignName).filter(Boolean)).size;
 
   // ── Partner aggregates (table) ───────────────────────────────
   const byPartner = {};
@@ -167,7 +179,7 @@ function renderPaidPortfolioPage(main) {
     <section class="section">
       <div class="section-header">
         <h2 class="section-title">💰 Paid Social Portfolio</h2>
-        <span class="section-meta">Facebook Ads Manager · ${dateLabel()} · ${formatNum(activeRows.length)} daily rows in window</span>
+        <span class="section-meta">Facebook Ads Manager · ${seasonLabel} · ${dateLabel()} · ${formatNum(activeRows.length)} daily rows in window</span>
       </div>
 
       ${needsReview > 0 ? `
@@ -181,12 +193,17 @@ function renderPaidPortfolioPage(main) {
 
       ${unassignedSpend > 0 ? `
       <div class="comparison-basis block" style="margin-bottom:18px;">
-        ${formatCurrency(unassignedSpend)} in spend across ${unassignedRows.length} rows is unassigned to any partner and excluded from the table below.
+        <strong>${formatCurrency(unassignedSpend)}</strong> (${seasonSpend > 0 ? formatPct(unassignedSpend / seasonSpend, 0) : '—'} of ${seasonLabel} spend) across ${unassignedCampaigns} campaign${unassignedCampaigns === 1 ? '' : 's'} is not assigned to any partner, so it is excluded from every partner total and the KPIs below.
       </div>` : ''}
 
       <!-- Date range filter (mirrors the Organic Social Portfolio page) -->
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
-        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">Date filter</span>
+        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">Season</span>
+        <select id="paidSeasonSelect" class="select-control" style="min-width:120px;">
+          ${paidSeasons.slice().reverse().map(s => `<option value="${s}" ${activeSeason === s ? 'selected' : ''}>${s}</option>`).join('')}
+          <option value="all" ${activeSeason === 'all' ? 'selected' : ''}>All seasons</option>
+        </select>
+        <span style="font-family:var(--font-mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-left:8px;">Date filter</span>
         <div class="survey-phase-toggle" style="margin:0;">
           ${['all','month','range'].map(mode => `<button type="button" class="${paidPortfolioDateMode === mode ? 'active' : ''}" data-paid-date-mode="${mode}">${mode === 'all' ? 'All months' : mode === 'month' ? 'Month' : 'Range'}</button>`).join('')}
         </div>
@@ -345,11 +362,18 @@ function renderPaidPortfolioPage(main) {
     </section>
   `;
 
+  const paidSeasonSel = document.getElementById('paidSeasonSelect');
+  if (paidSeasonSel) paidSeasonSel.addEventListener('change', e => {
+    paidPortfolioPeriod = e.target.value === latestPaidSeason ? 'latest' : e.target.value;
+    renderPaidPortfolioPage(main);
+    wireInfoIcons();
+  });
+
   // Wire date range filter
   document.querySelectorAll('[data-paid-date-mode]').forEach(btn => {
     btn.addEventListener('click', () => {
       paidPortfolioDateMode = btn.dataset.paidDateMode;
-      if (paidPortfolioDateMode === 'month' && !paidPortfolioMonth) paidPortfolioMonth = latestMonth;
+      if (paidPortfolioDateMode === 'month' && !allDateMonths.includes(paidPortfolioMonth)) paidPortfolioMonth = latestMonth;
       if (paidPortfolioDateMode === 'range') {
         if (!paidPortfolioStartMonth) paidPortfolioStartMonth = earliestMonth;
         if (!paidPortfolioEndMonth)   paidPortfolioEndMonth   = latestMonth;

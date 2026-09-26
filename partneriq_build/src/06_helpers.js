@@ -34,18 +34,77 @@ function getUniqueMatchdates(rows) {
 }
 
 
-// Returns rows from the prior season limited to the first N matchdates.
-// This is the core "auto-match" mechanism.
-function getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit) {
-  const priorRows = getBrandTVData(brand, priorSeason);
-  if (!matchdateLimit || matchdateLimit <= 0) return priorRows;
-  const priorDates = getUniqueMatchdates(priorRows);
-  const limitedDates = new Set(priorDates.slice(0, matchdateLimit));
-  return priorRows.filter(r => r.Matchdate && limitedDates.has(String(r.Matchdate)));
+// Home/away for one TV row, read from the "Away @ Home" Match string.
+// Returns null when the row doesn't name a fixture (e.g. "Unspecified").
+function isHomeBroadcast(row) {
+  const match = String((row && row.Match) || '');
+  const at = match.lastIndexOf('@');
+  if (at < 0) return null;
+  return HOME_TEAM_PATTERN.test(match.slice(at + 1));
+}
+
+// Sorted unique matchdates split by venue. A date counts as home or away from
+// any row on it that names the fixture; dates where no row does (press
+// conferences logged as "Unspecified") land in `unknown`.
+function splitMatchdatesByVenue(rows) {
+  const venue = new Map();
+  rows.forEach(r => {
+    const d = r.Matchdate;
+    if (!d) return;
+    const key = String(d);
+    const home = isHomeBroadcast(r);
+    if (home !== null) venue.set(key, home ? 'home' : 'away');
+    else if (!venue.has(key)) venue.set(key, 'unknown');
+  });
+  const out = { home: [], away: [], unknown: [] };
+  getUniqueMatchdates(rows).forEach(d => out[venue.get(d) || 'unknown'].push(d));
+  return out;
+}
+
+// The prior-season broadcasts that line up with the current season: its first
+// N home dates and first M away dates, where N and M are the current season's
+// counts. Matching on count alone compared 38 home broadcasts in 2025-26 with
+// a 2024-25 window that was 23 near-worthless away games, overstating growth
+// roughly six-fold. Falls back to plain first-N when the current season has
+// dates whose venue can't be read.
+function getMatchedPriorWindow(currRows, priorRows) {
+  const curr = splitMatchdatesByVenue(currRows);
+  const prior = splitMatchdatesByVenue(priorRows);
+  if (curr.unknown.length) {
+    const n = getUniqueMatchdates(currRows).length;
+    return { dates: new Set(getUniqueMatchdates(priorRows).slice(0, n)), byVenue: false, home: 0, away: 0, total: n };
+  }
+  const home = prior.home.slice(0, curr.home.length);
+  const away = prior.away.slice(0, curr.away.length);
+  return { dates: new Set([...home, ...away]), byVenue: true, home: home.length, away: away.length, total: home.length + away.length };
+}
+
+function describePriorWindow(win, priorSeason) {
+  if (!win.byVenue) return `first ${win.total} of ${priorSeason}`;
+  if (!win.away) return `first ${win.home} home broadcast${win.home === 1 ? '' : 's'} of ${priorSeason}`;
+  if (!win.home) return `first ${win.away} away broadcast${win.away === 1 ? '' : 's'} of ${priorSeason}`;
+  return `first ${win.home} home + ${win.away} away of ${priorSeason}`;
+}
+
+// Portfolio-level window for a season pair, memoised per TV index build so the
+// per-partner leaderboards don't rescan every row once per brand.
+let _priorWindowCache = { index: null, map: new Map() };
+function getPortfolioPriorWindow(currSeason, priorSeason) {
+  const index = getTVIndex();
+  if (_priorWindowCache.index !== index) _priorWindowCache = { index, map: new Map() };
+  const key = currSeason + '|' + priorSeason;
+  if (!_priorWindowCache.map.has(key)) {
+    _priorWindowCache.map.set(key, getMatchedPriorWindow(getTVRowsForPeriod(currSeason), getTVRowsForPeriod(priorSeason)));
+  }
+  return _priorWindowCache.map.get(key);
 }
 
 // Central helper for YoY math. Returns the current and prior row sets
 // along with a human-readable "basis" string describing the comparison.
+//
+// In auto-match mode a partner is compared over the same prior-season
+// broadcasts as the portfolio (getPortfolioPriorWindow), so partner and
+// portfolio growth figures are measured over one consistent window.
 function getYoYRowSets(brand, period) {
   const seasons = getAvailableSeasons(brand);
   if (seasons.length < 2) return null;
@@ -63,12 +122,17 @@ function getYoYRowSets(brand, period) {
 
   if (!priorRowsFull.length) return null;
 
-  let priorRows, basis;
-  if (comparisonMode === 'auto-match' && currMatchdates.length < priorMatchdates.length) {
-    priorRows = getMatchedPriorSeasonTVData(brand, priorSeason, currMatchdates.length);
-    basis = `Through ${currMatchdates.length} game${currMatchdates.length === 1 ? '' : 's'} · vs first ${currMatchdates.length} of ${priorSeason}`;
-  } else {
-    priorRows = priorRowsFull;
+  let priorRows = priorRowsFull, basis, matched = false;
+  if (comparisonMode === 'auto-match') {
+    const win = getPortfolioPriorWindow(currSeason, priorSeason);
+    const windowed = priorRowsFull.filter(r => r.Matchdate && win.dates.has(String(r.Matchdate)));
+    if (windowed.length < priorRowsFull.length) {
+      priorRows = windowed;
+      matched = true;
+      basis = `${currMatchdates.length} game${currMatchdates.length === 1 ? '' : 's'} · vs ${describePriorWindow(win, priorSeason)}`;
+    }
+  }
+  if (!matched) {
     basis = comparisonMode === 'full'
       ? `Full ${currSeason} vs full ${priorSeason}`
       : `${currMatchdates.length} games vs full ${priorSeason} (${priorMatchdates.length} games)`;
@@ -83,7 +147,7 @@ function getYoYRowSets(brand, period) {
     priorMatchdatesUsed: getUniqueMatchdates(priorRows).length,
     priorMatchdatesTotal: priorMatchdates.length,
     basis,
-    matched: comparisonMode === 'auto-match' && currMatchdates.length < priorMatchdates.length,
+    matched,
   };
 }
 

@@ -32,11 +32,16 @@ function isVirtualBrandingRow(r) {
 }
 
 // ── Date normalisation ───────────────────────────────────────
-// Accepts M/D/YY (schedule) or M/D/YYYY (TV Matchdate) and returns
-// a canonical "YYYY-MM-DD" string for reliable cross-source comparison.
+// Accepts M/D/YY (schedule), M/D/YYYY, or YYYY-MM-DD (how the TV export stores
+// Matchdate) and returns a canonical "YYYY-MM-DD" string for cross-source
+// comparison. Before the ISO form was accepted no TV row ever matched a
+// schedule date, so every home game silently fell back to the position mean.
 function normalizeVSDate(str) {
   if (!str) return null;
-  const parts = String(str).trim().split('/');
+  const t = String(str).trim();
+  const iso = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  const parts = t.split('/');
   if (parts.length !== 3) return null;
   const m = parseInt(parts[0], 10);
   const d = parseInt(parts[1], 10);
@@ -46,10 +51,22 @@ function normalizeVSDate(str) {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
-// Build a lookup: "YYYY-MM-DD|location_lc" → accumulated TV metrics for that game+position.
-// Multiple rows for the same date+location are summed (can happen if a brand appears more
-// than once per game). Uses only the latest-season VS rows so estimates stay current.
+// Build a lookup: "YYYY-MM-DD|location_lc" → the TV actuals for that game+position,
+// both summed across every brand (`total`) and split per brand (`byBrand`).
+// Uses only the latest-season VS rows so estimates stay current.
+//
+// A handful of slots credit more than one brand (Jan 17 center court:
+// McDonald's + Mortgage Matchup + Getty Images). vsSlotValue() uses the
+// scheduled brand's own rows when it has any, so one partner isn't credited
+// with another brand's exposure.
 function buildVSTVDateLookup() {
+  const blank = () => ({ qimv: 0, qiImp: 0, duration: 0, exposures: 0 });
+  const add = (acc, r) => {
+    acc.qimv      += Number(r['QI Media Value ($)'])          || 0;
+    acc.qiImp     += Number(r['Sponsorship QI Impressions'])  || 0;
+    acc.duration  += Number(r['Duration (Minutes)'])           || 0;
+    acc.exposures += Number(r['Source Exposures'])             || 0;
+  };
   const map = new Map();
   getLatestSeasonVSRows().forEach(r => {
     const dateKey = normalizeVSDate(String(r.Matchdate || '').trim());
@@ -57,16 +74,22 @@ function buildVSTVDateLookup() {
     const locKey = String(r.Location || '').trim().toLowerCase();
     if (!locKey) return;
     const key = `${dateKey}|${locKey}`;
-    if (!map.has(key)) {
-      map.set(key, { qimv: 0, qiImp: 0, duration: 0, exposures: 0 });
-    }
-    const acc = map.get(key);
-    acc.qimv      += Number(r['QI Media Value ($)'])          || 0;
-    acc.qiImp     += Number(r['Sponsorship QI Impressions'])  || 0;
-    acc.duration  += Number(r['Duration (Minutes)'])           || 0;
-    acc.exposures += Number(r['Source Exposures'])             || 0;
+    if (!map.has(key)) map.set(key, { total: blank(), byBrand: new Map() });
+    const slot = map.get(key);
+    add(slot.total, r);
+    const brand = r.Brand || '';
+    if (!slot.byBrand.has(brand)) slot.byBrand.set(brand, blank());
+    add(slot.byBrand.get(brand), r);
   });
   return map;
+}
+
+// The measured value for one schedule slot: the scheduled brand's own rows when
+// the TV data credits it, otherwise everything measured in that slot (the TV
+// export sometimes names the family, e.g. "Toyota" for "Toyota Dealers").
+function vsSlotValue(slot, brand) {
+  if (!slot) return null;
+  return (brand && slot.byBrand.get(brand)) || slot.total;
 }
 
 // ── Schedule ingest ─────────────────────────────────────────
@@ -171,17 +194,32 @@ function getLatestSeasonVSRows() {
 // Using the same value for estimates and the display table ensures consistency —
 // a partner with 1 away game will show exactly the displayed average.
 function computeVSLocationMeans() {
-  const grouped = {};
+  // Which brand the schedule put in each home slot, so shared slots are
+  // counted once, at the scheduled brand's value.
+  const scheduled = new Map();
+  (DataStore.virtualSignageSchedule || []).forEach(g => {
+    if (!g.IsHome) return;
+    const d = normalizeVSDate(g.DateRaw);
+    if (!d) return;
+    if (g.BrandA) scheduled.set(`${d}|center`, g.BrandA);
+    if (g.BrandB) scheduled.set(`${d}|3 point line`, g.BrandB);
+  });
 
+  const labels = {};
   getLatestSeasonVSRows().forEach(r => {
-    const loc    = String(r.Location || '').trim();
-    if (!loc) return;
-    const locKey = loc.toLowerCase();
-    if (!grouped[locKey]) grouped[locKey] = { location: loc, qimvVals: [], qiImpVals: [], durVals: [], expVals: [] };
-    grouped[locKey].qimvVals.push(Number(r['QI Media Value ($)'])          || 0);
-    grouped[locKey].qiImpVals.push(Number(r['Sponsorship QI Impressions']) || 0);
-    grouped[locKey].durVals.push(Number(r['Duration (Minutes)'])           || 0);
-    grouped[locKey].expVals.push(Number(r['Source Exposures'])             || 0);
+    const loc = String(r.Location || '').trim();
+    if (loc) labels[loc.toLowerCase()] = loc;
+  });
+
+  const grouped = {};
+  buildVSTVDateLookup().forEach((slot, key) => {
+    const locKey = key.slice(key.indexOf('|') + 1);
+    const v = vsSlotValue(slot, scheduled.get(key));
+    if (!grouped[locKey]) grouped[locKey] = { location: labels[locKey] || locKey, qimvVals: [], qiImpVals: [], durVals: [], expVals: [] };
+    grouped[locKey].qimvVals.push(v.qimv);
+    grouped[locKey].qiImpVals.push(v.qiImp);
+    grouped[locKey].durVals.push(v.duration);
+    grouped[locKey].expVals.push(v.exposures);
   });
 
   const mean = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -202,13 +240,13 @@ function computeVSLocationMeans() {
 
 
 // ── Partner-level stats: home actuals (by date) + away estimates ──
-// Key change from prior implementation: home-game TV metrics are now looked up
-// by matching game date (normalised) + position against the TV data's Matchdate
-// column — NOT by brand name. This is correct because the TV export uses a single
-// canonical brand name ("Toyota") for all virtual branding rows regardless of
-// which sub-brand (Toyota Dealers, Toyota Generic, Vancouver Toyota) the schedule
-// shows. Matching by date+position gives each schedule entry its correct actuals
-// without any brand-name translation.
+// Home-game TV metrics are looked up by game date (normalised) + position
+// against the TV data's Matchdate, not by brand name alone: the TV export can
+// name the family ("Toyota") where the schedule names a sub-brand. When a slot
+// credits several brands, vsSlotValue() narrows it to the scheduled brand.
+//
+// measuredGames / measuredQimv vs estimatedGames / estimatedQimv keep the two
+// apart so the page can say how much of a figure is actually measured.
 //
 // Away games and home games with no matching TV row both use the position-level
 // simple mean — the same value shown in the "Season averages" table at the bottom
@@ -226,6 +264,8 @@ function getVirtualSignagePartnerStats() {
       totalGames: 0, homeGames: 0, awayGames: 0,
       exposures: 0,
       qimv: 0, qiImp: 0, duration: 0,
+      measuredGames: 0, estimatedGames: 0,
+      measuredQimv: 0, estimatedQimv: 0,
       hasEstimates: false,
     };
   };
@@ -240,37 +280,27 @@ function getVirtualSignagePartnerStats() {
       const b = stats[brand];
       b.totalGames++;
 
-      if (game.IsHome) {
-        b.homeGames++;
-        // Look up the actual TV row for this specific game date + position
-        const dateKey = normalizeVSDate(game.DateRaw);
-        const tvEntry = dateKey ? tvLookup.get(`${dateKey}|${locKey}`) : null;
-        if (tvEntry) {
-          b.qimv      += tvEntry.qimv;
-          b.qiImp     += tvEntry.qiImp;
-          b.duration  += tvEntry.duration;
-          b.exposures += tvEntry.exposures;
-        } else {
-          // No TV data for this home game — fall back to position mean
-          b.hasEstimates = true;
-          const est = means[locKey];
-          if (est) {
-            b.qimv      += est.qimv;
-            b.qiImp     += est.qiImp;
-            b.duration  += est.duration;
-            b.exposures += est.exposures;
-          }
-        }
+      if (game.IsHome) b.homeGames++;
+      else b.awayGames++;
+
+      // Home games use the TV actuals for this date + position; away games and
+      // home games with no TV row fall back to the position mean.
+      const dateKey = game.IsHome ? normalizeVSDate(game.DateRaw) : null;
+      const measured = dateKey ? vsSlotValue(tvLookup.get(`${dateKey}|${locKey}`), brand) : null;
+      const v = measured || means[locKey];
+      if (measured) {
+        b.measuredGames++;
+        b.measuredQimv += measured.qimv;
       } else {
-        b.awayGames++;
         b.hasEstimates = true;
-        const est = means[locKey];
-        if (est) {
-          b.qimv      += est.qimv;
-          b.qiImp     += est.qiImp;
-          b.duration  += est.duration;
-          b.exposures += est.exposures;
-        }
+        b.estimatedGames++;
+        b.estimatedQimv += v ? v.qimv : 0;
+      }
+      if (v) {
+        b.qimv      += v.qimv;
+        b.qiImp     += v.qiImp;
+        b.duration  += v.duration;
+        b.exposures += v.exposures;
       }
     });
   });
@@ -293,6 +323,9 @@ function getVirtualSignagePortfolioTotals(partnerStats) {
     totalQiImp:     (partnerStats || []).reduce((a, b) => a + b.qiImp,    0),
     totalDuration:  (partnerStats || []).reduce((a, b) => a + b.duration, 0),
     totalExposures: (partnerStats || []).reduce((a, b) => a + b.exposures,0),
+    measuredQimv:   (partnerStats || []).reduce((a, b) => a + b.measuredQimv,  0),
+    estimatedQimv:  (partnerStats || []).reduce((a, b) => a + b.estimatedQimv, 0),
+    unmeasuredBrands: (partnerStats || []).filter(p => !p.measuredGames).map(p => p.brand),
   };
 }
 
@@ -350,6 +383,10 @@ function groupVSPartnerStats(partnerStats) {
       qimv:        g.members.reduce((s, m) => s + m.qimv,        0),
       qiImp:       g.members.reduce((s, m) => s + m.qiImp,       0),
       duration:    g.members.reduce((s, m) => s + m.duration,    0),
+      measuredGames:  g.members.reduce((s, m) => s + m.measuredGames,  0),
+      estimatedGames: g.members.reduce((s, m) => s + m.estimatedGames, 0),
+      measuredQimv:   g.members.reduce((s, m) => s + m.measuredQimv,   0),
+      estimatedQimv:  g.members.reduce((s, m) => s + m.estimatedQimv,  0),
       hasEstimates: g.members.some(m => m.hasEstimates),
     };
     return agg;
@@ -444,6 +481,7 @@ function renderVirtualSignagePage(main) {
             ${totals.hasEstimates ? `<span style="color:var(--text-muted);font-size:11px;" title="Includes estimated away-game values"> *</span>` : ''}
           </div>
           <div class="home-card-value">${formatCurrency(totals.totalQimv)}</div>
+          <div class="home-card-note">${formatCurrency(totals.measuredQimv)} measured · ${formatCurrency(totals.estimatedQimv)} estimated</div>
           <div class="home-card-note">${totals.homeGames} home · ${totals.awayGames} away games</div>
         </div>
         <div class="home-card">
@@ -476,6 +514,7 @@ function renderVirtualSignagePage(main) {
           <strong>most recent season</strong> home-game TV actuals — the same values shown in the
           "Season averages by position" table below. Home-game totals with a matching TV row reflect
           actual measured data.
+          ${totals.unmeasuredBrands.length ? `<br><strong>No measured games:</strong> ${totals.unmeasuredBrands.map(escapeHTML).join(', ')} — their values are entirely estimated.` : ''}
         </div>
       ` : ''}
 
@@ -629,7 +668,7 @@ function renderVirtualSignagePage(main) {
             <span class="section-meta">Per-game averages from home TV actuals · ${locationAvgs.reduce((s, l) => s + l.sampleSize, 0)} measured appearances</span>
           </div>
           <div class="leaderboard-note" style="margin-top: -10px; margin-bottom: 14px;">
-            Per-game averages from home TV actuals · used directly as the estimate for away games and any home game without a matching TV row.
+            Per-game averages from home TV actuals (one value per game and position — where a slot credits several brands, the scheduled brand's value) · used directly as the estimate for away games and any home game without a matching TV row.
           </div>
           <div class="table-wrap">
             <table class="data-table">
@@ -752,12 +791,12 @@ function renderVirtualSignageSection(brand) {
           <div class="kpi">
             <span class="kpi-label">Exposures</span>
             <span class="kpi-value">${formatNum(Math.round(pStats.exposures))}</span>
-            <span class="kpi-change neutral">${pStats.homeGames} home · ${pStats.awayGames} away${pStats.hasEstimates ? ' *' : ''}</span>
+            <span class="kpi-change neutral">${pStats.homeGames} home · ${pStats.awayGames} away · ${pStats.measuredGames} measured${pStats.hasEstimates ? ' *' : ''}</span>
           </div>
           <div class="kpi">
             <span class="kpi-label">QI Media Value</span>
             <span class="kpi-value">${formatCurrency(pStats.qimv)}</span>
-            <span class="kpi-change neutral">${pStats.hasEstimates ? 'Actuals + away est. *' : 'Home actuals'}</span>
+            <span class="kpi-change neutral">${!pStats.measuredGames ? 'All estimated *' : pStats.hasEstimates ? `${formatCurrency(pStats.measuredQimv)} measured · ${formatCurrency(pStats.estimatedQimv)} est. *` : 'Measured'}</span>
           </div>
           <div class="kpi">
             <span class="kpi-label">QI Impressions</span>
@@ -776,6 +815,7 @@ function renderVirtualSignageSection(brand) {
             <strong>* Away-game estimation:</strong> Away appearances (and home games without a matching TV row)
             use the <strong>position-level simple mean</strong> from most recent season home-game TV actuals —
             equal to the averages shown in the Season Averages table on the portfolio page.
+            ${!pStats.measuredGames ? '<br><strong>None of these games has a TV measurement</strong>, so the whole value is an estimate.' : ''}
           </div>
         ` : ''}
 

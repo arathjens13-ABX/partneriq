@@ -79,6 +79,13 @@ const BRAND_ALIAS_DEFAULTS = {
   'Alaska Dunk Of The Game': 'Alaska Airlines',
   // ANC LED Report — Comcast Xfinity (existing 'Comcast' alias only matches the bare word)
   'Comcast Xfinity': 'Xfinity',
+  // Partner roster and virtual-signage schedule spellings that didn't match the
+  // name every other channel uses, so each partner showed up twice
+  'Comcast Cable Communications': 'Xfinity',
+  'Polar Beverages': 'Polar',
+  'Vortex': 'Vortex Legacy Group',
+  'KeyBank - National': 'KeyBank',
+  'Yakama Nation Legends Casino Hotel': 'Legends Casino',
   // Misspellings and legal-name variants seen in source exports. Case and
   // punctuation variants no longer need entries here — CANONICAL_BRANDS handles
   // those — so this list is only for names that differ by more than spelling.
@@ -649,6 +656,12 @@ function normalizeLoadedRows() {
     });
   });
 
+  // Survey dates saved before the spreadsheet-serial fix ("46113") are
+  // repaired on load, so older exports display the real date too.
+  [DataStore.surveys, DataStore.surveyGeneral, DataStore.surveyPartner, DataStore.surveyPrograms].forEach(arr => {
+    (arr || []).forEach(r => { if (r && r.Date !== undefined) r.Date = fixSpreadsheetDateString(r.Date); });
+  });
+
   Object.entries(DataStore.paidSocial || {}).forEach(([brand, rows]) => {
     if (!Array.isArray(rows)) return;
     rows.forEach(r => {
@@ -761,6 +774,13 @@ function canonicalizeAllBrandData(skipAutoDetect = false) {
   });
   (DataStore.webPreRoll || []).forEach(r => {
     if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+  });
+  // Virtual signage schedule — both slots, from the raw schedule names. Without
+  // this an alias added after ingest never reached the schedule.
+  (DataStore.virtualSignageSchedule || []).forEach(g => {
+    if (!g) return;
+    if (g._rawBrandA || g.BrandA) g.BrandA = resolveCanonicalBrandName(g._rawBrandA || g.BrandA);
+    if (g._rawBrandB || g.BrandB) g.BrandB = resolveCanonicalBrandName(g._rawBrandB || g.BrandB);
   });
   if (currentBrand) currentBrand = resolveCanonicalBrandName(currentBrand);
   rebuildBrandRegistryFromData();
@@ -967,8 +987,8 @@ function collectRawBrandObservations() {
   (DataStore.webRQBanners || []).forEach(r => firstOf(r, 'Web', ['_rawAdvertiser', 'Brand']));
   (DataStore.webPreRoll || []).forEach(r => firstOf(r, 'Web', ['_rawPartner', 'Brand']));
   (DataStore.virtualSignageSchedule || []).forEach(g => {
-    if (g && g.BrandA) note(g.BrandA, 'Virtual Signage');
-    if (g && g.BrandB) note(g.BrandB, 'Virtual Signage');
+    if (g && (g._rawBrandA || g.BrandA)) note(g._rawBrandA || g.BrandA, 'Virtual Signage');
+    if (g && (g._rawBrandB || g.BrandB)) note(g._rawBrandB || g.BrandB, 'Virtual Signage');
   });
 
   return [...seen.values()].map(e => ({
@@ -1024,7 +1044,7 @@ function getBrandNamingReport() {
   const brandSet = new Set(canonicalNames);
   const rosterMismatch = (DataStore.partnerRoster || [])
     .map(r => r.Account)
-    .filter(a => a && !brandSet.has(a))
+    .filter(a => a && !brandSet.has(resolveCanonicalBrandName(a)))
     .sort((a, b) => a.localeCompare(b));
 
   return {

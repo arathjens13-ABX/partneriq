@@ -11,6 +11,54 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.53 — Calculation fixes from the data review
+
+*September 2026 · Claude*
+
+An outside review of the preseason build found several figures that were
+calculated wrongly. Every fix below was reproduced against the preseason data
+before and after the change.
+
+### TV visible signage — year-over-year
+
+- Auto-match compared 2025-26 (38 home broadcasts) with "the first 38 dates of 2024-25", but 2024-25 also tracked away broadcasts, so 23 of those 38 were near-worthless away games. Portfolio QIMV growth read **+287.7%**; it is **+45.8%** comparing like with like
+- The prior-season window now matches the current season's venue mix: its first N home and first M away broadcasts (`getMatchedPriorWindow`). Home/away is read from the "Away @ Home" Match string via `HOME_TEAM_PATTERN` (`02_constants.js`)
+- Partners are compared over the same window as the portfolio (`getPortfolioPriorWindow`), so the two figures are consistent. Moda Health: +65.0% → +22.2%. Brightside Windows: +127.8% → +0.9%
+- Basis labels now say what was compared ("vs first 38 home broadcasts of 2024-25"). `getMatchedPriorSeasonTVData` removed
+
+### On-court virtual signage
+
+- No home game ever matched its TV measurement: `normalizeVSDate()` only read `10/22/25`, while the TV export stores `2025-10-22`. Every game was silently valued at the season average. ISO dates are now accepted
+- Where a TV slot credits more than one brand (Jan 17 center court: McDonald's + Mortgage Matchup + Getty Images; Jan 17 and Mar 8 3-point line), the scheduled brand's own rows are used, so McDonald's and Toyota are no longer credited with ~$55K each of other brands' exposure. Position averages are now one value per game slot
+- Measured and estimated value are tracked separately and shown on the portfolio KPI, the partner section and the PDF report. Partners with no measured games (Moda Health, Paylocity, Rogue) are named as fully estimated
+- 2025-26 total: $4.79M (all estimated) → **$4.78M: $2.07M measured, $2.70M estimated**
+
+### Organic social
+
+- The Overall Brand Performance leaderboard kept only each brand's latest monthly report, even in "All months" and range views. Zoomph reports are monthly, not running totals (July 217M views, August 28M), so the leaderboard now sums the months in the window and recomputes engagement rate from the totals. A Months column shows how many reports are included
+- YoY Brand Value now compares the window with the same window a year earlier
+
+### Paid social
+
+- A paid row's season now comes from the campaign name ("2025-26_…") when it has one, falling back to the July–June flight date. The two disagreed on ~$2K of spend
+- The Paid Social portfolio has a Season filter, defaulting to the latest season. `Paid_social_2025_April30_2026` spans Jul 2024 – Apr 2026, so the page was adding two seasons together: $128.6K assigned across both, **$59.8K** for 2025-26
+- The unassigned-spend note now gives the share of the season's spend and the campaign count ($88.8K, 29 campaigns in 2025-26)
+
+### Dates
+
+- Paid coverage used each campaign's planned end date (some in the future, some "Ongoing"). It now uses delivery dates: Jul 2, 2024 → **Apr 30, 2026**
+- A survey date exported as a raw spreadsheet number ("46113") showed as "Jan 1, 46113". Serials are converted at ingest and on load (Apr 1, 2026), and the date parser rejects impossible years
+
+### Naming & aliases
+
+- `canonicalizeAllBrandData()` never re-resolved the virtual signage schedule, so aliases added after ingest never reached it. Both slots are now re-resolved from the raw schedule names
+- New aliases for spellings that split one partner in two: Polar Beverages → Polar, Vortex → Vortex Legacy Group, KeyBank - National → KeyBank, Comcast Cable Communications → Xfinity, Yakama Nation Legends Casino Hotel → Legends Casino
+- The Data Health roster check resolves roster names through aliases before flagging them, so "Riverside Payments" (which already resolves to Riverside) is no longer listed as unmatched
+
+### Tests
+
+- 27 new unit checks covering each fix with small synthetic datasets
+
 ## v0.52 — Spelling corrections and the Umpqua/Columbia merger
 
 *September 2026 · Claude*

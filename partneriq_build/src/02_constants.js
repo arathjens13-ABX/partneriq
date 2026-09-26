@@ -77,5 +77,14 @@ const VIEWER_MODE = false;
 // Version history lives in CHANGELOG.md, not in the dashboard. It used to be a
 // 1,400-line array rendered as an in-app page, which shipped ~92 KB of internal
 // development notes to every viewer. Update both together when you ship.
-const DASHBOARD_VERSION = 'v0.52';
+const DASHBOARD_VERSION = 'v0.53';
 const DASHBOARD_VERSION_DATE = 'September 2026';
+
+// ============================================================
+// HOME TEAM
+// ============================================================
+// TV rows carry the fixture as "Away Team @ Home Team". Matching the part after
+// the "@" against this tells home broadcasts from away ones, which YoY needs:
+// some seasons were measured home-only and others home + away, and an away
+// broadcast is worth a fraction of a home one.
+const HOME_TEAM_PATTERN = /trail\s*blazers/i;

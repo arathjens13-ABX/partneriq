@@ -580,7 +580,9 @@ function generatePartnerReport(brand, options) {
           <div class="r-mini-kpi"><div class="r-mini-label">Games</div><div class="r-mini-val">${vsBrand.totalGames}</div><div class="r-mini-sub">${vsBrand.homeGames} home · ${vsBrand.awayGames} away</div></div>
         </div>
         ${positions.length ? `<div class="r-metric-row"><span>Court Position</span><span>${positions.join(' &amp; ')}</span></div>` : ''}
-        ${vsBrand.hasEstimates ? `<div class="r-note">Away-game values are estimated using the season average for each position. Home-game actuals sourced from TV visible signage data.</div>` : ''}
+        ${vsBrand.hasEstimates ? `<div class="r-note">${vsBrand.measuredGames
+          ? `${formatCurrency(vsBrand.measuredQimv)} measured across ${vsBrand.measuredGames} home game${vsBrand.measuredGames === 1 ? '' : 's'} (TV visible signage); ${formatCurrency(vsBrand.estimatedQimv)} estimated for the other ${vsBrand.estimatedGames} using the season average for each position.`
+          : `No game in this schedule has a TV measurement — the full value is estimated from the season average for each position.`}</div>` : ''}
       `;
     })();
     sectionBlocks.push(`
