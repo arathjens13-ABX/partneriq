@@ -228,6 +228,20 @@ t.group('brand aliases — roster and schedule spellings');
  ['Comcast Cable Communications', 'Xfinity'], ['Yakama Nation Legends Casino Hotel', 'Legends Casino']]
   .forEach(([raw, want]) => t.eq(`${raw} → ${want}`, resolveCanonicalBrandName(raw), want));
 
+t.group('export — built from a template, not the live page');
+const tmpl = `<!DOCTYPE html>\n<html lang="en" class="stale">\n<script>/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = null;\n/* PRELOADED_DATA_END */\n/* DASHBOARD_META_START */\nconst DASHBOARD_META = {};\n/* DASHBOARD_META_END */\n/* VIEWER_MODE_START */\nconst VIEWER_MODE = false;\n/* VIEWER_MODE_END */</script></html>`;
+ctx.__tmpl = tmpl;
+const built = evalIn(ctx, `buildExportHTML(globalThis.__tmpl, { tvSignage: [{ Brand: 'Nike' }] }, { updateNotes: "Up $' and $& too" }, true)`);
+t.check('opens in light mode',             /<html lang="en" data-theme="light" class="pqi-preboot">/.test(built));
+t.check('editor exports skip the intro cover', !/pqi-preboot/.test(evalIn(ctx, `buildExportHTML(globalThis.__tmpl, {}, {}, false)`)));
+t.check('viewer mode switched on',         built.includes('const VIEWER_MODE = true;'));
+t.check('"$\'" and "$&" in notes survive', built.includes("Up $' and $\\u0026 too")); // & is JSON-escaped
+t.eq('payload round-trips',                evalIn(ctx, `JSON.parse(LZString.decompressFromBase64(globalThis.__built.match(/decompressFromBase64\\('([^']+)'/)[1])).tvSignage[0].Brand`.replace('globalThis.__built', JSON.stringify(built))), 'Nike');
+t.check('tvRatings is no longer exported', !('tvRatings' in evalIn(ctx, `getSerializableDataStore()`)));
+
+t.group('TV Ratings files are recognised and declined');
+t.eq('Nielsen schema detected', detectFileType('vw_nielsen_tv_metrics.csv', [{ 'HH Rtg': 1, Demo: 'HH', Opponent: 'PHX' }]), 'tvRatings');
+
 t.group('version constant');
 t.check('DASHBOARD_VERSION is defined', typeof ctx.DASHBOARD_VERSION === 'string' && /^v\d+\.\d+$/.test(ctx.DASHBOARD_VERSION));
 

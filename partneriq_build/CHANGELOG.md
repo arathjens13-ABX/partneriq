@@ -11,6 +11,35 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.54 — TV Ratings removed, light mode by default, export rebuilt
+
+*September 2026 · Claude*
+
+### Removed
+
+- **TV Ratings** (Nielsen viewership) is gone from this dashboard — it gets its own. Removed `22_tv_ratings_section.js`, its home tile and route, the `DataStore.tvRatings` collection (declaration, reset, per-file removal, preload, export) and its Data Health row. The Tableau TV Ratings link stays on the Links page
+- Nielsen files are still *recognised* on upload, so they are declined with a clear message rather than falling through to the "tv" filename match and being read as TV signage
+- Exports made before v0.54 that carry `tvRatings` data load cleanly: the collection and its file-log entries are ignored
+- The two disabled "coming soon" home tiles (Partner Comparison, Attendance) and their styles. Every tile on the home page now goes somewhere
+
+### Light mode by default
+
+- The dashboard and every export open in light mode (`<html data-theme="light">` in the build template and in `buildExportHTML`). The header toggle still switches to dark for the session
+
+### Export
+
+- **Exports are built from a snapshot of the page as it was opened** (`EXPORT_TEMPLATE_HTML`), not from the live DOM. The live DOM carried whatever was on screen: the header partner dropdown with every logo image (~3 MB), the general-survey review modal (~1 MB), and the exporter's theme. The preseason export drops from 12.3 MB to 7.8 MB with identical data
+- New pure `buildExportHTML()` does the assembly, so it is unit-tested
+- Fixed: an update note containing `$'` or `$&` corrupted the export — `String.replace` expanded them (`$'` pastes the rest of the document). Injection blocks now use a replacer function
+- Cancel on the first export question now cancels the export (it used to carry on with the old values)
+- The label prompt no longer pre-fills the placeholder text; the date prompt pre-fills the newest date in the data
+- The "Latest update" stamp shows "Data through <date>" while the label is still the placeholder, instead of "Manual refresh date not set". Export-time label, date and prepared-by text are HTML-escaped
+- `build.ipynb` AM export cells read the version from `DASHBOARD_VERSION` (they were hard-coded to v0.22 and v0.26), and Cell 5 picks the newest export by modified time rather than by filename
+
+### Tests
+
+- 7 new unit checks: export template, light-mode tag, viewer cover, `$'`/`$&` safety, payload round-trip, no `tvRatings` in exports, Nielsen detection
+
 ## v0.53 — Calculation fixes from the data review
 
 *September 2026 · Claude*

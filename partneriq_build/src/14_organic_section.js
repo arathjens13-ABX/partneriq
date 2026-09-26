@@ -734,11 +734,10 @@ function detectFileType(filename, rows = []) {
   if (hasCol('home/away') && hasCol('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
   if (hasCol('unaided recall') && hasCol('aided recall') && hasCol('survey')) return 'survey';
 
-  // Nielsen TV Ratings (viewership): schema-based, checked BEFORE the token tv
-  // match because these filenames usually contain "tv".
-  // NOTE: This file format will change. If detection breaks, look for
-  // 'hh rtg' + 'demo' + 'opponent' in the column headers.
-  // Source: DW > vw_viewership > vw_nielsen_tv_metrics
+  // Nielsen TV Ratings (viewership) moved to its own dashboard in v0.54. The
+  // file is still recognised — checked BEFORE the token tv match, because these
+  // filenames usually contain "tv" and would otherwise be read as TV signage —
+  // so the upload can be declined with a clear message instead.
   if (hasCol('hh rtg') && hasCol('demo') && hasCol('opponent')) return 'tvRatings';
 
   if (hasCol('organic posts') && hasCol('brand value') && hasCol('social value')) {
@@ -778,89 +777,6 @@ function extractBrandFromSocialFilename(filename) {
 
 function parseCSV(text) {
   return Papa.parse(text, { header: true, skipEmptyLines: true, dynamicTyping: true }).data;
-}
-
-// ============================================================
-// TV RATINGS (NIELSEN VIEWERSHIP) — ingest
-// ============================================================
-// Source: DW > vw_viewership > vw_nielsen_tv_metrics
-// Each row = one demographic × one game segment (Game / Pre Game / Post Game).
-// This is broadcast viewership data — it has NO partner/brand associations.
-// Detected by column schema (hh rtg + demo + opponent), NOT by filename,
-// so it survives any future filename/export-path changes.
-// When the file format changes, update normalizeTVRatingsRow() to remap columns.
-
-function normalizeTVRatingsRow(row) {
-  const parseNum = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
-
-  // Derive segment from Program column — more reliable than the duplicate Segment columns
-  const program = String(row['Program'] || '').toUpperCase().trim();
-  const segment = program.includes('POST') ? 'Post Game'
-                : (program.includes('PRE') || program.includes('PREGAME')) ? 'Pre Game'
-                : 'Game';
-
-  // Derive basketball season from Custom Year field ("1/1/2025" → "2024-25")
-  const customYearRaw = row['Custom Year'] || row['custom year'] || '';
-  let fiscalYear = 0;
-  if (customYearRaw instanceof Date) {
-    fiscalYear = customYearRaw.getFullYear();
-  } else {
-    const parts = String(customYearRaw).split('/');
-    fiscalYear = parseInt(parts[parts.length - 1]) || parseInt(parts[0]) || 0;
-  }
-  const season = fiscalYear >= 2000
-    ? `${fiscalYear - 1}-${String(fiscalYear).slice(-2)}`
-    : '';
-
-  // Normalize date — keep as string in M/D/YYYY format
-  const dateRaw = row['Dates'] || '';
-  const date = dateRaw instanceof Date
-    ? `${dateRaw.getMonth() + 1}/${dateRaw.getDate()}/${dateRaw.getFullYear()}`
-    : String(dateRaw).trim();
-
-  return {
-    date,
-    season,
-    demo:     String(row['Demo']           || '').trim(),
-    segment,
-    opponent: String(row['Opponent']       || '').trim().toUpperCase(),
-    station:  String(row['Viewing Source'] || '').trim(),
-    imp:      parseNum(row['IMP']),
-    rtg:      parseNum(row['Rtg % (X.X)']),
-    shr:      parseNum(row['Shr %']),
-    hhImp:    parseNum(row['HH Imp']) || parseNum(row['HH Imps']),
-    hhRtg:    parseNum(row['HH Rtg']),
-    hhShr:    parseNum(row['HH SHR']) || parseNum(row['HHR Shr %']),
-    // Detect preseason: check all Segment-named columns (PapaParse may alias duplicate headers)
-    gameType: (() => {
-      const vals = Object.entries(row)
-        .filter(([k]) => /^segment/i.test(String(k).trim()))
-        .map(([, v]) => String(v || '').trim().toLowerCase());
-      return vals.some(v => v.includes('pre season') || v.includes('preseason') || v.includes('pre-season') || v.includes('exhibition'))
-        ? 'Pre Season'
-        : 'Regular Game';
-    })(),
-  };
-}
-
-function ingestTVRatingsFile(rows) {
-  const normalized = rows
-    .map(r => normalizeTVRatingsRow(r))
-    .filter(r => r.date && r.demo && r.segment && r.season);
-
-  // Deduplicate on natural key — safe to re-ingest the same export
-  const existing = new Set(
-    (DataStore.tvRatings || []).map(r => `${r.date}|${r.demo}|${r.segment}|${r.opponent}|${r.station}`)
-  );
-  const newRows = normalized.filter(r => {
-    const key = `${r.date}|${r.demo}|${r.segment}|${r.opponent}|${r.station}`;
-    if (existing.has(key)) return false;
-    existing.add(key);
-    return true;
-  });
-
-  DataStore.tvRatings = (DataStore.tvRatings || []).concat(newRows);
-  return newRows;
 }
 
 async function ingestFile(file) {
@@ -956,11 +872,12 @@ async function _ingestFileInner(file, fileId) {
     return { success: true, type: 'programSurvey', rows: normalized.length, programs: programs.length, waves: waves.length, sponsored, filename: file.name };
 
   } else if (type === 'tvRatings') {
-    // Tag only rows that survived dedupe — overlapping rows stay owned by the file that first brought them
-    const ingested = tagRowsWithFile(ingestTVRatingsFile(rows), fileId);
-    const seasons = [...new Set(ingested.map(r => r.season).filter(Boolean))];
-    const games   = [...new Set(ingested.filter(r => r.segment === 'Game').map(r => r.date))].length;
-    return { success: true, type: 'tvRatings', rows: ingested.length, games, seasons: seasons.join(', '), filename: file.name };
+    return {
+      success: false,
+      type: 'tvRatings',
+      filename: file.name,
+      error: 'This is a Nielsen TV Ratings file. TV Ratings now have their own dashboard (see Links), so nothing was loaded here.',
+    };
 
   } else if (type === 'blazersWebDisplay') {
     return ingestBlazersBannersFile(file, ext, fileId);
@@ -1120,7 +1037,6 @@ const LOADED_FILE_DESCRIBERS = {
   blazersWebDisplay: r => `Web & Digital · Blazers.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
   rqWebDisplay:    r => `Web & Digital · RoseQuarter.com Banners · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
   webPreRoll:      r => `Web & Digital · Pre-Roll Video · ${r.brands || 'unknown brands'} · ${r.rows} rows`,
-  tvRatings:       r => `TV Ratings · ${r.games} games · ${r.seasons} · ${r.rows} demo rows`,
   organic:         r => `Organic Social · ${r.brand} · ${r.rows} posts`,
 };
 

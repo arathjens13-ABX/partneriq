@@ -448,11 +448,10 @@ function renderVirtualSignagePage(main) {
     <div class="data-status">
       <div>
         <span class="data-status-dot"></span> Latest update ·
-        <strong>${DASHBOARD_META.latestUpdateLabel}</strong>
-        ${DASHBOARD_META.latestUpdateDate ? ` · ${DASHBOARD_META.latestUpdateDate}` : ''}
+        ${getLatestUpdateStampHTML()}
       </div>
       <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em;">
-        ${DASHBOARD_META.preparedBy || 'PartnerIQ'}
+        ${escapeHTML(DASHBOARD_META.preparedBy || 'PartnerIQ')}
       </div>
     </div>
 

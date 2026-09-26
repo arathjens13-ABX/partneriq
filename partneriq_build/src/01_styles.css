@@ -1206,16 +1206,6 @@ main {
   margin-bottom: 8px;
 }
 
-.home-action.disabled {
-  cursor: default;
-  opacity: 0.72;
-}
-
-.home-action.disabled:hover {
-  background: var(--bg-elev);
-  border-color: var(--border);
-}
-
 .yoy-change {
   font-family: var(--font-mono);
   font-size: 12px;

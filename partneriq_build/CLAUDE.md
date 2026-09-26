@@ -38,7 +38,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | File | Responsibility |
 |------|---------------|
 | `00_vendor_shims.js` | Vendored libraries (PapaParse CSV shim, LZ-string compression) |
-| `01_styles.css` | All CSS, design tokens, theme variables |
+| `01_styles.css` | All CSS, design tokens, theme variables. Light mode is the default: `<html data-theme="light">` is set by the build and by every export; the header toggle switches to dark for the session |
 | `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE`, `HOME_TEAM_PATTERN` (home/away detection for TV YoY) |
 | `04_datastore.js` | `DataStore` object, file ingest, import/export, preloaded data hydration |
 | `05_paid_constants.js` | Paid social campaign parsing constants and alias maps |
@@ -58,7 +58,6 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
-| `22_tv_ratings_section.js` | TV Ratings Dashboard — Nielsen broadcast viewership data; `DataStore.tvRatings[]`; **file format WILL change** — detection is column-schema-based (`HH Rtg` + `Demo` + `Opponent`), ingest and normalize logic is in `14_organic_section.js`; data source: DW > vw_viewership > vw_nielsen_tv_metrics |
 | `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
 | `shell.html` | Static HTML shell — `<header>` (incl. the "Partners only" search toggle), `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), the intro mount (`#introRoot`) + relaunch button, footer; concatenated with the JS/CSS files at export time |
 
@@ -304,7 +303,9 @@ A per-file index of every significant function. Use this to jump directly to the
 | `removeLoadedFile(fileId)` | User-facing remove: confirm dialog, strip rows, `canonicalizeAllBrandData()`, fall back to Home if the viewed partner vanished, re-render |
 | `getCurrentUserPresets()` | Serializes current UI toggles/filters for persistence |
 | `applyUserPresets(presets)` | Restores UI state from a saved preset object |
-| `exportPreloadedDashboard()` | Injects DataStore + meta into the HTML template and triggers download |
+| `EXPORT_TEMPLATE_HTML` (`02_constants.js`) | Snapshot of the document as opened, taken before anything renders. **Must stay the first statement of the first script.** Exports are built from this, never from the live DOM |
+| `buildExportHTML(templateHtml, payload, meta, viewerMode)` | Pure export builder: sets `<html data-theme="light">` (+ `pqi-preboot` for viewers) and fills the three injection blocks |
+| `exportPreloadedDashboard()` | Asks for the update label/date/notes (Cancel on the first question cancels), calls `buildExportHTML`, triggers download |
 | `safeJSONStringify(value, space)` | `JSON.stringify` wrapper that handles circular refs and BigInt |
 | `applyViewerMode()` | Hides all upload/edit controls when `VIEWER_MODE === true` |
 | `generateMockData()` | Populates DataStore with seeded random demo data for testing |
@@ -384,6 +385,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `CHANNEL_REGISTRY` | The one list of every data channel — `{ key, label, rows(brand), dateFields }`. Adding a channel here is all that's needed for it to appear in Data Health and the freshness strip |
 | `getChannelFreshnessSummary(brand)` | Row counts and date coverage per channel, driven by `CHANNEL_REGISTRY` |
 | `getLatestDataDate()` / `getDataAsOfLabel()` | Newest date across all loaded channels, and the label for the "LAST UPDATE" stamp |
+| `getLatestUpdateStampHTML()` | The "Latest update" stamp on Home and portfolio pages: export label + date, or "Data through …" while the label is still `DEFAULT_UPDATE_LABEL` |
 | `renderNamingHealthPanel()` | The Data Health "Naming & aliases" panel |
 | `mergeNamingSuggestion(variant, canonical)` / `keepNamingSuggestionApart(variant)` | Accept or dismiss one near-miss suggestion |
 | `formatDurationFromMinutes(minutes)` | Converts a decimal minute count to `HH:MM:SS` |
@@ -515,15 +517,13 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
-| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; still recognises Nielsen TV Ratings files (`hh rtg` + `demo` + `opponent`) so they are declined with a message instead of being misread as TV signage — TV Ratings have their own dashboard since v0.54 |
 | `ingestFile(file)` | Generates a file id, delegates to `_ingestFileInner`, attaches `fileId` to the result |
 | `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id |
 | `handleFiles(fileList)` | Batch entry point for drops/picks: consumes a pending replace, prompts on duplicate filenames, ingests each file, records registry entries, re-canonicalizes and re-renders |
 | `startReplaceFile(fileId)` | Arms `pendingReplaceFileId` and opens the file picker — the next picked file swaps in for the old one |
 | `describeLoadedFile(result)` | One-line summary string for a file-log entry (type, rows, brands…) |
 | `renderFileLog()` | Renders `DataStore.loadedFiles` into the modal file list with per-file Replace/Remove buttons (hidden in viewer mode or for pre-registry entries) |
-| `normalizeTVRatingsRow(row)` | Coerces a raw Nielsen TV metrics row into a typed ratings row; derives segment from Program column and season from Custom Year column |
-| `ingestTVRatingsFile(rows)` | Normalizes and deduplicates Nielsen rows into `DataStore.tvRatings`; safe to re-ingest the same export |
 | `normalizeZoomphRow(row, fileType)` | Coerces a raw organic row into a typed object |
 | `extractZoomphBrand(name)` | Strips date/suffix noise from a Zoomph filename to extract brand name |
 | `filterZoomphRowsByPartnerDate(rows)` | Applies active date filter to organic rows |
@@ -649,31 +649,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |
 | `parseWebNum(v)` / `parseWebPct(v)` | Web & Digital numeric parsers (support K/M/B suffixes and `%`-formatted CTR) |
 | `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix — these delivery reports carry preamble rows above the header |
-
----
-
-### `22_tv_ratings_section.js` — TV Ratings Dashboard (Nielsen Viewership)
-
-**⚠️ This file format will change.** Detection is column-schema-based; ingest/normalize lives in `14_organic_section.js`. Update `normalizeTVRatingsRow()` when columns change.
-
-| Function | What it does |
-|----------|-------------|
-| `openTVRatingsPage()` | Navigation helper: sets `currentPage='tv-ratings'` and calls `renderApp()` |
-| `renderTVRatingsPage(main)` | Main page renderer — season selector, KPI cards, all sub-sections |
-| `getTVRatingsSeasons()` | Returns sorted distinct season strings from `DataStore.tvRatings` |
-| `getTVRatingsActiveSeason()` | Returns the currently selected season, resolving `'latest'` to the most recent |
-| `getTVRatingsRows(season)` | Returns all rows for a season string, or all rows when `season='all'` |
-| `getTVRatingsGameDates(season)` | Returns sorted unique game dates for the Game segment in a season |
-| `avgTVMetric(rows, key)` | Average of a numeric field across rows (skips zeros) |
-| `maxTVMetric(rows, key)` | Max of a numeric field across rows |
-| `renderTVRatingsLineChart(season, priorSeason)` | SVG season trend chart; game-only; togglable metric; optional YoY overlay aligned by game number |
-| `renderTVRatingsSegmentComparison(rows)` | Pre/Game/Post avg HH and P2+ rating horizontal bar chart + summary table |
-| `renderTVRatingsOpponentTable(season)` | Sortable opponent breakdown — avg HH Rtg/Imp, P2+ Rtg/Imp, peak HH Rtg, avg HH Share |
-| `renderTVRatingsAdDemoChart(gameRows)` | Avg game rating/impressions bar chart for P18-49, M18-49, P25-54, M25-54 (HH and P2+ excluded intentionally) |
-| `renderTVRatingsGamesTable(season)` | Sortable full game log — date, opponent, HH and P2+ metrics |
-| `wireTVRatingsPage()` | Wires season selector, metric toggle, YoY toggle, opponent sort, games sort |
-
-**State variables declared here:** `tvRatingsSeasonFilter`, `tvRatingsChartMetric`, `tvRatingsYoY`, `tvRatingsOpponentSort`, `tvRatingsGamesSort`
 
 ---
 

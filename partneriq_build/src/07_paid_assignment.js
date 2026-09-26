@@ -648,20 +648,10 @@ const CHANNEL_REGISTRY = [
       return brand ? all.filter(r => r.Brand === brand) : all;
     },
   },
-  {
-    key: 'TV Ratings',
-    label: 'Nielsen broadcast viewership',
-    dateFields: ['date'],
-    // Viewership data carries no partner association, so it only ever appears
-    // in the portfolio-level view, never on a partner page.
-    partnerScoped: false,
-    rows: brand => brand ? [] : (DataStore.tvRatings || []),
-  },
 ];
 
 function getChannelFreshnessSummary(brand = null) {
   return CHANNEL_REGISTRY
-    .filter(ch => !brand || ch.partnerScoped !== false)
     .map(ch => {
       let rows = [];
       try { rows = ch.rows(brand) || []; }
@@ -686,6 +676,19 @@ function getLatestDataDate() {
     .filter(c => c.range && c.range.max)
     .map(c => c.range.max.getTime());
   return maxes.length ? new Date(Math.max(...maxes)) : null;
+}
+
+// The "Latest update" stamp on Home and the portfolio pages. Uses the label and
+// date set at export time; while the label is still the placeholder, falls back
+// to the newest date in the data so a viewer never sees "not set".
+function getLatestUpdateStampHTML() {
+  const meta = typeof DASHBOARD_META !== 'undefined' ? DASHBOARD_META : {};
+  const label = meta.latestUpdateLabel && meta.latestUpdateLabel !== DEFAULT_UPDATE_LABEL ? String(meta.latestUpdateLabel) : '';
+  const date = meta.latestUpdateDate ? String(meta.latestUpdateDate) : '';
+  if (label) return `<strong>${escapeHTML(label)}</strong>${date ? ` · ${escapeHTML(date)}` : ''}`;
+  if (date) return `<strong>${escapeHTML(date)}</strong>`;
+  const latest = getLatestDataDate();
+  return latest ? `Data through <strong>${escapeHTML(formatShortDate(latest))}</strong>` : '<strong>Not recorded</strong>';
 }
 
 // Label for the "LAST UPDATE" stamp. Prefers what was set at export time, then
