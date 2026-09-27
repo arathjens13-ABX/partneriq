@@ -282,6 +282,15 @@ t.check('pace is off unless asked for', (() => {
   return !h.includes('On pace for');
 })());
 
+t.group('local home broadcasts — season setting');
+evalIn(ctx, `(() => { DataStore.reset(); setLocalHomeBroadcasts('2025-26', 38); })()`);
+t.eq('setting is read back',                 evalIn(ctx, `getLocalHomeBroadcasts('2025-26')`), 38);
+t.eq('setting is included in exports',       evalIn(ctx, `getSerializableDataStore().seasonSettings['2025-26'].localHomeBroadcasts`), 38);
+t.eq('period uses it as the season length',  evalIn(ctx, `getReportPeriodInfo('2025-26').total`), 38);
+evalIn(ctx, `setLocalHomeBroadcasts('2025-26', null)`);
+t.eq('clearing it removes the season entry', evalIn(ctx, `JSON.stringify(DataStore.seasonSettings)`), '{}');
+t.eq('reset clears season settings',         evalIn(ctx, `(() => { setLocalHomeBroadcasts('2025-26', 38); DataStore.reset(); return JSON.stringify(DataStore.seasonSettings); })()`), '{}');
+
 t.group('rankings — off by default, top three only, category families');
 evalIn(ctx, `(() => {
   DataStore.reset();

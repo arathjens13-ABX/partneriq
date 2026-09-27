@@ -151,18 +151,36 @@ function rptHomeDates(season) {
   return season ? splitMatchdatesByVenue(getTVRowsForPeriod(season)).home : [];
 }
 
-// Home broadcasts measured so far, how many a season normally has (median of
-// earlier full seasons), and whether this season is over (its latest game is
-// as late in the calendar as earlier seasons' last games).
+// The local home broadcasts set for a season (fewer than usual when some home
+// games are national-only and carry no local TV measurement), or null.
+function getLocalHomeBroadcasts(season) {
+  const v = ((DataStore.seasonSettings || {})[season] || {}).localHomeBroadcasts;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+function setLocalHomeBroadcasts(season, value) {
+  if (!DataStore.seasonSettings) DataStore.seasonSettings = {};
+  const n = Math.round(Number(value));
+  const cur = DataStore.seasonSettings[season] || {};
+  if (Number.isFinite(n) && n > 0) cur.localHomeBroadcasts = n; else delete cur.localHomeBroadcasts;
+  if (Object.keys(cur).length) DataStore.seasonSettings[season] = cur; else delete DataStore.seasonSettings[season];
+}
+
+// Home broadcasts measured so far, how many this season will have (the
+// "Local home broadcasts" setting, else the median of earlier full seasons),
+// and whether the season is over (every expected broadcast measured, or its
+// latest game as late in the calendar as earlier seasons' last games).
 function getReportPeriodInfo(season) {
   const dates = rptHomeDates(season);
   const prior = getPortfolioSeasons().filter(s => s < season).map(rptHomeDates).filter(d => d.length >= 30);
   const counts = prior.map(d => d.length).sort((a, b) => a - b);
-  const total = Math.max(counts.length ? counts[Math.floor(counts.length / 2)] : 41, dates.length);
+  const usual = counts.length ? counts[Math.floor(counts.length / 2)] : 41;
+  const local = getLocalHomeBroadcasts(season);
+  const total = Math.max(local || usual, dates.length);
   const lastDays = prior.map(d => rptDayOfSeason(d[d.length - 1]));
   const complete = dates.length >= total ||
     (lastDays.length > 0 && dates.length > 0 && rptDayOfSeason(dates[dates.length - 1]) >= Math.min(...lastDays) - 3);
-  return { dates, total, complete };
+  return { dates, total, complete, usual, local, national: local && usual > local ? usual - local : 0 };
 }
 
 function rptContext(season, period) {
@@ -395,14 +413,14 @@ function rptBuildTV(brand, season, ctx) {
 
   const insights = [];
   insights.push({ html: ctx.std
-      ? `<b>${formatCurrency(qimv)}</b> in QI media value through home game ${ctx.throughGame} of ${ctx.info.total}.`
+      ? `<b>${formatCurrency(qimv)}</b> in QI media value through home game ${ctx.throughGame} of ${ctx.info.total}${ctx.info.local ? ' local broadcasts' : ''}.`
       : `<b>${formatCurrency(qimv)}</b> in QI media value across <b>${games}</b> of ${portfolioGames} measured broadcasts.`,
     delta: dq !== null && dq !== undefined && basis && { change: dq, basis } });
   // The pace line is controlled by the "Season pace" option, not the takeaway
   // ticks, so it lives outside the tickable list (which keeps the same order in
   // both periods).
   const paceInsight = pace && !pace.unavailable
-    ? { html: `On pace for <b>${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}</b> over ${pace.G} home games.`, estimated: true }
+    ? { html: `On pace for <b>${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}</b> over ${pace.G} ${ctx.info.local ? 'local home broadcasts' : 'home games'}.`, estimated: true }
     : null;
   if (top && qimv > 0) insights.push({ html: `<b>${escapeHTML(top.label)}</b> delivered <b>${formatCurrency(top.value)}</b>, ${Math.round(top.value / qimv * 100)}% of the total.` });
   if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: di !== null && di !== undefined && basis && { change: di, basis } });
@@ -410,15 +428,15 @@ function rptBuildTV(brand, season, ctx) {
 
   const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : '—', meta: 'QI media value per on-screen minute' };
   const fourth = pace && !pace.unavailable
-    ? { label: 'Season pace', value: `${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}`, meta: `likely range over ${pace.G} home games`, estimated: true, small: true }
+    ? { label: 'Season pace', value: `${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}`, meta: `likely range over ${pace.G} ${ctx.info.local ? 'local broadcasts' : 'home games'}`, estimated: true, small: true }
     : perMinute;
 
   return {
-    count: ctx.std ? `${games} of ${ctx.info.total} home games` : `${games} broadcast${games === 1 ? '' : 's'}`,
+    count: ctx.std ? `${games} of ${ctx.info.total} ${ctx.info.local ? 'local home broadcasts' : 'home games'}` : `${games} broadcast${games === 1 ? '' : 's'}`,
     kpis: [
       { label: ctx.std ? 'QI media value to date' : 'QI media value', value: formatCurrency(qimv), delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
       { label: 'QI impressions', value: formatNum(imp), delta: di, cmp: ctx.std ? 'vs same point last season' : vsPrior },
-      { label: ctx.std ? 'Home games' : 'Broadcasts', value: ctx.std ? `${games} of ${ctx.info.total}` : `${games} of ${portfolioGames}`, meta: ctx.std ? `through ${formatShortDate(parseDateLoose(ctx.throughDate))}` : 'with this partner visible' },
+      { label: ctx.std ? (ctx.info.local ? 'Local home broadcasts' : 'Home games') : 'Broadcasts', value: ctx.std ? `${games} of ${ctx.info.total}` : `${games} of ${portfolioGames}`, meta: ctx.std ? `through ${formatShortDate(parseDateLoose(ctx.throughDate))}` : 'with this partner visible' },
       fourth,
     ],
     rankable: { metric: 'TV QI media value', ranks, kpiIndex: pace && !pace.unavailable ? null : 3 },
@@ -758,6 +776,7 @@ function buildReportModel(brand, season, period) {
   return {
     brand, season, priorSeason: rptPriorSeason(season), sections, generated: new Date(),
     period: { std: ctx.std, throughGame: ctx.throughGame, throughDate: ctx.throughDate, total: ctx.info.total,
+              local: ctx.info.local, usual: ctx.info.usual, national: ctx.info.national,
               measured: ctx.info.dates.length, complete: ctx.info.complete, dates: ctx.info.dates },
   };
 }
@@ -1227,7 +1246,7 @@ function renderReportDocument(model, opts) {
   const partnerLogo = lookupPartnerLogo(brand);
   const L = REPORT_BRAND_ASSETS.logos;
   const P = model.period;
-  const throughTxt = P.std ? `Through home game ${P.throughGame} of ${P.total} (${formatShortDate(parseDateLoose(P.throughDate))})` : '';
+  const throughTxt = P.std ? `Through home game ${P.throughGame} of ${P.total}${P.local ? ' local broadcasts' : ''} (${formatShortDate(parseDateLoose(P.throughDate))})` : '';
   const title = `${brand} — Partnership report ${model.season}${P.std ? ` through game ${P.throughGame}` : ''}`;
 
   const blocks = [];
@@ -1252,6 +1271,7 @@ function renderReportDocument(model, opts) {
     keys.forEach(k => blocks.push(...rptSectionBlocks(model.sections[k], opts)));
     if (opts.methodology) {
       const defs = keys.flatMap(k => RPT_METHODOLOGY[k] || []);
+      if (P.std && P.local) defs.unshift(['Local home broadcasts', `This season has ${P.local} local home broadcasts${P.national ? ` (${P.national} home game${P.national === 1 ? ' is' : 's are'} national-only, with no local TV measurement)` : ''}. Game counts and the season pace use ${P.local}.`]);
       if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season; organic with the same completed months; the survey with the same wave. Sources that only report season totals are left out.`]);
       if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && !!opts.pace) {
         defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. It is shown only as a range — how far this method missed for partners in earlier seasons at the same point (20th–80th percentile) — and only between home games ${RPT_PACE_MIN_GAMES} and ${RPT_PACE_MAX_GAMES}. It is an estimate, not a forecast of any game.`]);
@@ -1387,7 +1407,7 @@ function rbRenderPanel() {
             <button type="button" data-rb-period="std" class="${P.std ? 'on' : ''}" aria-pressed="${P.std}" ${P.dates.length ? '' : 'disabled'}>Season to date</button>
           </div>
           ${P.std ? `<select id="rbThrough" class="select-control rb-input rb-through" aria-label="Through home game">${gameOpts}</select>
-            <div class="rb-hint">Through home game ${P.throughGame} of ${P.total}</div>` : ''}
+            <div class="rb-hint">Through home game ${P.throughGame} of ${P.total}${P.local ? ` local broadcasts (${P.national} national)` : ''}</div>` : ''}
         </div>
         <div class="rb-group-h"><span class="rb-lbl">Sections</span>
           <span><button type="button" class="rb-link" data-rb-all="1">All</button> · <button type="button" class="rb-link" data-rb-all="0">None</button></span></div>
@@ -1396,7 +1416,12 @@ function rbRenderPanel() {
         <label class="rb-check rb-opt"><input type="checkbox" id="rbCompare" ${_rb.compare ? 'checked' : ''}><span>Compare with ${escapeHTML(prior || 'last season')}</span></label>
         <label class="rb-check rb-opt"><input type="checkbox" id="rbMethod" ${_rb.methodology ? 'checked' : ''}><span>Methodology page</span></label>
         ${P.std ? `<label class="rb-check rb-opt${paceNote ? ' dis' : ''}"><input type="checkbox" id="rbPace" ${_rb.pace && !paceNote ? 'checked' : ''} ${paceNote ? 'disabled' : ''}><span>Season pace (estimate)</span></label>
-          ${paceNote ? `<div class="rb-hint rb-hint-in">${escapeHTML(paceNote)}</div>` : ''}` : ''}
+          ${paceNote ? `<div class="rb-hint rb-hint-in">${escapeHTML(paceNote)}</div>` : ''}
+          ${_rb.pace && !paceNote ? `<div class="rb-local">
+            <label for="rbLocal">Local home broadcasts this season</label>
+            <input id="rbLocal" type="number" class="select-control" min="${P.measured}" max="${P.usual}" step="1" value="${P.local || P.usual}">
+            <div class="rb-hint">Lower it when home games are national-only (no local TV). Saved with the data.</div>
+          </div>` : ''}` : ''}
         <div class="rb-field rb-rank"><label class="rb-lbl" for="rbRank">Rankings</label>
           <select id="rbRank" class="select-control rb-input">
             <option value="off" ${_rb.rank === 'off' ? 'selected' : ''}>Off</option>
@@ -1433,7 +1458,15 @@ function rbWire(body) {
       rbRefreshPreview();
     } else if (t.id === 'rbThrough') {
       _rb.throughGame = Number(t.value); rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true);
-    } else if (t.id === 'rbPace') { _rb.pace = t.checked; rbRefreshPreview(); }
+    } else if (t.id === 'rbPace') { _rb.pace = t.checked; rbRenderPanel(); rbRefreshPreview(); }
+    else if (t.id === 'rbLocal') {
+      const P = _rb.model.period;
+      const v = Math.min(P.usual, Math.max(P.measured, Math.round(Number(t.value)) || P.usual));
+      setLocalHomeBroadcasts(_rb.season, v === P.usual ? null : v);
+      // A number box fires "change" on blur: redraw after the blur finishes, or
+      // the panel is replaced while the browser is still moving focus.
+      setTimeout(() => { rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true); }, 0);
+    }
     else if (t.id === 'rbRank') { _rb.rank = t.value; rbRefreshPreview(); }
     else if (t.id === 'rbCompare') { _rb.compare = t.checked; rbRefreshPreview(); }
     else if (t.id === 'rbMethod') { _rb.methodology = t.checked; rbRefreshPreview(); }

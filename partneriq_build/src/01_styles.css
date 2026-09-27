@@ -2979,6 +2979,9 @@ a.home-action:focus-visible { outline: 2px solid var(--brand-red); outline-offse
 .rb-hint { font-size: 11px; color: var(--text-muted); margin-top: 5px; line-height: 1.4; }
 .rb-hint-in { margin: -2px 0 6px 23px; }
 .rb-rank { margin-top: 12px; }
+.rb-local { margin: 2px 0 8px 23px; display: grid; grid-template-columns: 1fr 64px; gap: 4px 8px; align-items: center; font-size: 12px; color: var(--text-dim); }
+.rb-local input { width: 64px; padding: 5px 6px; }
+.rb-local .rb-hint { grid-column: 1 / -1; margin-top: 0; }
 .rb-foot { border-top: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .rb-status { font-size: 12px; color: var(--text-muted); }
 .rb-print { white-space: nowrap; }

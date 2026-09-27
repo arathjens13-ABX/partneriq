@@ -459,6 +459,9 @@ const DataStore = {
   brandMergeRules: { ...BRAND_ALIAS_DEFAULTS },
   autoDetectedAliases: {},   // computed post-load; variant → canonical (word-prefix + case-normalization groupings)
   autoAliasBlocks: new Set(), // user-flagged names that should NOT be auto-merged; persisted in exports
+  // Per-season settings entered by hand, e.g. { '2025-26': { localHomeBroadcasts: 38 } }
+  // when national broadcasts mean fewer home games are measured than usual.
+  seasonSettings: {},
   brandNameChanges: new Set(), // alias keys that represent "formerly known as" renames (vs pure shorthand aliases)
   surveys: [],
   surveyGeneral: [],             // File 1 — GeneralSurvey_ — fan segment questions (beverages, game nights, bar spaces, TV segments)
@@ -490,6 +493,7 @@ const DataStore = {
     invalidateTVIndex();
     this.autoAliasBlocks = new Set();
     this.brandNameChanges = new Set();
+    this.seasonSettings = {};
     this.surveys = [];
     this.surveyGeneral = [];
     this.surveyPartner = [];
@@ -1153,6 +1157,7 @@ function loadPreloadedData() {
   DataStore.loadedFiles = (Array.isArray(PRELOADED_DATA.loadedFiles) ? PRELOADED_DATA.loadedFiles : [])
     .filter(f => !(f && f.type === 'tvRatings'));
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
+  DataStore.seasonSettings = (PRELOADED_DATA.seasonSettings && typeof PRELOADED_DATA.seasonSettings === 'object') ? PRELOADED_DATA.seasonSettings : {};
   DataStore.brandNameChanges = new Set(Array.isArray(PRELOADED_DATA.brandNameChanges) ? PRELOADED_DATA.brandNameChanges : []);
   normalizeLoadedRows();
   canonicalizeAllBrandData();
@@ -1273,6 +1278,7 @@ function getSerializableDataStore() {
     // Only successful ingests carry data worth round-tripping; error log lines stay session-only
     loadedFiles: (DataStore.loadedFiles || []).filter(f => f && f.success !== false),
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
+    seasonSettings: DataStore.seasonSettings || {},
     brandNameChanges: [...(DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : [])],
     userPresets: getCurrentUserPresets()
   };

@@ -11,6 +11,16 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.58 — Local home broadcasts setting for national-only games
+
+*September 2026 · Claude*
+
+- When some home games are national-only (no local broadcast, so no TV measurement), set **Local home broadcasts this season** in the report builder — it appears under "Season pace" once that's ticked. Defaults to the usual count (the median of earlier full seasons, 41); lowering it to e.g. 38 makes the pace project over the remaining local broadcasts only
+- Labels follow it: "Local home broadcasts 20 of 38", "Through home game 20 of 38 local broadcasts", and a methodology line: "This season has 38 local home broadcasts (3 home games are national-only…)"
+- A season with every expected local broadcast measured now counts as complete
+- Stored per season in the new `DataStore.seasonSettings` (declared, reset, exported and restored), so exported dashboards carry it. Can't be set below the broadcasts already measured
+- The season-over-season comparison is unaffected: it already compares the first N broadcasts of each season
+
 ## v0.57 — Season pace: range only, games 14–20, off by default
 
 *September 2026 · Claude*
