@@ -39,6 +39,12 @@ const path = require('path');
           out.push({ brand, season, combo: key, meth, html: renderReportDocument(model, { sections, methodology: meth, compare: true }) });
         });
       });
+      // Season to date (as of home game 20) with pace and rankings on
+      if (season === rptCurrentSeason() && bi % 2 === 0) {
+        const ms = buildReportModel(brand, season, { mode: 'std', throughGame: 20 });
+        out.push({ brand, season, combo: 'std20', meth: true, html: renderReportDocument(ms, { pace: true, rank: 'overall' }) });
+        out.push({ brand, season, combo: 'std20-cat', meth: true, html: renderReportDocument(ms, { pace: true, rank: 'category' }) });
+      }
       // An older season too, for partners that have one
       if (seasons[2] && bi % 3 === 0) {
         const m2 = buildReportModel(brand, seasons[2]);

@@ -126,36 +126,228 @@ function getReportSeasonsForBrand(brand) {
 // { count, kpis, chart?, table?, bars?, banner?, insights, source }.
 // Figures are raw numbers; formatting happens in the document layer.
 
-function rptBuildTV(brand, season) {
-  const rows = getBrandTVData(brand, season);
+// ── Period: full season or season to date ──────────────────────
+// "Season to date" is anchored on home broadcasts: through home game N means
+// every source up to that game's date. Prior-season comparisons use the same
+// point in the prior season (its first N home broadcasts) for TV, the same
+// months for organic, and the same wave for the survey.
+
+function rptISO(v) {
+  if (!v) return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+  const d = v instanceof Date ? v : parseDateLoose(v);
+  if (!d || isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Days since October 1 of the season's start year — lines seasons up by calendar.
+function rptDayOfSeason(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const start = m >= 7 ? y : y - 1;
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(start, 9, 1)) / 864e5);
+}
+
+function rptHomeDates(season) {
+  return season ? splitMatchdatesByVenue(getTVRowsForPeriod(season)).home : [];
+}
+
+// Home broadcasts measured so far, how many a season normally has (median of
+// earlier full seasons), and whether this season is over (its latest game is
+// as late in the calendar as earlier seasons' last games).
+function getReportPeriodInfo(season) {
+  const dates = rptHomeDates(season);
+  const prior = getPortfolioSeasons().filter(s => s < season).map(rptHomeDates).filter(d => d.length >= 30);
+  const counts = prior.map(d => d.length).sort((a, b) => a - b);
+  const total = Math.max(counts.length ? counts[Math.floor(counts.length / 2)] : 41, dates.length);
+  const lastDays = prior.map(d => rptDayOfSeason(d[d.length - 1]));
+  const complete = dates.length >= total ||
+    (lastDays.length > 0 && dates.length > 0 && rptDayOfSeason(dates[dates.length - 1]) >= Math.min(...lastDays) - 3);
+  return { dates, total, complete };
+}
+
+function rptContext(season, period) {
+  const info = getReportPeriodInfo(season);
+  const std = !!(period && period.mode === 'std' && info.dates.length);
+  const n = std ? Math.min(Math.max(1, period.throughGame || info.dates.length), info.dates.length) : null;
+  const through = std ? info.dates[n - 1] : null;
+  return {
+    season, std, info, throughGame: n, throughDate: through,
+    inWindow: v => { if (!std) return true; const iso = rptISO(v); return !!iso && iso <= through; },
+  };
+}
+
+// ── Season pace (TV QI media value) ────────────────────────────
+// Projects the rest of the season conservatively: the remaining home games are
+// valued at the LOWER of (a) the pace so far and (b) what earlier seasons
+// delivered after the same point. So a season that historically fades in the
+// back half pulls the projection down, but the projection never assumes the
+// back half will be stronger than the pace so far.
+//
+// Backtested on 2021-22 → 2024-25 (104 partner-seasons): the typical miss is
+// ~34% from game 10, ~19% from game 20, ~10% from game 30 — the same as a
+// straight per-game pace, with the least over-projection early. Hence no
+// projection before RPT_PACE_MIN_GAMES, and a range drawn from those misses.
+
+const RPT_PACE_MIN_GAMES = 12;
+const _rptPaceCache = new Map();
+
+// Per-home-game QIMV for each brand in a season: { dates, byBrand: {brand: [v…]}, portfolio: [v…] }
+function rptSeasonGameValues(season) {
+  const key = 'games|' + season + '|' + (DataStore.tvSignage || []).length;
+  if (_rptPaceCache.has(key)) return _rptPaceCache.get(key);
+  const dates = rptHomeDates(season);
+  const idx = new Map(dates.map((d, i) => [d, i]));
+  const byBrand = {}, portfolio = dates.map(() => 0);
+  getTVRowsForPeriod(season).forEach(r => {
+    const i = idx.get(String(r.Matchdate));
+    if (i === undefined) return;
+    const v = Number(r['QI Media Value ($)']) || 0;
+    (byBrand[r.Brand] = byBrand[r.Brand] || dates.map(() => 0))[i] += v;
+    portfolio[i] += v;
+  });
+  const out = { dates, byBrand, portfolio };
+  _rptPaceCache.set(key, out);
+  return out;
+}
+
+function rptCumulative(vals) {
+  let s = 0; const c = vals.map(v => (s += v));
+  return c;
+}
+
+// Cumulative share of the season's value at a fraction of the way through.
+function rptShareAt(cumShare, frac) {
+  const G = cumShare.length, x = frac * G, i = Math.floor(x);
+  const lo = i <= 0 ? 0 : cumShare[Math.min(i, G) - 1], hi = cumShare[Math.min(i, G - 1)];
+  return lo + (hi - lo) * (x - i);
+}
+
+// Season shapes (portfolio cumulative share by game) for complete seasons.
+function rptSeasonShapes(seasons) {
+  return seasons.map(s => {
+    const v = rptSeasonGameValues(s).portfolio;
+    const t = v.reduce((a, b) => a + b, 0);
+    return t > 0 ? rptCumulative(v).map(c => c / t) : null;
+  }).filter(Boolean);
+}
+
+function rptProject(toDate, n, G, shapes) {
+  const linear = toDate * G / n;
+  if (!shapes.length) return linear;
+  const F = shapes.reduce((a, c) => a + rptShareAt(c, n / G), 0) / shapes.length;
+  return F > 0 ? Math.min(linear, toDate / F) : linear;
+}
+
+function rptCompleteSeasonsBefore(season) {
+  return getPortfolioSeasons().filter(s => s < season && rptHomeDates(s).length >= 30);
+}
+
+// How far the method missed in earlier seasons at this point: the 20th and 80th
+// percentile of actual ÷ projected, over every partner present all season.
+function rptPaceRange(season, n, G) {
+  const key = `range|${season}|${n}|${G}|${(DataStore.tvSignage || []).length}`;
+  if (_rptPaceCache.has(key)) return _rptPaceCache.get(key);
+  const pool = rptCompleteSeasonsBefore(season);
+  const ratios = [];
+  pool.forEach(target => {
+    const others = rptSeasonShapes(pool.filter(s => s !== target));
+    const { dates, byBrand } = rptSeasonGameValues(target);
+    const Gt = dates.length, nt = Math.max(1, Math.round(n / G * Gt));
+    Object.values(byBrand).forEach(v => {
+      if (v.filter(x => x > 0).length < Gt * 0.8) return;
+      const actual = v.reduce((a, b) => a + b, 0);
+      const toDate = v.slice(0, nt).reduce((a, b) => a + b, 0);
+      if (actual > 0 && toDate > 0) ratios.push(actual / rptProject(toDate, nt, Gt, others));
+    });
+  });
+  ratios.sort((a, b) => a - b);
+  const q = p => ratios[Math.min(ratios.length - 1, Math.max(0, Math.round(p * (ratios.length - 1))))];
+  const out = ratios.length >= 10 ? { lo: q(0.2), hi: q(0.8), cases: ratios.length } : null;
+  _rptPaceCache.set(key, out);
+  return out;
+}
+
+// { value, lo, hi, n, G } for one brand's TV QIMV, or null with a reason.
+function rptSeasonPace(brand, ctx) {
+  const { info, throughGame: n } = ctx;
+  if (!ctx.std) return null;
+  if (info.complete && n >= info.dates.length) return { unavailable: 'The season is over, so there is nothing left to project.' };
+  if (n < RPT_PACE_MIN_GAMES) return { unavailable: `Pace appears from home game ${RPT_PACE_MIN_GAMES}; earlier projections miss by a third or more.` };
+  const G = info.total;
+  const v = (rptSeasonGameValues(ctx.season).byBrand[brand] || []).slice(0, n);
+  const toDate = v.reduce((a, b) => a + b, 0);
+  if (!(toDate > 0)) return null;
+  const value = rptProject(toDate, n, G, rptSeasonShapes(rptCompleteSeasonsBefore(ctx.season)));
+  const range = rptPaceRange(ctx.season, n, G);
+  return { value, lo: range ? value * range.lo : null, hi: range ? value * range.hi : null, n, G, toDate };
+}
+
+// ── Rankings (off by default; shown only for a top-3 finish) ───
+// Overall = among current partners (every brand if no roster is loaded).
+// Category = among current partners in the same category family — the part of
+// the roster category before " - " ("Beverage - Soft Drink" → "Beverage") —
+// and only when the family has at least three partners with data.
+const RPT_RANK_SHOW_MAX = 3;
+
+function rptCategoryFamily(brand) {
+  const r = (DataStore.partnerRoster || []).find(x => resolveCanonicalBrandName(x.Account || '') === brand);
+  return r && r.Category ? String(r.Category).split(' - ')[0].trim() : null;
+}
+
+function rptRank(brand, valuesByBrand) {
+  const hasRoster = (DataStore.partnerRoster || []).length > 0;
+  const pool = Object.entries(valuesByBrand).filter(([b, v]) => v > 0 && (!hasRoster || isCurrentPartner(b)));
+  const rankIn = list => {
+    const sorted = list.slice().sort((a, b) => b[1] - a[1]);
+    const i = sorted.findIndex(x => x[0] === brand);
+    return i < 0 ? null : { rank: i + 1, of: sorted.length };
+  };
+  const overall = rankIn(pool);
+  const fam = rptCategoryFamily(brand);
+  const famPool = fam ? pool.filter(([b]) => rptCategoryFamily(b) === fam) : [];
+  const category = famPool.length >= 3 ? rankIn(famPool) : null;
+  return {
+    overall: overall && { ...overall, label: hasRoster ? 'current partners' : 'brands' },
+    category: category && { ...category, label: `${fam} partners` },
+  };
+}
+
+// Section builders take (brand, season, ctx) — ctx from rptContext().
+
+function rptBuildTV(brand, season, ctx) {
+  const rows = getBrandTVData(brand, season).filter(r => ctx.inWindow(r.Matchdate));
   if (!rows.length) return null;
   const qimv = sum(rows, 'QI Media Value ($)');
   const imp  = sum(rows, 'Sponsorship QI Impressions');
   const mins = sum(rows, 'Duration (Minutes)');
   const games = getUniqueMatchdates(rows).length;
-  const portfolioRows = getTVRowsForPeriod(season);
+  const portfolioRows = getTVRowsForPeriod(season).filter(r => ctx.inWindow(r.Matchdate));
   const portfolioGames = getUniqueMatchdates(portfolioRows).length;
-  const yq = computeYoYForMetric(brand, season, 'QI Media Value ($)');
-  const yi = computeYoYForMetric(brand, season, 'Sponsorship QI Impressions');
-  const yoySets = getYoYRowSets(brand, season);
-  const vsPrior = yoySets ? `vs ${yoySets.priorSeason}` : '';
-  // "38 games · vs first 38 home broadcasts of 2024-25" → "first 38 home broadcasts of 2024-25"
-  const cleanBasis = y => y && y.basis.replace(/^.*?\bvs\s+/, '');
+
+  // Comparison with the same broadcasts last season.
+  let dq = null, di = null, basis = null, priorSeason = null;
+  if (ctx.std) {
+    priorSeason = getPreviousPortfolioSeason(season);
+    if (priorSeason && comparisonMode === 'auto-match') {
+      const win = getMatchedPriorWindow(portfolioRows, getTVRowsForPeriod(priorSeason));
+      const prev = getBrandTVData(brand, priorSeason).filter(r => win.dates.has(String(r.Matchdate)));
+      dq = pctChange(qimv, sum(prev, 'QI Media Value ($)'));
+      di = pctChange(imp, sum(prev, 'Sponsorship QI Impressions'));
+      basis = describePriorWindow(win, priorSeason);
+    }
+  } else {
+    const yq = computeYoYForMetric(brand, season, 'QI Media Value ($)');
+    const yi = computeYoYForMetric(brand, season, 'Sponsorship QI Impressions');
+    const sets = getYoYRowSets(brand, season);
+    dq = yq && yq.change; di = yi && yi.change;
+    basis = yq ? yq.basis.replace(/^.*?\bvs\s+/, '') : null;
+    priorSeason = sets ? sets.priorSeason : null;
+  }
+  const vsPrior = priorSeason ? `vs ${priorSeason}` : '';
 
   const byBrand = {};
   portfolioRows.forEach(r => { byBrand[r.Brand] = (byBrand[r.Brand] || 0) + (Number(r['QI Media Value ($)']) || 0); });
-  const ranked = Object.entries(byBrand).sort((a, b) => b[1] - a[1]);
-  const rank = ranked.findIndex(x => x[0] === brand) + 1;
-
-  // Season history (up to five seasons ending at this one). Seasons that also
-  // measured away broadcasts are flagged: their totals aren't like-for-like.
-  const allSeasons = [...new Set(getBrandTVData(brand).map(r => r.Season).filter(Boolean))].sort()
-    .filter(s => s <= season).slice(-5);
-  const history = allSeasons.map(s => {
-    const sr = getBrandTVData(brand, s);
-    return { label: s, value: sum(sr, 'QI Media Value ($)'), highlight: s === season,
-             flag: splitMatchdatesByVenue(sr).away.length > 0 };
-  });
+  const ranks = rptRank(brand, byBrand);
 
   const locMap = {};
   rows.forEach(r => {
@@ -170,33 +362,72 @@ function rptBuildTV(brand, season) {
   if (locs.length) locs[0].highlight = true;
   const top = locs[0];
 
+  const pace = rptSeasonPace(brand, ctx);
+  let chart = null;
+  if (ctx.std) {
+    // Pacing: cumulative QI media value by home game, this season vs last.
+    const cur = rptSeasonGameValues(season).byBrand[brand] || [];
+    const prevVals = priorSeason ? (rptSeasonGameValues(priorSeason).byBrand[brand] || []) : [];
+    chart = {
+      kind: 'pace', title: 'QI media value by home game, cumulative',
+      G: ctx.info.total, curr: rptCumulative(cur.slice(0, ctx.throughGame)),
+      prior: prevVals.length ? rptCumulative(prevVals) : null, priorLabel: priorSeason,
+      pace: pace && !pace.unavailable ? pace : null, format: formatCurrency,
+    };
+  } else {
+    const allSeasons = [...new Set(getBrandTVData(brand).map(r => r.Season).filter(Boolean))].sort()
+      .filter(s => s <= season).slice(-5);
+    const history = allSeasons.map(s => {
+      const sr = getBrandTVData(brand, s);
+      return { label: s, value: sum(sr, 'QI Media Value ($)'), highlight: s === season,
+               flag: splitMatchdatesByVenue(sr).away.length > 0 };
+    });
+    if (history.length > 1) chart = { kind: 'column', title: 'QI media value by season', data: history, format: formatCurrency,
+      footnote: history.some(h => h.flag) ? '* Season also measured away broadcasts, so its total isn\'t directly comparable.' : '' };
+  }
+
   const insights = [];
-  insights.push({ html: `<b>${formatCurrency(qimv)}</b> in QI media value across <b>${games}</b> of ${portfolioGames} measured broadcasts.`, delta: yq && { change: yq.change, basis: cleanBasis(yq) } });
-  if (rank) insights.push({ html: `Ranked <b>#${rank} of ${ranked.length}</b> brands on TV by QI media value in ${season}.` });
+  insights.push({ html: ctx.std
+      ? `<b>${formatCurrency(qimv)}</b> in QI media value through home game ${ctx.throughGame} of ${ctx.info.total}.`
+      : `<b>${formatCurrency(qimv)}</b> in QI media value across <b>${games}</b> of ${portfolioGames} measured broadcasts.`,
+    delta: dq !== null && dq !== undefined && basis && { change: dq, basis } });
+  // The pace line is controlled by the "Season pace" option, not the takeaway
+  // ticks, so it lives outside the tickable list (which keeps the same order in
+  // both periods).
+  const paceInsight = pace && !pace.unavailable
+    ? { html: `On pace for about <b>${formatCurrency(pace.value)}</b> over ${pace.G} home games${pace.lo ? ` (likely ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)})` : ''}.`, estimated: true }
+    : null;
   if (top && qimv > 0) insights.push({ html: `<b>${escapeHTML(top.label)}</b> delivered <b>${formatCurrency(top.value)}</b>, ${Math.round(top.value / qimv * 100)}% of the total.` });
-  if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: yi && { change: yi.change, basis: cleanBasis(yi) } });
+  if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: di !== null && di !== undefined && basis && { change: di, basis } });
   if (mins > 0) insights.push({ html: `<b>${formatCurrency(qimv / mins)}</b> of QI media value per on-screen minute.` });
 
+  const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : '—', meta: 'QI media value per on-screen minute' };
+  const fourth = pace && !pace.unavailable
+    ? { label: 'Season pace', value: formatCurrency(pace.value), meta: pace.lo ? `likely ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}` : `over ${pace.G} home games`, estimated: true }
+    : perMinute;
+
   return {
-    count: `${games} broadcast${games === 1 ? '' : 's'}`,
+    count: ctx.std ? `${games} of ${ctx.info.total} home games` : `${games} broadcast${games === 1 ? '' : 's'}`,
     kpis: [
-      { label: 'QI media value', value: formatCurrency(qimv), delta: yq && yq.change, cmp: vsPrior },
-      { label: 'QI impressions', value: formatNum(imp), delta: yi && yi.change, cmp: vsPrior },
-      { label: 'Broadcasts', value: `${games} of ${portfolioGames}`, meta: 'with this partner visible' },
-      { label: 'TV rank', value: rank ? `#${rank}` : '—', meta: `of ${ranked.length} brands by QI media value` },
+      { label: ctx.std ? 'QI media value to date' : 'QI media value', value: formatCurrency(qimv), delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
+      { label: 'QI impressions', value: formatNum(imp), delta: di, cmp: ctx.std ? 'vs same point last season' : vsPrior },
+      { label: ctx.std ? 'Home games' : 'Broadcasts', value: ctx.std ? `${games} of ${ctx.info.total}` : `${games} of ${portfolioGames}`, meta: ctx.std ? `through ${formatShortDate(parseDateLoose(ctx.throughDate))}` : 'with this partner visible' },
+      fourth,
     ],
-    chart: history.length > 1 ? { kind: 'column', title: 'QI media value by season', data: history, format: formatCurrency,
-      footnote: history.some(h => h.flag) ? '* Season also measured away broadcasts, so its total isn\'t directly comparable.' : '' } : null,
-    bars: { title: `QI media value by location · ${season}`, items: locs, format: formatCurrency },
+    rankable: { metric: 'TV QI media value', ranks, kpiIndex: pace && !pace.unavailable ? null : 3 },
+    pace, perMinute, paceInsight,
+    chart,
+    bars: { title: `QI media value by location · ${season}${ctx.std ? ' to date' : ''}`, items: locs, format: formatCurrency },
     insights,
-    source: `TV visible signage (QI media value).${yq ? ` Changes compare this season with the ${cleanBasis(yq)}.` : ''}`,
-    totals: { qimv, imp, games, portfolioGames, delta: yq && yq.change, deltaBasis: yq && yq.basis },
+    source: `TV visible signage (QI media value).${basis ? ` Changes compare this season with the ${basis}.` : ''}`,
+    totals: { qimv, imp, games, portfolioGames, delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
   };
 }
 
-function rptBuildVS(brand, season) {
+function rptBuildVS(brand, season, ctx) {
   if (season !== rptCurrentSeason() || !hasVirtualSignageDataForBrand(brand)) return null;
-  const group = groupVSPartnerStats(getVirtualSignagePartnerStats())
+  const upTo = ctx.std ? g => { const d = normalizeVSDate(g.DateRaw); return !!d && d <= ctx.throughDate; } : null;
+  const group = groupVSPartnerStats(getVirtualSignagePartnerStats(upTo))
     .find(g => g.brand === brand || g.members.some(m => m.brand === brand));
   if (!group || !group.totalGames) return null;
   const est = group.estimatedGames > 0;
@@ -226,9 +457,17 @@ function rptBuildVS(brand, season) {
   };
 }
 
-function rptBuildOrganic(brand, season) {
+// A monthly report counts toward season-to-date once its month has ended.
+function rptMonthInWindow(ym, ctx) {
+  if (!ctx.std) return true;
+  const [y, m] = ym.split('-').map(Number);
+  return rptISO(new Date(y, m, 0)) <= ctx.throughDate;
+}
+
+function rptBuildOrganic(brand, season, ctx) {
   const all = getBrandZoomphPerf(brand);
-  const rows = all.filter(r => rptSeasonOfMonth(r._reportMonth) === season);
+  const inSeason = r => rptSeasonOfMonth(r._reportMonth) === season && rptMonthInWindow(r._reportMonth, ctx);
+  const rows = all.filter(inSeason);
   if (!rows.length) return null;
   const tot = k => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
   const views = tot('ViewsImpressions'), eng = tot('Engagements'), value = tot('BrandValue'),
@@ -249,7 +488,7 @@ function rptBuildOrganic(brand, season) {
 
   const topOf = arr => {
     const m = {};
-    arr.filter(r => rptSeasonOfMonth(r._reportMonth) === season).forEach(r => { m[r.Name] = (m[r.Name] || 0) + (Number(r.BrandValue) || 0); });
+    arr.filter(inSeason).forEach(r => { m[r.Name] = (m[r.Name] || 0) + (Number(r.BrandValue) || 0); });
     return Object.entries(m).sort((a, b) => b[1] - a[1])[0];
   };
   const topSeries = topOf(getBrandZoomphSeries(brand));
@@ -264,8 +503,12 @@ function rptBuildOrganic(brand, season) {
   if (topSeries && topSeries[1] > 0) insights.push({ html: `Top content series: <b>${escapeHTML(topSeries[0])}</b> (${formatCurrency(topSeries[1])}).` });
   if (topAsset && topAsset[1] > 0) insights.push({ html: `Top branded asset: <b>${escapeHTML(topAsset[0])}</b> (${formatCurrency(topAsset[1])}).` });
 
+  const valueByBrand = {};
+  (DataStore.zoomphBrandPerf || []).filter(inSeason).forEach(r => { valueByBrand[r.Brand] = (valueByBrand[r.Brand] || 0) + (Number(r.BrandValue) || 0); });
+
   return {
     count: `${months.length} report${months.length === 1 ? '' : 's'}`,
+    rankable: { metric: 'organic brand value', ranks: rptRank(brand, valueByBrand), kpiIndex: null },
     kpis: [
       { label: 'Brand value', value: formatCurrency(value), delta: d('BrandValue'), cmp: 'vs same months last season' },
       { label: 'Views / impressions', value: formatNum(views), delta: d('ViewsImpressions'), cmp: 'vs same months last season' },
@@ -282,14 +525,14 @@ function rptBuildOrganic(brand, season) {
   };
 }
 
-function rptBuildSurvey(brand, season) {
+function rptBuildSurvey(brand, season, ctx) {
   const phaseOrder = p => (p === 'Late' ? 1 : 0);
   const waves = getBrandSurveyData(brand)
     .map(w => ({ ...w,
       u: rptSurveyPct(w.UnaidedPct, w.UnaidedRecallRank),
       a: rptSurveyPct(w.AidedPct, w.AidedRecallRank),
       h: rptSurveyPct(w.LocalHQPct, w.LocalHQRecallRank) }))
-    .filter(w => w.Season && w.Season <= season)
+    .filter(w => w.Season && w.Season <= season && (w.Season < season || ctx.inWindow(w.Date)))
     .sort((x, y) => x.Season.localeCompare(y.Season) || phaseOrder(x.Phase) - phaseOrder(y.Phase));
   const inSeason = waves.filter(w => w.Season === season && (w.u !== null || w.a !== null));
   if (!inSeason.length) return null;
@@ -300,10 +543,17 @@ function rptBuildSurvey(brand, season) {
   const wave = `${latest.Season} ${latest.Phase}`;
 
   const chartWaves = waves.slice(-8);
+  // Recall is ranked only through the rankings option, so an unflattering
+  // position never prints by default.
+  const unaidedByBrand = {};
+  (DataStore.surveys || []).filter(r => r.Survey === latest.Survey).forEach(r => {
+    const v = rptSurveyPct(r.UnaidedPct, r.UnaidedRecallRank);
+    if (v !== null) unaidedByBrand[r.Brand] = v;
+  });
   const insights = [];
-  if (latest.u !== null) insights.push({ html: `<b>${rptFmtPct0(latest.u)}</b> unaided recall in the ${wave} survey, <b>#${latest.UnaidedRecallRank || '—'}</b> of ${surveyed} brands.`, delta: pp('u') !== null && { change: pp('u'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
-  if (latest.a !== null) insights.push({ html: `<b>${rptFmtPct0(latest.a)}</b> aided recall, <b>#${latest.AidedRecallRank || '—'}</b> of ${surveyed}.`, delta: pp('a') !== null && { change: pp('a'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
-  if (latest.h !== null) insights.push({ html: `<b>${rptFmtPct0(latest.h)}</b> identify the partner as locally headquartered (#${latest.LocalHQRecallRank || '—'}).` });
+  if (latest.u !== null) insights.push({ html: `<b>${rptFmtPct0(latest.u)}</b> unaided recall in the ${wave} survey.`, delta: pp('u') !== null && { change: pp('u'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
+  if (latest.a !== null) insights.push({ html: `<b>${rptFmtPct0(latest.a)}</b> aided recall.`, delta: pp('a') !== null && { change: pp('a'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
+  if (latest.h !== null) insights.push({ html: `<b>${rptFmtPct0(latest.h)}</b> identify the partner as locally headquartered.` });
   const firstU = waves.find(w => w.u !== null);
   if (firstU && firstU !== latest && latest.u !== null) insights.push({ html: `Unaided recall has moved from ${rptFmtPct0(firstU.u)} (${firstU.Season} ${firstU.Phase}) to ${rptFmtPct0(latest.u)}.` });
 
@@ -312,8 +562,8 @@ function rptBuildSurvey(brand, season) {
     kpis: [
       { label: 'Unaided recall', value: rptFmtPct0(latest.u), delta: pp('u'), points: true, cmp: prior ? `vs ${prior.Season} ${prior.Phase}` : '' },
       { label: 'Aided recall', value: rptFmtPct0(latest.a), delta: pp('a'), points: true, cmp: prior ? `vs ${prior.Season} ${prior.Phase}` : '' },
-      { label: 'Unaided rank', value: latest.UnaidedRecallRank ? `#${latest.UnaidedRecallRank}` : '—', meta: `of ${surveyed} brands surveyed` },
-      { label: 'Local HQ', value: rptFmtPct0(latest.h), meta: latest.h !== null ? `#${latest.LocalHQRecallRank || '—'}` : 'not asked' },
+      { label: 'Local HQ', value: rptFmtPct0(latest.h), meta: latest.h !== null ? 'see the partner as local' : 'not asked' },
+      { label: 'Brands surveyed', value: String(surveyed), meta: `${wave} wave` },
     ],
     chart: chartWaves.length > 1 ? {
       kind: 'line', title: 'Recall by survey wave',
@@ -327,23 +577,18 @@ function rptBuildSurvey(brand, season) {
     } : null,
     table: {
       title: 'Survey waves',
-      columns: [
-        { label: 'Wave' }, { label: 'Unaided', num: true }, { label: 'Rank', num: true },
-        { label: 'Aided', num: true }, { label: 'Rank', num: true }, { label: 'Local HQ', num: true },
-      ],
-      rows: chartWaves.slice().reverse().map(w => [
-        `${w.Season} ${w.Phase}`, rptFmtPct0(w.u), w.u !== null && w.UnaidedRecallRank ? `#${w.UnaidedRecallRank}` : '—',
-        rptFmtPct0(w.a), w.a !== null && w.AidedRecallRank ? `#${w.AidedRecallRank}` : '—', rptFmtPct0(w.h),
-      ]),
+      columns: [{ label: 'Wave' }, { label: 'Unaided', num: true }, { label: 'Aided', num: true }, { label: 'Local HQ', num: true }],
+      rows: chartWaves.slice().reverse().map(w => [`${w.Season} ${w.Phase}`, rptFmtPct0(w.u), rptFmtPct0(w.a), rptFmtPct0(w.h)]),
     },
+    rankable: { metric: 'unaided recall', ranks: rptRank(brand, unaidedByBrand), kpiIndex: 3 },
     insights,
     source: `Blazers fan survey, ${surveyed} brands in the ${wave} wave. "—" means the brand wasn't asked about in that wave. Changes are percentage points vs the same wave last season.`,
     totals: { unaided: latest.u, rank: latest.UnaidedRecallRank, surveyed, wave },
   };
 }
 
-function rptBuildPaid(brand, season) {
-  const rows = getBrandPaidData(brand, season);
+function rptBuildPaid(brand, season, ctx) {
+  const rows = getBrandPaidData(brand, season).filter(r => ctx.inWindow(r.DailyDate || r.ReportingStart));
   if (!rows.length) return null;
   const agg = paidAggregate(rows);
   if (!(agg.spend > 0 || agg.impressions > 0)) return null;
@@ -378,7 +623,7 @@ function rptBuildPaid(brand, season) {
   };
 }
 
-function rptBuildANC(brand, season) {
+function rptBuildANC(brand, season, ctx) {
   const rows = getANCLEDRowsForBrand(brand)
     .filter(r => (fiscalSeasonFromDate(r.StartDate) || rptCurrentSeason()) === season);
   if (!rows.length) return null;
@@ -410,7 +655,7 @@ function rptBuildANC(brand, season) {
   };
 }
 
-function rptBuildAffidavit(brand, season) {
+function rptBuildAffidavit(brand, season, ctx) {
   if (season !== rptCurrentSeason()) return null;
   const a = getAffidavitSummary(brand);
   if (!a || !a.totalSpots) return null;
@@ -444,7 +689,7 @@ function rptBuildAffidavit(brand, season) {
   };
 }
 
-function rptBuildWeb(brand, season) {
+function rptBuildWeb(brand, season, ctx) {
   const cur = rptCurrentSeason();
   const banners = getBlazersBannersForBrand(brand).filter(r => normalizeSeasonLabel(r.Season || '') === season && !isWebDNU(r.LineItem || ''));
   const rq = season === cur ? getRQBannersForBrand(brand) : [];
@@ -483,18 +728,31 @@ const REPORT_SECTION_BUILDERS = {
   paid: rptBuildPaid, ancLED: rptBuildANC, affidavit: rptBuildAffidavit, webDisplay: rptBuildWeb,
 };
 
+// These sources carry season totals, not dates, so they can't be cut to a date.
+const RPT_SEASON_TOTALS_ONLY = new Set(['ancLED', 'affidavit', 'webDisplay']);
+
 // Every figure the report can show for one partner and season. Sections with
-// nothing to show come back as { available: false } so the builder can grey
-// them out instead of printing zeros.
-function buildReportModel(brand, season) {
+// nothing to show come back as { available: false, reason } so the builder can
+// grey them out instead of printing zeros.
+// period: { mode: 'full' } (default) or { mode: 'std', throughGame: N }.
+function buildReportModel(brand, season, period) {
+  const ctx = rptContext(season, period);
   const sections = {};
   REPORT_SECTION_DEFS.forEach(def => {
+    if (ctx.std && RPT_SEASON_TOTALS_ONLY.has(def.key)) {
+      sections[def.key] = { ...def, available: false, reason: 'Season totals only' };
+      return;
+    }
     let data = null, error = null;
-    try { data = REPORT_SECTION_BUILDERS[def.key](brand, season); }
+    try { data = REPORT_SECTION_BUILDERS[def.key](brand, season, ctx); }
     catch (e) { error = e; console.warn(`Report section ${def.key} failed`, e); }
-    sections[def.key] = data ? { ...def, available: true, ...data } : { ...def, available: false, error };
+    sections[def.key] = data ? { ...def, available: true, ...data } : { ...def, available: false, error, reason: `No ${season} data` };
   });
-  return { brand, season, priorSeason: rptPriorSeason(season), sections, generated: new Date() };
+  return {
+    brand, season, priorSeason: rptPriorSeason(season), sections, generated: new Date(),
+    period: { std: ctx.std, throughGame: ctx.throughGame, throughDate: ctx.throughDate, total: ctx.info.total,
+              measured: ctx.info.dates.length, complete: ctx.info.complete, dates: ctx.info.dates },
+  };
 }
 
 
@@ -583,6 +841,50 @@ function rptSvgLine(labels, series, format, W = RPT_CARD_W, H = 214) {
   return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">${grid}${xl}${lines}${endLabels}</svg>`;
 }
 
+// Cumulative value by home game: this season (solid red, to date), last season
+// (teal, full), and the pace estimate (dashed red to the season's last game,
+// with its likely range as a bracket).
+function rptSvgPace(c, W = RPT_CARD_W, H = 224) {
+  const padL = 54, padR = 118, padT = 12, padB = 34;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const G = c.G, curr = c.curr, prior = c.prior ? c.prior.slice(0, G) : null;
+  const top = Math.max(curr[curr.length - 1] || 0, prior ? prior[prior.length - 1] : 0, c.pace ? (c.pace.hi || c.pace.value) : 0) * 1.06 || 1;
+  const X = g => padL + (G <= 1 ? 0 : (g - 1) / (G - 1) * pw);
+  const Y = v => padT + ph - v / top * ph;
+  let grid = '';
+  for (let k = 0; k <= 4; k++) {
+    const v = top / 4 * k;
+    grid += `<line x1="${padL}" x2="${padL + pw}" y1="${Y(v)}" y2="${Y(v)}" class="${k ? 'gr' : 'ax'}"/>
+      <text x="${padL - 8}" y="${Y(v) + 4}" text-anchor="end" class="yl">${escapeHTML(c.format(v))}</text>`;
+  }
+  const ticks = [1, ...[10, 20, 30, 40].filter(t => t < G - 3), G];
+  const xl = ticks.map(t => `<text x="${X(t)}" y="${padT + ph + 18}" text-anchor="middle" class="xl">${t}</text>`).join('') +
+    `<text x="${padL + pw / 2}" y="${H - 2}" text-anchor="middle" class="xl">Home game</text>`;
+  const path = arr => arr.map((v, i) => `${i ? 'L' : 'M'}${X(i + 1)},${Y(v)}`).join(' ');
+  const ends = [];
+  let marks = '';
+  if (prior && prior.length) {
+    marks += `<path d="${path(prior)}" fill="none" stroke="var(--series-2)" stroke-width="2"/>`;
+    ends.push({ y: Y(prior[prior.length - 1]), c: 'var(--series-2)', text: `${c.priorLabel} ${c.format(prior[prior.length - 1])}` });
+  }
+  const n = curr.length, last = curr[n - 1] || 0;
+  if (c.pace) {
+    marks += `<path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.value)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-dasharray="5 4"/>`;
+    if (c.pace.lo) marks += `<path d="M${X(G) - 5},${Y(c.pace.lo)} H${X(G) + 5} M${X(G)},${Y(c.pace.lo)} V${Y(c.pace.hi)} M${X(G) - 5},${Y(c.pace.hi)} H${X(G) + 5}" stroke="var(--series-1)" stroke-width="1.5" opacity="0.55" fill="none"/>`;
+    ends.push({ y: Y(c.pace.value), c: 'var(--series-1)', dash: true, text: `Pace est. ${c.format(c.pace.value)}` });
+  }
+  if (n) {
+    marks += `<path d="${path(curr)}" fill="none" stroke="var(--series-1)" stroke-width="2"/>
+      <circle cx="${X(n)}" cy="${Y(last)}" r="4" fill="var(--series-1)" stroke="#fff" stroke-width="2"/>
+      <text x="${X(n)}" y="${Y(last) - 10}" text-anchor="middle" class="vl hl">${escapeHTML(c.format(last))}</text>`;
+  }
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
+  const endLabels = ends.map(e => `<line x1="${padL + pw + 12}" x2="${padL + pw + 24}" y1="${e.y}" y2="${e.y}" stroke="${e.c}" stroke-width="2"${e.dash ? ' stroke-dasharray="4 3"' : ''}/>
+    <text x="${padL + pw + 28}" y="${e.y + 4}" class="el">${escapeHTML(e.text)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">${grid}${xl}${marks}${endLabels}</svg>`;
+}
+
 function rptBarListHTML(items, format) {
   const max = Math.max(...items.map(i => i.value), 0) || 1;
   return `<div class="bl">${items.map(i => `<div class="bl-r">
@@ -604,7 +906,7 @@ function rptCard(title, sub, inner, extraClass = '') {
 
 function rptInsightHTML(ins, opts) {
   const d = opts.compare && ins.delta ? ` ${rptDeltaHTML(ins.delta.change, ins.delta.points)} vs ${escapeHTML(ins.delta.basis)}` : '';
-  return `<li>${ins.html}${d}</li>`;
+  return `<li>${ins.html}${ins.estimated ? ' <span class="estflag">Est.</span>' : ''}${d}</li>`;
 }
 
 // Blocks are the unit of pagination: each is kept whole on one page.
@@ -612,19 +914,46 @@ function rptInsightHTML(ins, opts) {
 // page); data-break="before" starts a new page.
 function rptBlock(html, attrs = '') { return `<div class="blk"${attrs ? ' ' + attrs : ''}>${html}</div>`; }
 
+// The rank to print for a section, or null: only when rankings are switched on
+// and the partner finished in the top three of the chosen pool.
+function rptShownRank(sec, opts) {
+  if (!opts.rank || opts.rank === 'off' || !sec.rankable) return null;
+  const r = sec.rankable.ranks[opts.rank];
+  return r && r.rank <= RPT_RANK_SHOW_MAX ? { ...r, metric: sec.rankable.metric } : null;
+}
+function rptOrdinal(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`; }
+
 function rptSectionBlocks(sec, opts) {
   const out = [];
+  // "Season pace" switched off: drop the pace tile, line and chart segment.
+  if (opts.pace === false && sec.pace && !sec.pace.unavailable) {
+    sec = { ...sec, kpis: sec.kpis.map(k => k.label === 'Season pace' ? sec.perMinute : k),
+            chart: sec.chart && { ...sec.chart, pace: null },
+            rankable: sec.rankable && { ...sec.rankable, kpiIndex: 3 } };
+  }
   const tag = `data-sec="${escapeAttr(sec.label)}"`;
   const blockIn = (html, attrs = '') => rptBlock(html, `${tag}${attrs ? ' ' + attrs : ''}`);
-  out.push(blockIn(`<div class="sec-h"><h2>${escapeHTML(sec.label)}</h2><div class="sec-m">${escapeHTML(sec.count)} · ${escapeHTML(opts.season)}</div></div>`, 'data-keep="next"'));
+  out.push(blockIn(`<div class="sec-h"><h2>${escapeHTML(sec.label)}</h2><div class="sec-m">${escapeHTML(sec.count)} · ${escapeHTML(opts.season)}${opts.std ? ' to date' : ''}</div></div>`, 'data-keep="next"'));
   if (sec.banner) {
     const icon = sec.banner.tone === 'warning' ? '!' : 'i';
     out.push(blockIn(`<div class="banner ${sec.banner.tone}"><span class="bi">${icon}</span><div><b>${escapeHTML(sec.banner.title)}</b> ${escapeHTML(sec.banner.text)}</div></div>`, 'data-keep="next"'));
   }
-  out.push(blockIn(`<div class="kpis">${sec.kpis.map(k => rptKpiHTML(k, opts)).join('')}</div>`));
+  const shown = rptShownRank(sec, opts);
+  let kpis = sec.kpis;
+  if (shown && sec.rankable.kpiIndex !== null && sec.rankable.kpiIndex !== undefined) {
+    kpis = kpis.slice();
+    kpis[sec.rankable.kpiIndex] = { label: opts.rank === 'category' ? 'Category rank' : 'Partner rank', value: `#${shown.rank}`, meta: `of ${shown.of} ${shown.label}` };
+  }
+  out.push(blockIn(`<div class="kpis">${kpis.map(k => rptKpiHTML(k, opts)).join('')}</div>`));
   if (sec.chart && sec.chart.kind === 'column') {
     const fn = sec.chart.footnote ? `<div class="card-f">${escapeHTML(sec.chart.footnote)}</div>` : '';
     out.push(blockIn(rptCard(sec.chart.title, '', rptSvgColumns(sec.chart.data, sec.chart.format) + fn)));
+  }
+  if (sec.chart && sec.chart.kind === 'pace') {
+    const legend = `<span class="lg"><i style="background:var(--series-1)"></i>${escapeHTML(opts.season)}</span>` +
+      (sec.chart.prior ? `<span class="lg"><i style="background:var(--series-2)"></i>${escapeHTML(sec.chart.priorLabel)}</span>` : '') +
+      (sec.chart.pace ? `<span class="lg"><i class="dash"></i>Pace (est.)</span>` : '');
+    out.push(blockIn(rptCard(sec.chart.title, legend, rptSvgPace(sec.chart))));
   }
   if (sec.chart && sec.chart.kind === 'line') {
     const legend = sec.chart.series.map((s, i) => `<span class="lg"><i style="background:var(--series-${i + 1})"></i>${escapeHTML(s.name)}</span>`).join('');
@@ -633,7 +962,10 @@ function rptSectionBlocks(sec, opts) {
   if (sec.bars && sec.bars.items.length) out.push(blockIn(rptCard(sec.bars.title, '', rptBarListHTML(sec.bars.items, sec.bars.format))));
   if (sec.table && sec.table.rows.length) out.push(blockIn(rptCard(sec.table.title, '', rptTableHTML(sec.table), 'tbl')));
   const chosen = (opts.insights && opts.insights[sec.key]) || sec.insights.map((_, i) => i).slice(0, 3);
+  // The pace line follows the "Season pace" option, not the takeaway ticks.
   const ins = chosen.map(i => sec.insights[i]).filter(Boolean);
+  if (sec.paceInsight && opts.pace !== false) ins.splice(Math.min(1, ins.length), 0, sec.paceInsight);
+  if (shown) ins.unshift({ html: `<b>${rptOrdinal(shown.rank)}</b> in ${escapeHTML(shown.metric)} among ${shown.of} ${escapeHTML(shown.label)}.` });
   const note = ((opts.notes || {})[sec.key] || '').trim();
   if (ins.length || note) {
     out.push(blockIn(`${ins.length ? `<ul class="ins">${ins.map(x => rptInsightHTML(x, opts)).join('')}</ul>` : ''}${note ? `<p class="unote">${escapeHTML(note)}</p>` : ''}`, 'data-keep="next" data-tail="1"'));
@@ -657,6 +989,10 @@ const RPT_METHODOLOGY = {
   webDisplay: [['Display impressions', 'Banner impressions served on Blazers.com and RoseQuarter.com. Pre-roll plays are video ad starts.']],
 };
 
+function rptPeriodLabel(model) {
+  return model.period.std ? `${model.season} · through home game ${model.period.throughGame}` : model.season;
+}
+
 function rptSummaryBlocks(model, keys, opts) {
   const S = model.sections, out = [];
   const tv = keys.includes('tv') ? S.tv : null, vs = keys.includes('virtualSignage') ? S.virtualSignage : null;
@@ -664,9 +1000,12 @@ function rptSummaryBlocks(model, keys, opts) {
   if (tv || vs) {
     const q = (tv ? tv.totals.qimv : 0) + (vs ? vs.totals.qimv : 0);
     const parts = [tv && `TV ${formatCurrency(tv.totals.qimv)}`, vs && `on-court ${formatCurrency(vs.totals.qimv)}${vs.totals.estimated ? ' (est.)' : ''}`].filter(Boolean);
-    tiles.push({ label: 'Total QI media value', value: formatCurrency(q),
-      delta: !vs && tv ? tv.totals.delta : null, cmp: tv && tv.kpis[0].cmp,
-      meta: parts.length > 1 ? parts.join(' + ') : (tv ? `${tv.totals.games} broadcasts` : ''), estimated: !!(vs && vs.totals.estimated && !tv) });
+    const pace = tv && tv.pace && !tv.pace.unavailable && opts.pace !== false ? tv.pace : null;
+    tiles.push({ label: model.period.std ? 'QI media value to date' : 'Total QI media value', value: formatCurrency(q),
+      delta: !vs && tv ? tv.totals.delta : null, cmp: tv && tv.totals.cmp,
+      meta: pace && !vs ? `TV on pace for about ${formatCurrency(pace.value)} (est.)`
+        : parts.length > 1 ? parts.join(' + ') : (tv ? `${tv.totals.games} broadcasts` : ''),
+      estimated: !!(vs && vs.totals.estimated && !tv) });
   }
   const pick = [
     ['tv', sec => sec.kpis[1]], ['organic', sec => sec.kpis[0]], ['survey', sec => sec.kpis[0]],
@@ -677,12 +1016,12 @@ function rptSummaryBlocks(model, keys, opts) {
     if (tiles.length >= 4) break;
     if (keys.includes(k)) { const t = f(S[k]); if (t && !tiles.includes(t)) tiles.push(t); }
   }
-  out.push(rptBlock(`<div class="sec-h"><h2>Executive summary</h2><div class="sec-m">${escapeHTML(model.season)}</div></div>`, 'data-keep="next"'));
+  out.push(rptBlock(`<div class="sec-h"><h2>Executive summary</h2><div class="sec-m">${escapeHTML(rptPeriodLabel(model))}</div></div>`, 'data-keep="next"'));
   out.push(rptBlock(`<div class="kpis${tv || vs ? ' sum' : ''}">${tiles.map((t, i) => rptKpiHTML(t, opts, i === 0 && (tv || vs))).join('')}</div>`, 'data-keep="next"'));
   const lead = keys.map(k => {
     const chosen = (opts.insights && opts.insights[k]) || [0];
     return S[k].insights[chosen[0]];
-  }).filter(Boolean).slice(0, 6);
+  }).filter(x => x && (!x.estimated || opts.pace !== false)).slice(0, 6);
   if (lead.length) out.push(rptBlock(`<ul class="ins">${lead.map(x => rptInsightHTML(x, opts)).join('')}</ul>`, 'data-gap="section"'));
   return out;
 }
@@ -748,6 +1087,9 @@ body{background:var(--surface-page);color:var(--text-primary);font-family:var(--
 .card-s{font-size:12px;color:var(--text-secondary);display:flex;gap:14px}
 .card-f{font-size:12px;color:var(--text-muted);margin-top:6px}
 .lg{display:inline-flex;align-items:center;gap:6px}.lg i{display:inline-block;width:14px;height:2px}
+.lg i.dash{background:repeating-linear-gradient(90deg,var(--series-1) 0 4px,transparent 4px 7px)}
+.meta.through{font-weight:700;color:var(--text-primary);margin-bottom:3px}
+.ins .estflag{display:inline-block;margin-left:4px;vertical-align:1px}
 svg{display:block;font-family:var(--body)}
 svg .vl{font-size:12px;fill:var(--text-secondary)}svg .vl.hl{fill:var(--text-primary);font-weight:700}
 svg .xl,svg .yl{font-size:12px;fill:var(--text-muted)}svg .el{font-size:12px;fill:var(--text-secondary)}
@@ -867,7 +1209,7 @@ const RPT_PAGINATE_JS = `
 // opts: { sections: {key: bool}, insights: {key: [index]}, notes: {key: text},
 //         compare: bool, methodology: bool, preparedBy }
 function renderReportDocument(model, opts) {
-  opts = { compare: true, methodology: true, ...opts, season: model.season };
+  opts = { compare: true, methodology: true, pace: true, rank: 'off', ...opts, season: model.season, std: model.period.std };
   const keys = REPORT_SECTION_DEFS.map(d => d.key)
     .filter(k => model.sections[k].available && (!opts.sections || opts.sections[k]));
   const brand = model.brand;
@@ -875,14 +1217,17 @@ function renderReportDocument(model, opts) {
   const generated = model.generated.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   const partnerLogo = lookupPartnerLogo(brand);
   const L = REPORT_BRAND_ASSETS.logos;
-  const title = `${brand} — Partnership report ${model.season}`;
+  const P = model.period;
+  const throughTxt = P.std ? `Through home game ${P.throughGame} of ${P.total} (${formatShortDate(parseDateLoose(P.throughDate))})` : '';
+  const title = `${brand} — Partnership report ${model.season}${P.std ? ` through game ${P.throughGame}` : ''}`;
 
   const blocks = [];
   blocks.push(rptBlock(`<div class="cover">
       <div>
-        <div class="eyebrow">Partnership report · ${escapeHTML(model.season)}</div>
+        <div class="eyebrow">Partnership report · ${escapeHTML(model.season)}${P.std ? ' season to date' : ''}</div>
         <h1 class="name">${escapeHTML(brand)}</h1>
-        <div class="meta">Prepared by ${escapeHTML(opts.preparedBy || (DASHBOARD_META && DASHBOARD_META.preparedBy) || 'Partnership Strategy')} · Generated ${generated}${latest && model.season === rptCurrentSeason() ? ` · Data through ${formatShortDate(latest)}` : ''}</div>
+        ${throughTxt ? `<div class="meta through">${escapeHTML(throughTxt)}</div>` : ''}
+        <div class="meta">Prepared by ${escapeHTML(opts.preparedBy || (DASHBOARD_META && DASHBOARD_META.preparedBy) || 'Partnership Strategy')} · Generated ${generated}${latest && model.season === rptCurrentSeason() && !P.std ? ` · Data through ${formatShortDate(latest)}` : ''}</div>
       </div>
       <div class="cover-logos">
         ${partnerLogo && partnerLogo.type !== 'svg' ? `<img class="pl" src="${partnerLogo.data}" alt="${escapeAttr(brand)}"><span class="sep"></span>` : ''}
@@ -898,6 +1243,12 @@ function renderReportDocument(model, opts) {
     keys.forEach(k => blocks.push(...rptSectionBlocks(model.sections[k], opts)));
     if (opts.methodology) {
       const defs = keys.flatMap(k => RPT_METHODOLOGY[k] || []);
+      if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season; organic with the same completed months; the survey with the same wave. Sources that only report season totals are left out.`]);
+      if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && opts.pace !== false) {
+        defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. The range is how far this method missed for partners in earlier seasons at the same point (20th–80th percentile). It is an estimate, not a forecast of any game.`]);
+      }
+      const shownRanks = keys.map(k => rptShownRank(model.sections[k], opts)).filter(Boolean);
+      if (shownRanks.length) defs.push(['Rankings', opts.rank === 'category' ? 'Among current partners in the same category family, shown only for a top-three position.' : 'Among current partners, shown only for a top-three position.']);
       blocks.push(rptBlock(`<div class="sec-h"><h2>Methodology and definitions</h2><div class="sec-m">${escapeHTML(model.season)}</div></div>`, 'data-keep="next"'));
       // Not forced onto its own page: in a short report it sits under the
       // content; in a long one it moves to a fresh page when it won't fit.
@@ -930,6 +1281,7 @@ const _rb = {
   brand: null, season: null, seasons: [], model: null,
   sections: {}, insights: {}, notes: {}, open: {},
   compare: true, methodology: true, timer: null, renderId: 0,
+  period: 'full', throughGame: null, pace: true, rank: 'off',
 };
 
 function rptDefaultBrand() {
@@ -942,13 +1294,18 @@ function rptDefaultBrand() {
 
 function rptPlainText(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; }
 
-function rbLoadModel() {
-  _rb.model = buildReportModel(_rb.brand, _rb.season);
+// preserve: keep the current section/takeaway choices where they still apply
+// (switching the period shouldn't undo someone's picks).
+function rbLoadModel(preserve) {
+  const prev = preserve ? { sections: _rb.sections, insights: _rb.insights } : null;
+  _rb.model = buildReportModel(_rb.brand, _rb.season, { mode: _rb.period, throughGame: _rb.throughGame });
   _rb.sections = {}; _rb.insights = {};
   REPORT_SECTION_DEFS.forEach(def => {
     const sec = _rb.model.sections[def.key];
-    _rb.sections[def.key] = sec.available;
-    _rb.insights[def.key] = sec.available ? sec.insights.map((_, i) => i).slice(0, 3) : [];
+    const keep = prev && prev.sections[def.key] !== undefined;
+    _rb.sections[def.key] = sec.available && (keep ? prev.sections[def.key] || !prev.insights[def.key] || !prev.insights[def.key].length : true);
+    const kept = keep ? (prev.insights[def.key] || []).filter(i => i < (sec.insights || []).length) : null;
+    _rb.insights[def.key] = sec.available ? (kept && kept.length ? kept : sec.insights.map((_, i) => i).slice(0, 3)) : [];
   });
 }
 
@@ -957,6 +1314,7 @@ function rbSetBrand(brand) {
   _rb.brand = brand;
   _rb.seasons = getReportSeasonsForBrand(brand);
   if (!_rb.seasons.includes(_rb.season)) _rb.season = _rb.seasons[0] || rptCurrentSeason();
+  _rb.throughGame = null;
   rbLoadModel();
 }
 
@@ -964,6 +1322,7 @@ function openReportModal(prefilledBrand = null) {
   const brand = prefilledBrand || currentBrand || rptDefaultBrand();
   if (!brand) { showErrorToast('Load partner data before building a report.'); return; }
   _rb.season = null;
+  _rb.period = 'full';
   rbSetBrand(brand);
   document.getElementById('reportModalBackdrop').classList.add('active');
   rbRenderPanel();
@@ -993,11 +1352,17 @@ function rbRenderPanel() {
       <div class="rb-sec-row">
         <label class="rb-check"><input type="checkbox" data-rb-sec="${def.key}" ${on ? 'checked' : ''} ${sec.available ? '' : 'disabled'}>
           <span class="rb-sec-name">${escapeHTML(def.label)}</span></label>
-        <span class="rb-sec-meta">${sec.available ? escapeHTML(sec.count) : `No ${escapeHTML(_rb.season)} data`}</span>
+        <span class="rb-sec-meta">${sec.available ? escapeHTML(sec.count) : escapeHTML(sec.reason || `No ${_rb.season} data`)}</span>
         ${sec.available ? `<button type="button" class="rb-exp" data-rb-open="${def.key}" aria-expanded="${open}" title="Takeaways and note">${open ? '▾' : '▸'}</button>` : '<span class="rb-exp-sp"></span>'}
       </div>${detail}</div>`;
   }).join('');
   const prior = rptPriorSeason(_rb.season);
+  const P = m.period;
+  const tv = m.sections.tv;
+  const paceInfo = tv && tv.available ? tv.pace : null;
+  const paceNote = !P.std ? '' : paceInfo && paceInfo.unavailable ? paceInfo.unavailable : !paceInfo ? 'Needs TV data to date.' : '';
+  const gameOpts = P.dates.map((d, i) => `<option value="${i + 1}" ${i + 1 === P.throughGame ? 'selected' : ''}>Game ${i + 1} · ${escapeHTML(formatShortDate(parseDateLoose(d)))}</option>`).reverse().join('');
+  const hasCategory = !!rptCategoryFamily(_rb.brand);
 
   body.innerHTML = `<div class="rb">
     <aside class="rb-side">
@@ -1007,12 +1372,29 @@ function rbRenderPanel() {
           <datalist id="rbPartnerList">${opts(current)}${opts(others)}</datalist></div>
         <div class="rb-field"><label class="rb-lbl" for="rbSeason">Season</label>
           <select id="rbSeason" class="select-control rb-input">${_rb.seasons.map(s => `<option value="${s}" ${s === _rb.season ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="rb-field"><span class="rb-lbl">Period</span>
+          <div class="rb-seg" role="group" aria-label="Period">
+            <button type="button" data-rb-period="full" class="${P.std ? '' : 'on'}" aria-pressed="${!P.std}">Full season</button>
+            <button type="button" data-rb-period="std" class="${P.std ? 'on' : ''}" aria-pressed="${P.std}" ${P.dates.length ? '' : 'disabled'}>Season to date</button>
+          </div>
+          ${P.std ? `<select id="rbThrough" class="select-control rb-input rb-through" aria-label="Through home game">${gameOpts}</select>
+            <div class="rb-hint">Through home game ${P.throughGame} of ${P.total}</div>` : ''}
+        </div>
         <div class="rb-group-h"><span class="rb-lbl">Sections</span>
           <span><button type="button" class="rb-link" data-rb-all="1">All</button> · <button type="button" class="rb-link" data-rb-all="0">None</button></span></div>
         <div class="rb-secs">${secRows}</div>
         <div class="rb-group-h"><span class="rb-lbl">Options</span></div>
         <label class="rb-check rb-opt"><input type="checkbox" id="rbCompare" ${_rb.compare ? 'checked' : ''}><span>Compare with ${escapeHTML(prior || 'last season')}</span></label>
         <label class="rb-check rb-opt"><input type="checkbox" id="rbMethod" ${_rb.methodology ? 'checked' : ''}><span>Methodology page</span></label>
+        ${P.std ? `<label class="rb-check rb-opt${paceNote ? ' dis' : ''}"><input type="checkbox" id="rbPace" ${_rb.pace && !paceNote ? 'checked' : ''} ${paceNote ? 'disabled' : ''}><span>Season pace (estimate)</span></label>
+          ${paceNote ? `<div class="rb-hint rb-hint-in">${escapeHTML(paceNote)}</div>` : ''}` : ''}
+        <div class="rb-field rb-rank"><label class="rb-lbl" for="rbRank">Rankings</label>
+          <select id="rbRank" class="select-control rb-input">
+            <option value="off" ${_rb.rank === 'off' ? 'selected' : ''}>Off</option>
+            <option value="overall" ${_rb.rank === 'overall' ? 'selected' : ''}>Overall (among current partners)</option>
+            <option value="category" ${_rb.rank === 'category' ? 'selected' : ''} ${hasCategory ? '' : 'disabled'}>Category${hasCategory ? ` (${escapeHTML(rptCategoryFamily(_rb.brand))})` : ' (no roster category)'}</option>
+          </select>
+          <div class="rb-hint">Shown only where the partner is in the top ${RPT_RANK_SHOW_MAX}.</div></div>
       </div>
       <div class="rb-foot">
         <div class="rb-status" id="rbStatus">Building preview…</div>
@@ -1033,20 +1415,29 @@ function rbWire(body) {
       if (DataStore.getBrandList().includes(t.value)) { rbSetBrand(t.value); rbRenderPanel(); rbRefreshPreview(true); }
       else t.value = _rb.brand;
     } else if (t.id === 'rbSeason') {
-      _rb.season = t.value; rbLoadModel(); rbRenderPanel(); rbRefreshPreview(true);
+      _rb.season = t.value; _rb.throughGame = null; rbLoadModel(); rbRenderPanel(); rbRefreshPreview(true);
     } else if (t.dataset.rbSec) {
       _rb.sections[t.dataset.rbSec] = t.checked; rbRefreshPreview();
     } else if (t.dataset.rbIns) {
       const k = t.dataset.rbIns;
       _rb.insights[k] = [...body.querySelectorAll(`[data-rb-ins="${k}"]:checked`)].map(x => Number(x.value));
       rbRefreshPreview();
-    } else if (t.id === 'rbCompare') { _rb.compare = t.checked; rbRefreshPreview(); }
+    } else if (t.id === 'rbThrough') {
+      _rb.throughGame = Number(t.value); rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true);
+    } else if (t.id === 'rbPace') { _rb.pace = t.checked; rbRefreshPreview(); }
+    else if (t.id === 'rbRank') { _rb.rank = t.value; rbRefreshPreview(); }
+    else if (t.id === 'rbCompare') { _rb.compare = t.checked; rbRefreshPreview(); }
     else if (t.id === 'rbMethod') { _rb.methodology = t.checked; rbRefreshPreview(); }
   });
   body.addEventListener('input', e => {
     if (e.target.dataset.rbNote) { _rb.notes[e.target.dataset.rbNote] = e.target.value; rbRefreshPreview(); }
   });
   body.addEventListener('click', e => {
+    const per = e.target.closest('[data-rb-period]');
+    if (per && !per.disabled) {
+      if (per.dataset.rbPeriod !== _rb.period) { _rb.period = per.dataset.rbPeriod; rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true); }
+      return;
+    }
     const open = e.target.closest('[data-rb-open]');
     if (open) { const k = open.dataset.rbOpen; _rb.open[k] = !_rb.open[k]; rbRenderPanel(); return; }
     const all = e.target.closest('[data-rb-all]');
@@ -1059,7 +1450,8 @@ function rbWire(body) {
 }
 
 function rbOptions() {
-  return { sections: _rb.sections, insights: _rb.insights, notes: _rb.notes, compare: _rb.compare, methodology: _rb.methodology };
+  return { sections: _rb.sections, insights: _rb.insights, notes: _rb.notes, compare: _rb.compare,
+           methodology: _rb.methodology, pace: _rb.pace, rank: _rb.rank };
 }
 
 // Rebuilds the preview. Typing and ticking are debounced; brand/season changes

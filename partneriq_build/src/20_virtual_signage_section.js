@@ -251,8 +251,10 @@ function computeVSLocationMeans() {
 // Away games and home games with no matching TV row both use the position-level
 // simple mean — the same value shown in the "Season averages" table at the bottom
 // of the page, so estimates are always consistent with the displayed averages.
-function getVirtualSignagePartnerStats() {
-  const schedule = DataStore.virtualSignageSchedule || [];
+// gameFilter (optional) limits the schedule, e.g. to games up to a date for a
+// season-to-date report.
+function getVirtualSignagePartnerStats(gameFilter) {
+  const schedule = (DataStore.virtualSignageSchedule || []).filter(g => !gameFilter || gameFilter(g));
   const means    = computeVSLocationMeans(); // keyed by lowercase location
   const tvLookup = buildVSTVDateLookup();    // keyed by "YYYY-MM-DD|location_lc"
 

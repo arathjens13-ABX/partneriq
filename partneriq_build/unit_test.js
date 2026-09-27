@@ -266,6 +266,34 @@ t.check('document is light only (no dark theme)',           !/prefers-color-sche
 t.check('document names the partner and season',            docHtml.includes('<title>Nike — Partnership report 2025-26</title>'));
 t.check('dashboard source never closes its own <script>',   !evalIn(ctx, `RPT_PAGINATE_JS`).includes('</script'));
 
+t.group('season pace — conservative projection');
+// A season shape where 60% of value lands in the first half (a back-half fade).
+t.check('a historical fade lowers the projection below straight pace',
+  evalIn(ctx, `(() => { const fade = [0.3, 0.6, 0.8, 1.0]; return rptProject(100, 2, 4, [fade]) < 100 * 4 / 2; })()`));
+t.eq('projection with a fade', evalIn(ctx, `Math.round(rptProject(100, 2, 4, [[0.3, 0.6, 0.8, 1.0]]))`), 167);
+t.eq('a historically stronger finish is never assumed', evalIn(ctx, `rptProject(100, 2, 4, [[0.2, 0.4, 0.7, 1.0]])`), 200);
+t.eq('no history → straight pace', evalIn(ctx, `rptProject(100, 2, 4, [])`), 200);
+
+t.group('rankings — off by default, top three only, category families');
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.partnerRoster = [
+    { Account: 'Coca-Cola', Category: 'Beverage - Soft Drink' }, { Account: 'Sprite', Category: 'Beverage - Soft Drink' },
+    { Account: 'Gatorade', Category: 'Beverage - Isotonic Sports Drink' }, { Account: 'Polar', Category: 'Beverage - Other' },
+    { Account: 'Nike', Category: 'Athletic Apparel & Footwear' }, { Account: 'Adidas', Category: 'Athletic Apparel & Footwear' },
+  ];
+  canonicalizeAllBrandData(true);
+})()`);
+const rk = JSON.parse(evalIn(ctx, `JSON.stringify(rptRank('Gatorade', { 'Coca-Cola': 9, Sprite: 8, Gatorade: 7, Polar: 1, Nike: 50, Adidas: 40, 'Not A Partner': 99 }))`));
+t.eq('overall rank ignores non-partners',            rk.overall.rank + '/' + rk.overall.of, '5/6');
+t.eq('category rank uses the family ("Beverage")',   rk.category.rank + '/' + rk.category.of + ' ' + rk.category.label, '3/4 Beverage partners');
+t.eq('a family under three partners gets no rank',   evalIn(ctx, `rptRank('Nike', { Nike: 5, Adidas: 4 }).category`), null);
+const sec = { rankable: { metric: 'm', ranks: { overall: { rank: 5, of: 6, label: 'x' }, category: { rank: 3, of: 4, label: 'y' } } } };
+ctx.__sec = sec;
+t.eq('rankings are off by default',                  evalIn(ctx, `rptShownRank(globalThis.__sec, {})`), null);
+t.eq('a 5th place is never shown',                   evalIn(ctx, `rptShownRank(globalThis.__sec, { rank: 'overall' })`), null);
+t.eq('a 3rd place in category is shown',             evalIn(ctx, `rptShownRank(globalThis.__sec, { rank: 'category' }).rank`), 3);
+
 t.group('version constant');
 t.check('DASHBOARD_VERSION is defined', typeof ctx.DASHBOARD_VERSION === 'string' && /^v\d+\.\d+$/.test(ctx.DASHBOARD_VERSION));
 

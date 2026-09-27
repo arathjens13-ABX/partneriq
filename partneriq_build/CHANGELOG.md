@@ -11,6 +11,34 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.56 — Season-to-date reports, season pace and rankings
+
+*September 2026 · Claude*
+
+### Season to date
+
+- The report builder has a **Period** choice: Full season or **Season to date**, through any home game ("Game 20 · Jan 17, 2026"). Nothing new on the dashboard itself — it's one control in the builder
+- Every source is cut to that date: TV through home game N, compared with the first N home broadcasts last season; organic through the last completed month, compared with the same months; the survey through the waves already run; paid and virtual signage through the date. Affidavits, ANC LED and web banners only report season totals, so they're greyed out ("Season totals only") in this mode
+- TV gets a pacing chart: cumulative QI media value by home game, this season against last
+- Cover, headers and the methodology say what period the report covers
+
+### Season pace (estimate)
+
+- Optional, on by default in season-to-date mode: "On pace for about $X over 41 home games (likely $A–$B)", as a tile, a takeaway and a dashed line on the pacing chart, always marked Est.
+- **Conservative by design:** the remaining home games are valued at the lower of the pace so far and what earlier seasons delivered after the same point. A historical back-half fade lowers the estimate; a stronger finish is never assumed
+- Backtested on 2021-22 → 2024-25 (104 partner-seasons): typical miss ~34% from game 10, ~19% from game 20, ~10% from game 30 — no worse than straight pace, and the least over-projection early. So there's no pace before home game 12, and the "likely" range is the 20th–80th percentile of those past misses
+- Finding: the TV back half is not consistently weaker. It faded in 2021-22 and 2025-26 but was stronger in 2022-23 and 2024-25 (and Nielsen ratings rose in the 2024-25 back half). With the seasons averaged there's no net fade, so today the estimate equals the straight per-game pace; it will lean lower automatically if future seasons fade
+
+### Rankings
+
+- New **Rankings** option, **off by default**: Overall (among current partners) or Category (among current partners in the same category family — "Beverage - Soft Drink" counts as Beverage — when the family has at least three partners with data)
+- Printed only for a **top-3** position, as a takeaway and (TV, survey) a tile. Covers TV QI media value, organic brand value and unaided recall
+- The always-on ranks are gone: the "TV rank" tile, "#2 of 69 brands" in survey takeaways, and the rank columns in the survey table
+
+### Tests
+
+- 10 new unit checks (projection rule, ranking pools and visibility); the layout check now includes season-to-date reports with pace and rankings (525 reports, 0 problems)
+
 ## v0.55 — Partner report rebuilt on the design system
 
 *September 2026 · Claude*
