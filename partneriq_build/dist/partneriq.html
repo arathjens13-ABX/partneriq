@@ -3360,7 +3360,7 @@ const VIEWER_MODE = false;
 // Version history lives in CHANGELOG.md, not in the dashboard. It used to be a
 // 1,400-line array rendered as an in-app page, which shipped ~92 KB of internal
 // development notes to every viewer. Update both together when you ship.
-const DASHBOARD_VERSION = 'v0.56';
+const DASHBOARD_VERSION = 'v0.57';
 const DASHBOARD_VERSION_DATE = 'September 2026';
 
 // ============================================================
@@ -13766,8 +13766,14 @@ function rptContext(season, period) {
 // ~34% from game 10, ~19% from game 20, ~10% from game 30 — the same as a
 // straight per-game pace, with the least over-projection early. Hence no
 // projection before RPT_PACE_MIN_GAMES, and a range drawn from those misses.
+//
+// Product rules: off by default; offered only between home games
+// RPT_PACE_MIN_GAMES and RPT_PACE_MAX_GAMES (mid-season, when a pace is both
+// meaningful and still useful); and always shown as a range, never a single
+// figure. No range → no projection.
 
-const RPT_PACE_MIN_GAMES = 12;
+const RPT_PACE_MIN_GAMES = 14;
+const RPT_PACE_MAX_GAMES = 20;
 const _rptPaceCache = new Map();
 
 // Per-home-game QIMV for each brand in a season: { dates, byBrand: {brand: [v…]}, portfolio: [v…] }
@@ -13851,14 +13857,15 @@ function rptSeasonPace(brand, ctx) {
   const { info, throughGame: n } = ctx;
   if (!ctx.std) return null;
   if (info.complete && n >= info.dates.length) return { unavailable: 'The season is over, so there is nothing left to project.' };
-  if (n < RPT_PACE_MIN_GAMES) return { unavailable: `Pace appears from home game ${RPT_PACE_MIN_GAMES}; earlier projections miss by a third or more.` };
+  if (n < RPT_PACE_MIN_GAMES || n > RPT_PACE_MAX_GAMES) return { unavailable: `Only when the report runs through home game ${RPT_PACE_MIN_GAMES}–${RPT_PACE_MAX_GAMES}.` };
   const G = info.total;
   const v = (rptSeasonGameValues(ctx.season).byBrand[brand] || []).slice(0, n);
   const toDate = v.reduce((a, b) => a + b, 0);
   if (!(toDate > 0)) return null;
   const value = rptProject(toDate, n, G, rptSeasonShapes(rptCompleteSeasonsBefore(ctx.season)));
   const range = rptPaceRange(ctx.season, n, G);
-  return { value, lo: range ? value * range.lo : null, hi: range ? value * range.hi : null, n, G, toDate };
+  if (!range) return { unavailable: 'Not enough earlier seasons to give a range.' };
+  return { value, lo: value * range.lo, hi: value * range.hi, n, G, toDate };
 }
 
 // ── Rankings (off by default; shown only for a top-3 finish) ───
@@ -13974,7 +13981,7 @@ function rptBuildTV(brand, season, ctx) {
   // ticks, so it lives outside the tickable list (which keeps the same order in
   // both periods).
   const paceInsight = pace && !pace.unavailable
-    ? { html: `On pace for about <b>${formatCurrency(pace.value)}</b> over ${pace.G} home games${pace.lo ? ` (likely ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)})` : ''}.`, estimated: true }
+    ? { html: `On pace for <b>${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}</b> over ${pace.G} home games.`, estimated: true }
     : null;
   if (top && qimv > 0) insights.push({ html: `<b>${escapeHTML(top.label)}</b> delivered <b>${formatCurrency(top.value)}</b>, ${Math.round(top.value / qimv * 100)}% of the total.` });
   if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: di !== null && di !== undefined && basis && { change: di, basis } });
@@ -13982,7 +13989,7 @@ function rptBuildTV(brand, season, ctx) {
 
   const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : '—', meta: 'QI media value per on-screen minute' };
   const fourth = pace && !pace.unavailable
-    ? { label: 'Season pace', value: formatCurrency(pace.value), meta: pace.lo ? `likely ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}` : `over ${pace.G} home games`, estimated: true }
+    ? { label: 'Season pace', value: `${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}`, meta: `likely range over ${pace.G} home games`, estimated: true, small: true }
     : perMinute;
 
   return {
@@ -14358,7 +14365,7 @@ function rptKpiHTML(k, opts, hero) {
   const sub = delta ? `${delta}${k.cmp ? ` ${escapeHTML(k.cmp)}` : ''}` : (k.meta ? escapeHTML(k.meta) : '&nbsp;');
   return `<div class="kpi${hero ? ' hero' : ''}${k.estimated ? ' est' : ''}">
     <div class="kpi-l">${escapeHTML(k.label)}${k.estimated ? '<span class="estflag">Est.</span>' : ''}</div>
-    <div class="kpi-v">${escapeHTML(k.value)}</div>
+    <div class="kpi-v${k.small ? ' sm' : ''}">${escapeHTML(k.value)}</div>
     <div class="kpi-d">${sub}</div>
   </div>`;
 }
@@ -14427,7 +14434,7 @@ function rptSvgPace(c, W = RPT_CARD_W, H = 224) {
   const padL = 54, padR = 118, padT = 12, padB = 34;
   const pw = W - padL - padR, ph = H - padT - padB;
   const G = c.G, curr = c.curr, prior = c.prior ? c.prior.slice(0, G) : null;
-  const top = Math.max(curr[curr.length - 1] || 0, prior ? prior[prior.length - 1] : 0, c.pace ? (c.pace.hi || c.pace.value) : 0) * 1.06 || 1;
+  const top = Math.max(curr[curr.length - 1] || 0, prior ? prior[prior.length - 1] : 0, c.pace ? c.pace.hi : 0) * 1.06 || 1;
   const X = g => padL + (G <= 1 ? 0 : (g - 1) / (G - 1) * pw);
   const Y = v => padT + ph - v / top * ph;
   let grid = '';
@@ -14448,9 +14455,10 @@ function rptSvgPace(c, W = RPT_CARD_W, H = 224) {
   }
   const n = curr.length, last = curr[n - 1] || 0;
   if (c.pace) {
-    marks += `<path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.value)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-dasharray="5 4"/>`;
-    if (c.pace.lo) marks += `<path d="M${X(G) - 5},${Y(c.pace.lo)} H${X(G) + 5} M${X(G)},${Y(c.pace.lo)} V${Y(c.pace.hi)} M${X(G) - 5},${Y(c.pace.hi)} H${X(G) + 5}" stroke="var(--series-1)" stroke-width="1.5" opacity="0.55" fill="none"/>`;
-    ends.push({ y: Y(c.pace.value), c: 'var(--series-1)', dash: true, text: `Pace est. ${c.format(c.pace.value)}` });
+    // The likely range as a shaded cone from today to the season's last game.
+    marks += `<path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.hi)} L${X(G)},${Y(c.pace.lo)} Z" fill="var(--series-1)" opacity="0.12"/>
+      <path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.hi)} M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.lo)}" fill="none" stroke="var(--series-1)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    ends.push({ y: Y((c.pace.lo + c.pace.hi) / 2), c: 'var(--series-1)', dash: true, text: `Pace ${c.format(c.pace.lo)}–${c.format(c.pace.hi)}` });
   }
   if (n) {
     marks += `<path d="${path(curr)}" fill="none" stroke="var(--series-1)" stroke-width="2"/>
@@ -14505,7 +14513,7 @@ function rptOrdinal(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3
 function rptSectionBlocks(sec, opts) {
   const out = [];
   // "Season pace" switched off: drop the pace tile, line and chart segment.
-  if (opts.pace === false && sec.pace && !sec.pace.unavailable) {
+  if (!opts.pace && sec.pace && !sec.pace.unavailable) {
     sec = { ...sec, kpis: sec.kpis.map(k => k.label === 'Season pace' ? sec.perMinute : k),
             chart: sec.chart && { ...sec.chart, pace: null },
             rankable: sec.rankable && { ...sec.rankable, kpiIndex: 3 } };
@@ -14543,7 +14551,7 @@ function rptSectionBlocks(sec, opts) {
   const chosen = (opts.insights && opts.insights[sec.key]) || sec.insights.map((_, i) => i).slice(0, 3);
   // The pace line follows the "Season pace" option, not the takeaway ticks.
   const ins = chosen.map(i => sec.insights[i]).filter(Boolean);
-  if (sec.paceInsight && opts.pace !== false) ins.splice(Math.min(1, ins.length), 0, sec.paceInsight);
+  if (sec.paceInsight && !!opts.pace) ins.splice(Math.min(1, ins.length), 0, sec.paceInsight);
   if (shown) ins.unshift({ html: `<b>${rptOrdinal(shown.rank)}</b> in ${escapeHTML(shown.metric)} among ${shown.of} ${escapeHTML(shown.label)}.` });
   const note = ((opts.notes || {})[sec.key] || '').trim();
   if (ins.length || note) {
@@ -14579,10 +14587,10 @@ function rptSummaryBlocks(model, keys, opts) {
   if (tv || vs) {
     const q = (tv ? tv.totals.qimv : 0) + (vs ? vs.totals.qimv : 0);
     const parts = [tv && `TV ${formatCurrency(tv.totals.qimv)}`, vs && `on-court ${formatCurrency(vs.totals.qimv)}${vs.totals.estimated ? ' (est.)' : ''}`].filter(Boolean);
-    const pace = tv && tv.pace && !tv.pace.unavailable && opts.pace !== false ? tv.pace : null;
+    const pace = tv && tv.pace && !tv.pace.unavailable && !!opts.pace ? tv.pace : null;
     tiles.push({ label: model.period.std ? 'QI media value to date' : 'Total QI media value', value: formatCurrency(q),
       delta: !vs && tv ? tv.totals.delta : null, cmp: tv && tv.totals.cmp,
-      meta: pace && !vs ? `TV on pace for about ${formatCurrency(pace.value)} (est.)`
+      meta: pace && !vs ? `TV on pace for ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)} (est.)`
         : parts.length > 1 ? parts.join(' + ') : (tv ? `${tv.totals.games} broadcasts` : ''),
       estimated: !!(vs && vs.totals.estimated && !tv) });
   }
@@ -14600,7 +14608,7 @@ function rptSummaryBlocks(model, keys, opts) {
   const lead = keys.map(k => {
     const chosen = (opts.insights && opts.insights[k]) || [0];
     return S[k].insights[chosen[0]];
-  }).filter(x => x && (!x.estimated || opts.pace !== false)).slice(0, 6);
+  }).filter(x => x && (!x.estimated || !!opts.pace)).slice(0, 6);
   if (lead.length) out.push(rptBlock(`<ul class="ins">${lead.map(x => rptInsightHTML(x, opts)).join('')}</ul>`, 'data-gap="section"'));
   return out;
 }
@@ -14658,6 +14666,7 @@ body{background:var(--surface-page);color:var(--text-primary);font-family:var(--
 .estflag{font-size:12px;letter-spacing:.04em;border:1px solid var(--status-warning);color:var(--status-warning);border-radius:3px;padding:0 4px;line-height:15px}
 .kpi-v{font-family:var(--display);font-size:40px;line-height:1.02;letter-spacing:.02em;margin-top:4px;white-space:nowrap}
 .kpi.hero .kpi-v{font-size:60px;line-height:.95}
+.kpi-v.sm{font-size:28px;line-height:1.1;margin-top:9px;margin-bottom:5px}
 .kpi-d{font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.3}
 .dl{font-weight:700;white-space:nowrap}.dl.up{color:var(--delta-up)}.dl.down{color:var(--delta-down)}.dl.flat{color:var(--text-secondary)}
 .card{border:1px solid var(--border);border-radius:6px;padding:12px 15px 12px;background:var(--surface-card)}
@@ -14788,7 +14797,7 @@ const RPT_PAGINATE_JS = `
 // opts: { sections: {key: bool}, insights: {key: [index]}, notes: {key: text},
 //         compare: bool, methodology: bool, preparedBy }
 function renderReportDocument(model, opts) {
-  opts = { compare: true, methodology: true, pace: true, rank: 'off', ...opts, season: model.season, std: model.period.std };
+  opts = { compare: true, methodology: true, pace: false, rank: 'off', ...opts, season: model.season, std: model.period.std };
   const keys = REPORT_SECTION_DEFS.map(d => d.key)
     .filter(k => model.sections[k].available && (!opts.sections || opts.sections[k]));
   const brand = model.brand;
@@ -14823,8 +14832,8 @@ function renderReportDocument(model, opts) {
     if (opts.methodology) {
       const defs = keys.flatMap(k => RPT_METHODOLOGY[k] || []);
       if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season; organic with the same completed months; the survey with the same wave. Sources that only report season totals are left out.`]);
-      if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && opts.pace !== false) {
-        defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. The range is how far this method missed for partners in earlier seasons at the same point (20th–80th percentile). It is an estimate, not a forecast of any game.`]);
+      if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && !!opts.pace) {
+        defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. It is shown only as a range — how far this method missed for partners in earlier seasons at the same point (20th–80th percentile) — and only between home games ${RPT_PACE_MIN_GAMES} and ${RPT_PACE_MAX_GAMES}. It is an estimate, not a forecast of any game.`]);
       }
       const shownRanks = keys.map(k => rptShownRank(model.sections[k], opts)).filter(Boolean);
       if (shownRanks.length) defs.push(['Rankings', opts.rank === 'category' ? 'Among current partners in the same category family, shown only for a top-three position.' : 'Among current partners, shown only for a top-three position.']);
@@ -14860,7 +14869,7 @@ const _rb = {
   brand: null, season: null, seasons: [], model: null,
   sections: {}, insights: {}, notes: {}, open: {},
   compare: true, methodology: true, timer: null, renderId: 0,
-  period: 'full', throughGame: null, pace: true, rank: 'off',
+  period: 'full', throughGame: null, pace: false, rank: 'off',
 };
 
 function rptDefaultBrand() {

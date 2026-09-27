@@ -274,6 +274,14 @@ t.eq('projection with a fade', evalIn(ctx, `Math.round(rptProject(100, 2, 4, [[0
 t.eq('a historically stronger finish is never assumed', evalIn(ctx, `rptProject(100, 2, 4, [[0.2, 0.4, 0.7, 1.0]])`), 200);
 t.eq('no history → straight pace', evalIn(ctx, `rptProject(100, 2, 4, [])`), 200);
 
+t.eq('pace is offered only from home game 14 to 20', evalIn(ctx, `RPT_PACE_MIN_GAMES + '-' + RPT_PACE_MAX_GAMES`), '14-20');
+t.check('pace is off unless asked for', (() => {
+  const h = evalIn(ctx, `renderReportDocument({ brand: 'X', season: '2025-26', generated: new Date(), period: { std: true, throughGame: 20, total: 41, throughDate: '2026-01-17', dates: [] },
+    sections: Object.fromEntries(REPORT_SECTION_DEFS.map(d => [d.key, { ...d, available: d.key === 'tv', count: '', kpis: [], insights: [], source: '',
+      pace: { value: 5, lo: 4, hi: 6, n: 20, G: 41 }, paceInsight: { html: 'On pace for 4–6', estimated: true }, perMinute: { label: 'Per minute', value: '1' }, totals: {} }])) }, {})`);
+  return !h.includes('On pace for');
+})());
+
 t.group('rankings — off by default, top three only, category families');
 evalIn(ctx, `(() => {
   DataStore.reset();

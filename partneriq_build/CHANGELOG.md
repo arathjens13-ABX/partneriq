@@ -11,6 +11,14 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.57 — Season pace: range only, games 14–20, off by default
+
+*September 2026 · Claude*
+
+- Season pace is **off by default** — tick "Season pace (estimate)" in the builder to include it
+- Offered only when the report runs through **home game 14 to 20**; outside that window the option is greyed out and says why
+- Always a **range**, never a single figure: the tile reads "$4.13M–$6.57M · likely range over 41 home games", the takeaway "On pace for $4.13M–$6.57M", and the chart draws the range as a shaded cone to the last home game. If a range can't be computed, no projection is shown
+
 ## v0.56 — Season-to-date reports, season pace and rankings
 
 *September 2026 · Claude*
