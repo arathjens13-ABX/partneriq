@@ -11,125 +11,16 @@ When you ship a change, add a new section at the top and update
 
 ---
 
-## v0.58 — Local home broadcasts setting for national-only games
-
-*September 2026 · Claude*
-
-- When some home games are national-only (no local broadcast, so no TV measurement), set **Local home broadcasts this season** in the report builder — it appears under "Season pace" once that's ticked. Defaults to the usual count (the median of earlier full seasons, 41); lowering it to e.g. 38 makes the pace project over the remaining local broadcasts only
-- Labels follow it: "Local home broadcasts 20 of 38", "Through home game 20 of 38 local broadcasts", and a methodology line: "This season has 38 local home broadcasts (3 home games are national-only…)"
-- A season with every expected local broadcast measured now counts as complete
-- Stored per season in the new `DataStore.seasonSettings` (declared, reset, exported and restored), so exported dashboards carry it. Can't be set below the broadcasts already measured
-- The season-over-season comparison is unaffected: it already compares the first N broadcasts of each season
-
-## v0.57 — Season pace: range only, games 14–20, off by default
-
-*September 2026 · Claude*
-
-- Season pace is **off by default** — tick "Season pace (estimate)" in the builder to include it
-- Offered only when the report runs through **home game 14 to 20**; outside that window the option is greyed out and says why
-- Always a **range**, never a single figure: the tile reads "$4.13M–$6.57M · likely range over 41 home games", the takeaway "On pace for $4.13M–$6.57M", and the chart draws the range as a shaded cone to the last home game. If a range can't be computed, no projection is shown
-
-## v0.56 — Season-to-date reports, season pace and rankings
-
-*September 2026 · Claude*
-
-### Season to date
-
-- The report builder has a **Period** choice: Full season or **Season to date**, through any home game ("Game 20 · Jan 17, 2026"). Nothing new on the dashboard itself — it's one control in the builder
-- Every source is cut to that date: TV through home game N, compared with the first N home broadcasts last season; organic through the last completed month, compared with the same months; the survey through the waves already run; paid and virtual signage through the date. Affidavits, ANC LED and web banners only report season totals, so they're greyed out ("Season totals only") in this mode
-- TV gets a pacing chart: cumulative QI media value by home game, this season against last
-- Cover, headers and the methodology say what period the report covers
-
-### Season pace (estimate)
-
-- Optional, on by default in season-to-date mode: "On pace for about $X over 41 home games (likely $A–$B)", as a tile, a takeaway and a dashed line on the pacing chart, always marked Est.
-- **Conservative by design:** the remaining home games are valued at the lower of the pace so far and what earlier seasons delivered after the same point. A historical back-half fade lowers the estimate; a stronger finish is never assumed
-- Backtested on 2021-22 → 2024-25 (104 partner-seasons): typical miss ~34% from game 10, ~19% from game 20, ~10% from game 30 — no worse than straight pace, and the least over-projection early. So there's no pace before home game 12, and the "likely" range is the 20th–80th percentile of those past misses
-- Finding: the TV back half is not consistently weaker. It faded in 2021-22 and 2025-26 but was stronger in 2022-23 and 2024-25 (and Nielsen ratings rose in the 2024-25 back half). With the seasons averaged there's no net fade, so today the estimate equals the straight per-game pace; it will lean lower automatically if future seasons fade
-
-### Rankings
-
-- New **Rankings** option, **off by default**: Overall (among current partners) or Category (among current partners in the same category family — "Beverage - Soft Drink" counts as Beverage — when the family has at least three partners with data)
-- Printed only for a **top-3** position, as a takeaway and (TV, survey) a tile. Covers TV QI media value, organic brand value and unaided recall
-- The always-on ranks are gone: the "TV rank" tile, "#2 of 69 brands" in survey takeaways, and the rank columns in the survey table
-
-### Tests
-
-- 10 new unit checks (projection rule, ranking pools and visibility); the layout check now includes season-to-date reports with pace and rankings (525 reports, 0 problems)
-
-## v0.55 — Partner report rebuilt on the design system
-
-*September 2026 · Claude*
-
-### Builder
-
-- The four-step wizard (partner → season → sections → confirm, preview only after a new tab opened) is replaced by **one screen**: partner and season at the top, the section list, options, and a **live preview** of the exact pages that will print
-- Each section shows how much data it has ("38 broadcasts", "10 reports"); sections with nothing for the chosen season are greyed out ("No 2023-24 data") instead of printing zeros
-- Expand a section to choose its takeaways and add a note; toggles for "Compare with last season" and the methodology page; a running page count
-- **Save as PDF** prints the preview itself — no pop-up window to be blocked — with "Partner — Partnership report 2025-26" as the suggested file name
-- Opens from the Home tile (defaults to the top current partner by QI media value), a partner page, or the partner browse grid; Escape closes it even when the preview has focus
-
-### Report
-
-- Built on the **Trail Blazers Dashboards design system**: League Gothic figures and titles, Trade Gothic text, its colour tokens, 12px text floor, the ReportSheet pattern (3px red rule, red-underlined section heads, ▸ insight bullets), the stacked lockup on the cover and the wordmark in the footer. Fonts and logos are embedded (`brand/`, `24_report_brand_assets.js`), so it renders the same offline
-- **Light only**, whatever the dashboard theme
-- Charts per the design system: QI media value by season and by location, organic brand value by month, recall by survey wave (with a table of every wave); one highlighted mark, direct value labels, nothing that needs hovering
-- Executive summary (3+ sections): total QI media value as the hero figure, three supporting tiles, and the lead takeaway from each section
-- Estimates are marked: virtual signage tiles carry an "Est." flag and a banner when nothing was measured; organic partners Zoomph doesn't track get a "Not measured" note instead of $0
-- Methodology page defines only the metrics in the report
-
-### Pagination
-
-- The report lays itself out onto US Letter pages in the browser, so the preview is exactly what prints. A chart, table, tile row or takeaway list is never split across pages; headings stay with what follows; a section's takeaways never open a page on their own; a page tightens its spacing to absorb a small overflow; pages that open mid-section say "Section (continued)"; every page has a footer with page numbers
-- Checked across all 56 current partners and 471 section combinations with the new `report_layout_check.js`: no overflow, no empty pages, no text under 12px, every non-final page at least 63% full. The old report printed Moda Health on 6 dark pages with a blank last page; the new one is 7 full light pages with charts
-
-### Numbers
-
-- The report follows the **season you pick** — most sections used to ignore it and always show the latest
-- Organic social now sums the season's monthly reports (it showed only the latest month, e.g. 11.6M views labelled "2026-04" instead of the season's 114M)
-- Survey scores of 0% with no rank show "—" (the brand wasn't asked about), not 0%
-- TV comparisons use the like-for-like broadcast window from v0.53, and the TV rank says "brands on TV" (it counts every brand, not only partners)
-
-### Removed
-
-- The dark report template, the old wizard and ~400 lines of its styles
-
-## v0.54 — TV Ratings removed, light mode by default, export rebuilt
-
-*September 2026 · Claude*
-
-### Removed
-
-- **TV Ratings** (Nielsen viewership) is gone from this dashboard — it gets its own. Removed `22_tv_ratings_section.js`, its home tile and route, the `DataStore.tvRatings` collection (declaration, reset, per-file removal, preload, export) and its Data Health row. The Tableau TV Ratings link stays on the Links page
-- Nielsen files are still *recognised* on upload, so they are declined with a clear message rather than falling through to the "tv" filename match and being read as TV signage
-- Exports made before v0.54 that carry `tvRatings` data load cleanly: the collection and its file-log entries are ignored
-- The two disabled "coming soon" home tiles (Partner Comparison, Attendance) and their styles. Every tile on the home page now goes somewhere
-
-### Light mode by default
-
-- The dashboard and every export open in light mode (`<html data-theme="light">` in the build template and in `buildExportHTML`). The header toggle still switches to dark for the session
-
-### Export
-
-- **Exports are built from a snapshot of the page as it was opened** (`EXPORT_TEMPLATE_HTML`), not from the live DOM. The live DOM carried whatever was on screen: the header partner dropdown with every logo image (~3 MB), the general-survey review modal (~1 MB), and the exporter's theme. The preseason export drops from 12.3 MB to 7.8 MB with identical data
-- New pure `buildExportHTML()` does the assembly, so it is unit-tested
-- Fixed: an update note containing `$'` or `$&` corrupted the export — `String.replace` expanded them (`$'` pastes the rest of the document). Injection blocks now use a replacer function
-- Cancel on the first export question now cancels the export (it used to carry on with the old values)
-- The label prompt no longer pre-fills the placeholder text; the date prompt pre-fills the newest date in the data
-- The "Latest update" stamp shows "Data through <date>" while the label is still the placeholder, instead of "Manual refresh date not set". Export-time label, date and prepared-by text are HTML-escaped
-- `build.ipynb` AM export cells read the version from `DASHBOARD_VERSION` (they were hard-coded to v0.22 and v0.26), and Cell 5 picks the newest export by modified time rather than by filename
-
-### Tests
-
-- 7 new unit checks: export template, light-mode tag, viewer cover, `$'`/`$&` safety, payload round-trip, no `tvRatings` in exports, Nielsen detection
-
-## v0.53 — Calculation fixes from the data review
+## v0.53 — Calculation fixes, new partner report, season-to-date reporting
 
 *September 2026 · Claude*
 
 An outside review of the preseason build found several figures that were
-calculated wrongly. Every fix below was reproduced against the preseason data
-before and after the change.
+calculated wrongly; those fixes come first, each reproduced against the
+preseason data before and after. The release also removes TV Ratings, makes
+light mode the default, rebuilds the data export, and replaces the partner
+report with a design-system report builder that supports season-to-date
+reporting.
 
 ### TV visible signage — year-over-year
 
@@ -142,13 +33,14 @@ before and after the change.
 
 - No home game ever matched its TV measurement: `normalizeVSDate()` only read `10/22/25`, while the TV export stores `2025-10-22`. Every game was silently valued at the season average. ISO dates are now accepted
 - Where a TV slot credits more than one brand (Jan 17 center court: McDonald's + Mortgage Matchup + Getty Images; Jan 17 and Mar 8 3-point line), the scheduled brand's own rows are used, so McDonald's and Toyota are no longer credited with ~$55K each of other brands' exposure. Position averages are now one value per game slot
-- Measured and estimated value are tracked separately and shown on the portfolio KPI, the partner section and the PDF report. Partners with no measured games (Moda Health, Paylocity, Rogue) are named as fully estimated
+- Measured and estimated value are tracked separately and shown on the portfolio KPI, the partner section and the partner report. Partners with no measured games (Moda Health, Paylocity, Rogue) are named as fully estimated
 - 2025-26 total: $4.79M (all estimated) → **$4.78M: $2.07M measured, $2.70M estimated**
 
 ### Organic social
 
 - The Overall Brand Performance leaderboard kept only each brand's latest monthly report, even in "All months" and range views. Zoomph reports are monthly, not running totals (July 217M views, August 28M), so the leaderboard now sums the months in the window and recomputes engagement rate from the totals. A Months column shows how many reports are included
 - YoY Brand Value now compares the window with the same window a year earlier
+- Seasons follow the fiscal calendar, July 1 – June 30
 
 ### Paid social
 
@@ -167,9 +59,54 @@ before and after the change.
 - New aliases for spellings that split one partner in two: Polar Beverages → Polar, Vortex → Vortex Legacy Group, KeyBank - National → KeyBank, Comcast Cable Communications → Xfinity, Yakama Nation Legends Casino Hotel → Legends Casino
 - The Data Health roster check resolves roster names through aliases before flagging them, so "Riverside Payments" (which already resolves to Riverside) is no longer listed as unmatched
 
+### Removed
+
+- **TV Ratings** (Nielsen viewership) moves to its own dashboard. Removed `22_tv_ratings_section.js`, its home tile and route, the `DataStore.tvRatings` collection (declaration, reset, per-file removal, preload, export) and its Data Health row. The Tableau TV Ratings link stays on the Links page
+- Nielsen files are still *recognised* on upload, so they are declined with a clear message rather than falling through to the "tv" filename match and being read as TV signage. Older exports carrying `tvRatings` load cleanly: the collection and its file-log entries are ignored
+- The two disabled "coming soon" home tiles (Partner Comparison, Attendance). Every tile on the home page now goes somewhere
+- The dark partner report template, its four-step wizard and ~400 lines of their styles
+
+### Light mode by default
+
+- The dashboard and every export open in light mode (`<html data-theme="light">` in the build template and in `buildExportHTML`). The header toggle still switches to dark for the session. The partner report is light only
+
+### Data export
+
+- **Exports are built from a snapshot of the page as it was opened** (`EXPORT_TEMPLATE_HTML`), not from the live DOM, which carried whatever was on screen: the header partner dropdown with every logo image (~3 MB), the general-survey review modal (~1 MB), and the exporter's theme. The preseason export drops from 12.3 MB to 7.8 MB with identical data. Pure `buildExportHTML()` does the assembly
+- Fixed: an update note containing `$'` or `$&` corrupted the export (`String.replace` expanded them). Injection blocks now use a replacer function
+- Cancel on the first export question cancels the export; the label prompt no longer pre-fills placeholder text; the date prompt pre-fills the newest date in the data
+- The "Latest update" stamp shows "Data through <date>" while the label is still the placeholder. Export-time label, date and prepared-by text are HTML-escaped
+- `build.ipynb` AM export cells read the version from `DASHBOARD_VERSION` (they were hard-coded to v0.22 and v0.26), and Cell 5 picks the newest export by modified time rather than by filename
+
+### Partner report — builder
+
+- The four-step wizard is replaced by **one screen**: partner and season, a Period choice (Full season or Season to date through any home game), the section list, options, and a **live preview** of the exact pages that will print
+- Each section shows how much data it has ("38 broadcasts", "10 reports"); sections with nothing for the chosen season and period are greyed out ("No 2023-24 data", "Season totals only") instead of printing zeros. Expand a section to choose its takeaways and add a note
+- **Save as PDF** prints the preview itself — no pop-up window to be blocked — with "Partner — Partnership report 2025-26" as the suggested file name
+- Opens from the Home tile (defaulting to the top current partner by QI media value), a partner page, or the partner browse grid; Escape closes it even when the preview has focus
+
+### Partner report — document
+
+- Built on the **Trail Blazers Dashboards design system**: League Gothic figures and titles, Trade Gothic text, its colour tokens, 12px text floor, the ReportSheet pattern, the stacked lockup on the cover and the wordmark in the footer. Fonts and logos are embedded (`brand/`, generated `24_report_brand_assets.js`) so it renders the same offline
+- Charts per the design system: QI media value by season and by location, organic brand value by month, recall by survey wave (with a table of every wave); one highlighted mark, direct value labels, nothing that needs hovering
+- Executive summary when 3+ sections are selected; estimates carry an "Est." flag; partners Zoomph doesn't track get a "Not measured" note instead of $0; the methodology page defines only the metrics in the report
+- The report follows the season you pick (most sections used to ignore it), organic sums the season's monthly reports, and survey scores of 0% with no rank show "—" (not asked)
+- **Pagination:** the report lays itself out onto US Letter pages in the browser, so the preview is exactly what prints. Blocks are never split across pages; headings stay with what follows; a section's takeaways never open a page on their own; a page tightens its spacing to absorb a small overflow; pages that open mid-section say "Section (continued)"; every page has page numbers. The new `report_layout_check.js` checks every current partner across 525 section/period combinations: no overflow, no empty pages, no text under 12px, every non-final page at least 60% full
+
+### Partner report — season to date
+
+- Every source is cut to "through home game N": TV compared with the first N home broadcasts last season, organic with the same completed months, the survey with the same wave; paid and virtual signage through the date. Affidavits, ANC LED and web banners only report season totals, so they're unavailable in this mode. TV gets a cumulative pacing chart, this season against last
+- **Season pace (estimate)** — off by default, offered only when the report runs through home game 14 to 20, and always shown as a **range** (tile, takeaway, and a shaded cone on the pacing chart), never a single figure. The remaining games are valued at the lower of the pace so far and what earlier seasons delivered after the same point, so a historical back-half fade lowers it and a stronger finish is never assumed. The range is the 20th–80th percentile of how far this method missed for partners in earlier seasons (backtested on 104 partner-seasons: typical miss ~19% from game 20). The TV back half is not consistently weaker — it faded in 2021-22 and 2025-26 and was stronger in 2022-23 and 2024-25 — so with seasons averaged the estimate currently equals the straight per-game pace
+- **Local home broadcasts this season:** set it (under Season pace) when some home games are national-only and carry no local TV measurement. The pace projects over the remaining local broadcasts, and labels and methodology read "20 of 38 local broadcasts (3 national)". Stored per season in the new `DataStore.seasonSettings`, so exports carry it
+
+### Partner report — rankings
+
+- **Off by default.** Choose Overall (among current partners) or Category (among current partners in the same category family — "Beverage - Soft Drink" counts as Beverage — when the family has at least three partners with data)
+- Printed only for a **top-3** position, for TV QI media value, organic brand value and unaided recall. The always-on ranks are gone: the "TV rank" tile, "#2 of 69 brands" in survey takeaways and the survey table's rank columns
+
 ### Tests
 
-- 27 new unit checks covering each fix with small synthetic datasets
+- 59 new unit checks (149 in total) covering the calculation fixes, export assembly, the report model and document, the projection rule, ranking pools and visibility, and the season setting; smoke tests unchanged and passing
 
 ## v0.52 — Spelling corrections and the Umpqua/Columbia merger
 

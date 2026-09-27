@@ -734,7 +734,7 @@ function detectFileType(filename, rows = []) {
   if (hasCol('home/away') && hasCol('opponent') && cols.some(c => c.includes('position'))) return 'virtualSignage';
   if (hasCol('unaided recall') && hasCol('aided recall') && hasCol('survey')) return 'survey';
 
-  // Nielsen TV Ratings (viewership) moved to its own dashboard in v0.54. The
+  // Nielsen TV Ratings (viewership) moved to its own dashboard in v0.53. The
   // file is still recognised — checked BEFORE the token tv match, because these
   // filenames usually contain "tv" and would otherwise be read as TV signage —
   // so the upload can be declined with a clear message instead.

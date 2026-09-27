@@ -38,7 +38,7 @@ build there and mirror it into `rebuild.py`.
 | `24_report_brand_assets.js` | Generated from `brand/` by `brand/make_assets.py` — report fonts and logos |
 | `shell.html` | HTML skeleton (header, main, modals, footer) |
 
-There is no `22_` file — TV Ratings moved to their own dashboard in v0.54. There is also no `03_changelog.js` — version history lives in `CHANGELOG.md` so it
+There is no `22_` file — TV Ratings moved to their own dashboard in v0.53. There is also no `03_changelog.js` — version history lives in `CHANGELOG.md` so it
 isn't shipped to viewers. The numbering gaps are deliberate; don't reuse `03_` or `22_`.
 
 ## Workflow

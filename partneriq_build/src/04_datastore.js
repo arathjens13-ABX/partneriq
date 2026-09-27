@@ -1152,7 +1152,7 @@ function loadPreloadedData() {
   DataStore.webBlazersBanners = Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners : [];
   DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
   DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
-  // Exports made before v0.54 may carry a tvRatings collection and its file-log
+  // Exports made before v0.53 may carry a tvRatings collection and its file-log
   // entries. TV Ratings moved to their own dashboard, so both are dropped here.
   DataStore.loadedFiles = (Array.isArray(PRELOADED_DATA.loadedFiles) ? PRELOADED_DATA.loadedFiles : [])
     .filter(f => !(f && f.type === 'tvRatings'));

@@ -519,7 +519,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
-| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; still recognises Nielsen TV Ratings files (`hh rtg` + `demo` + `opponent`) so they are declined with a message instead of being misread as TV signage — TV Ratings have their own dashboard since v0.54 |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; still recognises Nielsen TV Ratings files (`hh rtg` + `demo` + `opponent`) so they are declined with a message instead of being misread as TV signage — TV Ratings have their own dashboard since v0.53 |
 | `ingestFile(file)` | Generates a file id, delegates to `_ingestFileInner`, attaches `fileId` to the result |
 | `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id |
 | `handleFiles(fileList)` | Batch entry point for drops/picks: consumes a pending replace, prompts on duplicate filenames, ingests each file, records registry entries, re-canonicalizes and re-renders |
