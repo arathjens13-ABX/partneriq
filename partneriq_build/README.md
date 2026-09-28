@@ -33,7 +33,7 @@ build there and mirror it into `rebuild.py`.
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage |
-| `21_web_digital_section.js` | Web & Digital (Blazers.com, RoseQuarter.com, pre-roll) |
+| `21_web_digital_section.js` | Web & Digital (TrailBlazers.com, RoseQuarter.com, pre-roll) |
 | `23_intro_section.js` | Viewer-mode how-to intro overlay |
 | `24_report_brand_assets.js` | Generated from `brand/` by `brand/make_assets.py` — report fonts and logos |
 | `shell.html` | HTML skeleton (header, main, modals, footer) |

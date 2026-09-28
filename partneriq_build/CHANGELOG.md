@@ -11,6 +11,35 @@ When you ship a change, add a new section at the top and update
 
 ---
 
+## v0.54 — Partner report: first round of partner-facing feedback
+
+*September 2026 · Claude*
+
+Changes from an internal review of the partner report, read as a partner would.
+
+### Wording and definitions
+
+- QI media value and QI impressions are named as Nielsen-defined metrics
+- Organic social is "via Zoomph" and says it covers Trail Blazers-owned channels
+- The brand awareness definition is rewritten: Trail Blazers-run Partnership Survey via Qualtrics, Early (Oct–Nov) and Late (March) waves, aided and unaided defined, and why a 0% aided wave shows "—"
+- Blazers.com is now TrailBlazers.com across the report and the dashboard (the `webBlazersBanners` data key is unchanged)
+- "Broadcasts" is now "Local broadcasts"; the summary's QI media value tile reads "TV signage $X + virtual on-court $Y"
+
+### Sections
+
+- **TV visible signage** — "Top signage locations" now prints above the season chart, and each location shows its change over the same broadcasts as the headline figure. A location with no value last season reads "New"; one with under a minute on screen on either side gets no percentage (the dashboard's small-sample rule)
+- **On-court virtual signage** — the "Measured games" tile, the measured-vs-estimated bars and the "All estimated" banner are gone now that positions are valued at their season average. "Est." still marks estimated figures, and the methodology explains how away games are valued
+- **Brand awareness survey** — tiles are now unaided recall, aided recall, unaided rank and aided rank (for example "#1 of 69"), each rank with its change vs the same wave last season. The "Brands surveyed" tile is gone (it read as a respondent count). Takeaways are cut to two, and Local HQ stays in the waves table
+- **Paid social** — spend is no longer printed anywhere (tile, table, takeaways, executive summary). Campaigns are ranked by impressions, and the takeaways name the top campaign and the best click-through instead of repeating the tiles
+- **In-arena LED** — moves to the end of the report and out of the executive summary. "LED assets" / "Creative variants" become "Board locations" / "Ad versions", both defined in the methodology
+- **Web & digital** — "Display" is now "Banner ads"; pre-roll wording appears only when the partner has pre-roll plays
+
+### Report builder
+
+- New **Survey recall ranks** option, on by default. The Rankings option now covers TV and organic social only
+- Each section's detail panel has **Show** switches for its chart, breakdown and table (e.g. hide "QI media value by season" for one partner)
+- Location changes follow the existing "Compare with last season" option
+
 ## v0.53 — Calculation fixes, new partner report, season-to-date reporting
 
 *September 2026 · Claude*

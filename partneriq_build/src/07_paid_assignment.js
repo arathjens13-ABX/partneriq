@@ -637,7 +637,7 @@ const CHANNEL_REGISTRY = [
   },
   {
     key: 'Web & Digital',
-    label: 'Blazers.com, RoseQuarter.com, pre-roll',
+    label: 'TrailBlazers.com, RoseQuarter.com, pre-roll',
     dateFields: ['EventDate', 'Date', 'EndDate', 'StartDate', 'Month'],
     rows: brand => {
       const all = [

@@ -2965,6 +2965,7 @@ a.home-action:focus-visible { outline: 2px solid var(--brand-red); outline-offse
 .rb-exp:hover { border-color: var(--border); color: var(--text); }
 .rb-detail { padding: 2px 10px 10px 33px; display: flex; flex-direction: column; gap: 6px; }
 .rb-mini { font-size: 11px; color: var(--text-muted); }
+.rb-ins + .rb-mini { margin-top: 4px; }
 .rb-ins { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.4; color: var(--text-dim); cursor: pointer; }
 .rb-ins input { accent-color: var(--brand-red); margin-top: 2px; flex-shrink: 0; }
 .rb-note { width: 100%; resize: vertical; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; font: inherit; font-size: 12px; }

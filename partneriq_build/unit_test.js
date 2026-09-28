@@ -266,6 +266,58 @@ t.check('document is light only (no dark theme)',           !/prefers-color-sche
 t.check('document names the partner and season',            docHtml.includes('<title>Nike — Partnership report 2025-26</title>'));
 t.check('dashboard source never closes its own <script>',   !evalIn(ctx, `RPT_PAGINATE_JS`).includes('</script'));
 
+t.group('partner report — partner feedback round');
+const fbRow = (date, season, qimv, loc, mins) => ({ ...tvRow(date, season, true, qimv), Location: loc, 'Duration (Minutes)': mins });
+const fbTv = [
+  fbRow('2025-10-01', '2025-26', 100, 'Court', 5), fbRow('2025-10-05', '2025-26', 100, 'Court', 5),
+  fbRow('2025-10-05', '2025-26', 50, 'Upper Billboard', 5), fbRow('2025-10-05', '2025-26', 40, 'Tunnel', 5),
+  fbRow('2024-10-01', '2024-25', 80, 'Court', 5), fbRow('2024-10-05', '2024-25', 80, 'Court', 5),
+  fbRow('2024-10-05', '2024-25', 1, 'Tunnel', 0.2),
+];
+const fbSurvey = [
+  { Brand: 'Moda Health', Survey: '2024-25 Early', Season: '2024-25', Phase: 'Early', UnaidedPct: 0.20, UnaidedRecallRank: 5, AidedPct: 0.50, AidedRecallRank: 4 },
+  { Brand: 'Moda Health', Survey: '2025-26 Early', Season: '2025-26', Phase: 'Early', UnaidedPct: 0.25, UnaidedRecallRank: 3, AidedPct: 0.49, AidedRecallRank: 6 },
+  ...['A', 'B', 'C', 'D', 'E', 'F'].map((b, i) => ({ Brand: b, Survey: '2025-26 Early', Season: '2025-26', Phase: 'Early', UnaidedPct: 0.1, UnaidedRecallRank: i + 1, AidedPct: 0.3, AidedRecallRank: i + 1 })),
+];
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.tvSignage = ${JSON.stringify(fbTv)};
+  DataStore.surveys = ${JSON.stringify(fbSurvey)};
+  canonicalizeAllBrandData(true);
+  comparisonMode = 'auto-match';
+  DataStore.paidSocial = { 'Moda Health': [
+    { CampaignName: 'Big push', Season: '2025-26', AmountSpentUSD: 9000, Impressions: 90000, LinkClicks: 450 },
+    { CampaignName: 'Small push', Season: '2025-26', AmountSpentUSD: 1000, Impressions: 10000, LinkClicks: 150 },
+  ] };
+  globalThis.__fb = buildReportModel('Moda Health', '2025-26');
+})()`);
+const fb = JSON.parse(evalIn(ctx, `JSON.stringify(globalThis.__fb.sections)`));
+t.eq('In-arena LED prints last',                       evalIn(ctx, `REPORT_SECTION_DEFS[REPORT_SECTION_DEFS.length - 1].key`), 'ancLED');
+t.eq('TV breakdown is "Top signage locations"',          fb.tv.bars.title, 'Top signage locations · 2025-26');
+t.check('TV breakdown prints above the chart',          fb.tv.bars.first === true);
+t.eq('a location carries its own change',                fb.tv.bars.items.find(i => i.label === 'Court').delta, 0.25);
+t.eq('a location new this season reads "New"',           fb.tv.bars.items.find(i => i.label === 'Upper Billboard').delta, 'new');
+t.eq('under a minute on screen last season → no %',     fb.tv.bars.items.find(i => i.label === 'Tunnel').delta, null);
+t.eq('broadcast tile says local broadcasts',             fb.tv.kpis[2].label, 'Local broadcasts');
+t.eq('unaided rank tile',                                fb.survey.kpis[2].value + ' ' + fb.survey.kpis[2].suffix, '#3 of 7');
+t.eq('rank change is places gained (5th → 3rd)',         fb.survey.kpis[2].delta, 2);
+t.eq('aided rank drop is negative (4th → 6th)',          fb.survey.kpis[3].delta, -2);
+t.check('survey takeaways are two at most',             fb.survey.insights.length <= 2);
+t.check('paid never prints spend',                      !JSON.stringify(fb.paid.kpis).includes('Spend') && !fb.paid.table.columns.some(c => c.label === 'Spend') && !/\$/.test(fb.paid.insights.map(i => i.html).join(' ')));
+t.eq('paid campaigns ranked by impressions',             fb.paid.table.title, 'Campaigns by impressions');
+const fbDoc = opts => evalIn(ctx, `renderReportDocument(globalThis.__fb, ${JSON.stringify(opts)})`);
+t.check('survey ranks are on by default',               fbDoc({}).includes('Unaided rank'));
+t.check('survey ranks can be switched off',             !fbDoc({ surveyRanks: false }).includes('Unaided rank'));
+t.check('location changes print with Compare on',       fbDoc({}).includes('class="bl wd"'));
+t.check('and not with Compare off',                     !fbDoc({ compare: false }).includes('class="bl wd"'));
+t.check('a section\'s chart can be hidden',              !fbDoc({ parts: { survey: { chart: false } } }).includes('Recall by survey wave'));
+t.check('methodology names Nielsen and Qualtrics',      /Nielsen-defined/.test(fbDoc({})) && /Qualtrics/.test(fbDoc({})));
+evalIn(ctx, `(() => { DataStore.reset(); DataStore.webBlazersBanners = [{ Brand: 'Nike', Season: '2025-26', LineItem: 'ROS Banner', Impressions: 5000, Clicks: 10 }]; canonicalizeAllBrandData(true); })()`);
+const web = JSON.parse(evalIn(ctx, `JSON.stringify((() => { const m = buildReportModel('Nike', '2025-26'); return { sec: m.sections.webDisplay, doc: renderReportDocument(m, {}) }; })())`));
+t.eq('web uses "Banner ad impressions"',                 web.sec.kpis[0].label, 'Banner ad impressions');
+t.check('no pre-roll wording without pre-roll plays',   web.sec && !/pre-roll/i.test(web.doc));
+t.check('TrailBlazers.com, not Blazers.com',            web.doc.includes('TrailBlazers.com') && !/[^l]Blazers\.com/.test(web.doc));
+
 t.group('season pace — conservative projection');
 // A season shape where 60% of value lands in the first half (a back-half fade).
 t.check('a historical fade lowers the projection below straight pace',
