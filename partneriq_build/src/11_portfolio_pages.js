@@ -6,7 +6,7 @@
 
 // Tab definitions for the leaderboard (one tab per Zoomph source file).
 const ORGANIC_PORTFOLIO_TABS = [
-  { key: 'perf',   label: 'Overall Brand Performance', source: 'BrandedPartnerPerformance', entityLabel: 'Brand',  countLabel: 'Snapshots' },
+  { key: 'perf',   label: 'Overall Brand Performance', source: 'BrandedPartnerPerformance', entityLabel: 'Brand',  countLabel: 'Months'    },
   { key: 'series', label: 'Brand Content Series',      source: 'BrandedContentSeries',      entityLabel: 'Series', countLabel: 'Months'    },
   { key: 'assets', label: 'Brand on Asset',            source: 'BrandOnAsset',              entityLabel: 'Asset',  countLabel: 'Months'    },
 ];
@@ -68,30 +68,39 @@ function filterOrganicPortfolioRowsByDate(rows) {
   return rows.slice();
 }
 
+// Brand Value for the same window one year earlier, compared with `curr`.
+// "All months" has no earlier window to compare against.
+function getOrganicPortfolioBrandValueYoY(brand, curr) {
+  if (organicPortfolioDateMode === 'all') return null;
+  const back = m => (m ? `${Number(m.slice(0, 4)) - 1}${m.slice(4)}` : '');
+  const start = back(organicPortfolioDateMode === 'month' ? organicPortfolioMonth : organicPortfolioStartMonth);
+  const end   = back(organicPortfolioDateMode === 'month' ? organicPortfolioMonth : organicPortfolioEndMonth);
+  const prior = (DataStore.zoomphBrandPerf || []).filter(r => {
+    const m = r._reportMonth || '';
+    return r.Brand === brand && m && (!start || m >= start) && (!end || m <= end);
+  });
+  if (!prior.length) return null;
+  const prev = prior.reduce((s, r) => s + (r.BrandValue || 0), 0);
+  const change = pctChange(curr, prev);
+  return change === null ? null : { change, curr, prev };
+}
+
 // -- Aggregation: produce the row set the leaderboard table will display.
-//    'perf'              → one row per brand: their latest snapshot in the date window
+//    'perf'              → one row per brand, summed across the months in the window
 //    'series' / 'assets' → roll up by Brand + Name across the date window
+//
+// Zoomph reports are monthly, not running totals (July 217M views, August
+// 28M), so a season or range figure is the sum of its months. 'perf' used to
+// keep only each brand's latest month, which understated every multi-month view.
 function getOrganicPortfolioRowsForTab(tab) {
   const sourceRows = filterOrganicPortfolioRowsByDate(getOrganicPortfolioSourceRows(tab));
+  const isPerf = tab === 'perf';
 
-  if (tab === 'perf') {
-    const byBrand = new Map();
-    sourceRows.forEach(r => {
-      const key = r.Brand || r.Name || '';
-      if (!key) return;
-      const existing = byBrand.get(key);
-      if (!existing || (r._reportMonth || '') > (existing._reportMonth || '')) {
-        byBrand.set(key, r);
-      }
-    });
-    return [...byBrand.values()];
-  }
-
-  // 'series' or 'assets' — aggregate by Brand + Name
   const agg = new Map();
   sourceRows.forEach(r => {
-    const brand = r.Brand || '';
-    const name  = r.Name  || '';
+    const brand = r.Brand || (isPerf ? r.Name : '') || '';
+    const name  = isPerf ? brand : (r.Name || '');
+    if (isPerf && !brand) return;
     const key   = brand + '||' + name;
     let row = agg.get(key);
     if (!row) {
@@ -240,7 +249,7 @@ function renderOrganicSocialPortfolioPage(main) {
   };
 
   const tabNote = isPerf
-    ? 'Overall Brand Performance uses each brand’s latest Brand Performance snapshot within the selected date window.'
+    ? 'Overall Brand Performance sums each brand’s monthly Zoomph reports across the selected date window. Engagement rate is recomputed from the summed totals.'
     : `${activeTab.label} ranks the individual ${activeTab.entityLabel.toLowerCase()} rows. Multiple months roll up by brand + ${activeTab.entityLabel.toLowerCase()}.`;
 
   const dateFilterHtml = `
@@ -258,14 +267,14 @@ function renderOrganicSocialPortfolioPage(main) {
       </div>
     </div>`;
 
-  const emptyColspan = isPerf ? 11 : 12;
+  const emptyColspan = 12;
 
   main.innerHTML = `
     ${renderBreadcrumb([{label:'Home', action:'openPortfolioHome();'}, {label:'Organic Social'}])}
     <section class="section">
       <div class="section-header">
         <h2 class="section-title">📱 Organic Social Portfolio</h2>
-        <span class="section-meta">Zoomph · ${getOrganicPortfolioDateLabel()} · Latest snapshot: ${latestMonth || '—'} · ${activeRows.length} ${isPerf ? 'brands' : 'items'}</span>
+        <span class="section-meta">Zoomph · ${getOrganicPortfolioDateLabel()} · Latest report: ${latestMonth ? formatOrganicMonthLabel(latestMonth) : '—'} · ${activeRows.length} ${isPerf ? 'brands' : 'items'}</span>
       </div>
 
       <div class="kpi-grid" style="margin-bottom:22px;">
@@ -328,7 +337,7 @@ function renderOrganicSocialPortfolioPage(main) {
             <th class="num">#</th>
             ${isPerf ? sortTh('Brand', 'brand', true) : sortTh(activeTab.entityLabel, 'name', true)}
             ${isPerf ? '' : sortTh('Brand', 'brand', true)}
-            ${isPerf ? '' : sortTh(activeTab.countLabel, 'rowCount')}
+            ${sortTh(activeTab.countLabel, 'rowCount')}
             ${sortTh('Posts', 'posts')}
             ${sortTh('Views / Impr', 'views')}
             ${sortTh('Engagements', 'engagements')}
@@ -336,19 +345,19 @@ function renderOrganicSocialPortfolioPage(main) {
             ${sortTh('Logo Impr', 'logoImpr')}
             ${sortTh('Brand Value', 'brandValue')}
             ${sortTh('Social Value', 'socialValue')}
-            <th class="num">Latest Snapshot</th>
+            <th class="num">Latest Month</th>
             ${isPerf ? '<th class="num">YoY Brand Value</th>' : ''}
           </tr></thead>
           <tbody>
             ${displayOrganicRows.length ? displayOrganicRows.map((r, i) => {
-              const yoy = isPerf ? getZoomphYoY(r.Brand, 'BrandValue', r._reportMonth) : null;
+              const yoy = isPerf ? getOrganicPortfolioBrandValueYoY(r.Brand, r.BrandValue) : null;
               const yoyCls = !yoy ? 'neutral' : yoy.change >= 0 ? 'up' : 'down';
               const yoyStr = !yoy ? '—' : `<span class="yoy-change ${yoyCls}">${yoy.change >= 0 ? '▲' : '▼'} ${Math.abs(yoy.change*100).toFixed(1)}%</span>`;
               return `<tr class="organic-portfolio-row" data-organic-brand="${escapeHTML(r.Brand || '')}" style="cursor:pointer;">
                 <td class="num" style="color:var(--text-muted);">${i+1}</td>
                 <td style="text-align:left;font-weight:500;">${escapeHTML(isPerf ? r.Brand : r.Name)}</td>
                 ${isPerf ? '' : `<td style="text-align:left;color:var(--text-dim);">${escapeHTML(r.Brand || '—')}</td>`}
-                ${isPerf ? '' : `<td class="num">${formatNum(r.rowCount)}</td>`}
+                <td class="num">${formatNum(r.rowCount)}</td>
                 <td class="num">${formatNum(r.OrganicPosts)}</td>
                 <td class="num">${formatNum(r.ViewsImpressions)}</td>
                 <td class="num">${formatNum(r.Engagements)}</td>

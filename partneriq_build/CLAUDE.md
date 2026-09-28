@@ -38,8 +38,8 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | File | Responsibility |
 |------|---------------|
 | `00_vendor_shims.js` | Vendored libraries (PapaParse CSV shim, LZ-string compression) |
-| `01_styles.css` | All CSS, design tokens, theme variables |
-| `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE` |
+| `01_styles.css` | All CSS, design tokens, theme variables. Light mode is the default: `<html data-theme="light">` is set by the build and by every export; the header toggle switches to dark for the session |
+| `02_constants.js` | Global constants, `GLOSSARY`, `DASHBOARD_VERSION`, `DASHBOARD_META`, `PRELOADED_DATA`, `VIEWER_MODE`, `HOME_TEAM_PATTERN` (home/away detection for TV YoY) |
 | `04_datastore.js` | `DataStore` object, file ingest, import/export, preloaded data hydration |
 | `05_paid_constants.js` | Paid social campaign parsing constants and alias maps |
 | `06_helpers.js` | Shared formatting and utility functions |
@@ -52,13 +52,13 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `13_survey_section.js` | Survey Research partner section |
 | `14_organic_section.js` | Organic Social section, file ingest helpers |
 | `15_wiring.js` | All event listener wiring, modal logic, app init |
-| `16_report_template.js` | PDF partner report template |
+| `16_report_template.js` | Partner report: one-screen builder with live preview, design-system document, per-season model, in-document Letter paginator |
 | `17_general_survey_assignment.js` | General survey question-to-partner assignment |
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`computeVSLocationMeans`), portfolio and partner-page renderers |
 | `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
-| `22_tv_ratings_section.js` | TV Ratings Dashboard — Nielsen broadcast viewership data; `DataStore.tvRatings[]`; **file format WILL change** — detection is column-schema-based (`HH Rtg` + `Demo` + `Opponent`), ingest and normalize logic is in `14_organic_section.js`; data source: DW > vw_viewership > vw_nielsen_tv_metrics |
+| `24_report_brand_assets.js` | **Generated** by `brand/make_assets.py` from `brand/` — the design system's fonts (WOFF2) and logos as `REPORT_BRAND_ASSETS`. Never edit by hand |
 | `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
 | `shell.html` | Static HTML shell — `<header>` (incl. the "Partners only" search toggle), `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), the intro mount (`#introRoot`) + relaunch button, footer; concatenated with the JS/CSS files at export time |
 
@@ -296,6 +296,7 @@ A per-file index of every significant function. Use this to jump directly to the
 | `normalizeSeasonLabel(str)` | Normalizes season strings to a canonical format for cross-channel matching |
 | `normalizeLoadedRows()` | Post-load hook: type-coerces numeric/date columns across all channels |
 | `getSerializableDataStore()` | Returns a plain object snapshot of DataStore for embedding in an export |
+| `DataStore.seasonSettings` | Hand-entered per-season settings, `{ '2025-26': { localHomeBroadcasts: 38 } }`. Declared, reset, exported and restored like every other key; not tied to a file |
 | `loadPreloadedData()` | Top-level boot: resets DataStore, copies every `PRELOADED_DATA` key in, normalizes, canonicalizes, restores user presets. **There is no separate `hydrateFromPreloaded` — this is the whole import path.** |
 | `generateFileId()` | Returns a unique id for one uploaded file; stamped onto every ingested row as `_fileId` |
 | `tagRowsWithFile(rows, fileId)` | Sets `_fileId` on each row object; returns the same array for chaining |
@@ -304,7 +305,9 @@ A per-file index of every significant function. Use this to jump directly to the
 | `removeLoadedFile(fileId)` | User-facing remove: confirm dialog, strip rows, `canonicalizeAllBrandData()`, fall back to Home if the viewed partner vanished, re-render |
 | `getCurrentUserPresets()` | Serializes current UI toggles/filters for persistence |
 | `applyUserPresets(presets)` | Restores UI state from a saved preset object |
-| `exportPreloadedDashboard()` | Injects DataStore + meta into the HTML template and triggers download |
+| `EXPORT_TEMPLATE_HTML` (`02_constants.js`) | Snapshot of the document as opened, taken before anything renders. **Must stay the first statement of the first script.** Exports are built from this, never from the live DOM |
+| `buildExportHTML(templateHtml, payload, meta, viewerMode)` | Pure export builder: sets `<html data-theme="light">` (+ `pqi-preboot` for viewers) and fills the three injection blocks |
+| `exportPreloadedDashboard()` | Asks for the update label/date/notes (Cancel on the first question cancels), calls `buildExportHTML`, triggers download |
 | `safeJSONStringify(value, space)` | `JSON.stringify` wrapper that handles circular refs and BigInt |
 | `applyViewerMode()` | Hides all upload/edit controls when `VIEWER_MODE === true` |
 | `generateMockData()` | Populates DataStore with seeded random demo data for testing |
@@ -343,8 +346,12 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `showErrorToast(msg)` | Displays a brief in-app error notification (bottom-center toast, auto-dismisses after 4 s) |
 | `getUniqueMatchdates(rows)` | Returns sorted unique Matchdate strings from a TV row set |
-| `getMatchedPriorSeasonTVData(brand, priorSeason, matchdateLimit)` | Returns prior-season TV rows capped to the same game count as the current season |
-| `getYoYRowSets(brand, period)` | Returns `{ current, prior }` TV row sets for a brand/period, prior normalized by matchdate count |
+| `isHomeBroadcast(row)` | `true`/`false` from the "Away @ Home" Match string (via `HOME_TEAM_PATTERN`); `null` when the row names no fixture |
+| `splitMatchdatesByVenue(rows)` | Sorted unique matchdates split into `{ home, away, unknown }` |
+| `getMatchedPriorWindow(currRows, priorRows)` | Prior-season dates that line up with the current season: first N home + first M away, matching the current season's venue counts. Falls back to plain first-N when the current season has dates of unknown venue |
+| `describePriorWindow(win, priorSeason)` | Human-readable label for a prior window ("first 38 home broadcasts of 2024-25") |
+| `getPortfolioPriorWindow(currSeason, priorSeason)` | Portfolio-level `getMatchedPriorWindow`, memoised per TV index build. Used by both portfolio and partner YoY so they share one window |
+| `getYoYRowSets(brand, period)` | Returns `{ currRows, priorRows, basis, matched, … }` for a brand/period; in auto-match mode the prior set is the brand's rows inside `getPortfolioPriorWindow` |
 | `computeYoYForMetric(brand, period, metricKey)` | Returns `{ curr, prev, change }` for one TV metric |
 | `getAssetRanking(location, season)` | Returns all brands sorted by QIMV for a given asset location |
 | `getBrandRankOnAsset(brand, location, season)` | Returns ordinal rank of a brand on a specific asset |
@@ -370,13 +377,17 @@ A per-file index of every significant function. Use this to jump directly to the
 | `getPortfolioSeasons()` | Returns sorted distinct seasons across TV + survey data |
 | `getSocialRowsForPeriod(period)` | Returns organic social rows filtered to a period |
 | `getPreviousPortfolioSeason(season)` | Returns the season immediately before the given one |
-| `getPortfolioYoYRowSets(period)` | Returns `{ current, prior }` row sets for portfolio-level TV YoY |
+| `getPortfolioYoYRowSets(period)` | Returns `{ currRows, priorRows, basis, … }` for portfolio-level TV YoY; auto-match uses `getPortfolioPriorWindow` |
+| `spreadsheetSerialToDate(value)` | Converts a raw Excel day count (e.g. `46113` → Apr 1, 2026) to a Date; `null` for anything else |
+| `fixSpreadsheetDateString(value)` | Rewrites a raw serial as `M/D/YYYY`; other values pass through. Applied to survey `Date` fields at ingest and on load |
+| `parseDateLoose(value)` | Lenient date parse used by freshness/coverage; handles serials and rejects years outside 1990–2100 |
 | `getSelectedHomePeriod()` | Returns the active period selector value from the home page filter |
 | `aggregateBy(rows, keyName)` | Groups an array of rows by a key and sums numeric columns |
 | `formatSignedPercent(change, opts)` | Formats a ratio as `+12.3 %` with sign; respects `invert` flag |
 | `CHANNEL_REGISTRY` | The one list of every data channel — `{ key, label, rows(brand), dateFields }`. Adding a channel here is all that's needed for it to appear in Data Health and the freshness strip |
 | `getChannelFreshnessSummary(brand)` | Row counts and date coverage per channel, driven by `CHANNEL_REGISTRY` |
 | `getLatestDataDate()` / `getDataAsOfLabel()` | Newest date across all loaded channels, and the label for the "LAST UPDATE" stamp |
+| `getLatestUpdateStampHTML()` | The "Latest update" stamp on Home and portfolio pages: export label + date, or "Data through …" while the label is still `DEFAULT_UPDATE_LABEL` |
 | `renderNamingHealthPanel()` | The Data Health "Naming & aliases" panel |
 | `mergeNamingSuggestion(variant, canonical)` / `keepNamingSuggestionApart(variant)` | Accept or dismiss one near-miss suggestion |
 | `formatDurationFromMinutes(minutes)` | Converts a decimal minute count to `HH:MM:SS` |
@@ -454,6 +465,8 @@ A per-file index of every significant function. Use this to jump directly to the
 | `filterOrganicPortfolioRowsByDate(rows)` | Applies active date filter to organic portfolio rows |
 | `sortOrganicPortfolioRows(rows)` | Applies current sort to the organic leaderboard |
 | `getOrganicPortfolioDateLabel()` | Returns a human-readable date range label for the organic filter |
+| `getOrganicPortfolioRowsForTab(tab)` | Leaderboard rows for a tab. **Sums monthly reports** across the window (Zoomph reports are monthly, not running totals); `perf` rolls up by brand, `series`/`assets` by brand + name |
+| `getOrganicPortfolioBrandValueYoY(brand, curr)` | Brand Value vs the same window a year earlier; `null` in "All months" mode |
 
 ---
 
@@ -506,15 +519,13 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderZoomphBody(brand)` | Inner content: tabs, trend chart, and data table |
 | `renderZoomphTrendChart(brand)` | SVG multi-line trend chart for organic metrics |
 | `renderZoomphTable(rows, nameLabel)` | Asset/series/content table for the active organic tab |
-| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; includes schema-based `tvRatings` detection (checks for `hh rtg` + `demo` + `opponent` columns) |
+| `detectFileType(filename, rows)` | **High-blast-radius.** Determines channel type for any uploaded file; still recognises Nielsen TV Ratings files (`hh rtg` + `demo` + `opponent`) so they are declined with a message instead of being misread as TV signage — TV Ratings have their own dashboard since v0.53 |
 | `ingestFile(file)` | Generates a file id, delegates to `_ingestFileInner`, attaches `fileId` to the result |
 | `_ingestFileInner(file, fileId)` | Routes a parsed file to the correct channel ingest branch; tags all stored rows with the file id |
 | `handleFiles(fileList)` | Batch entry point for drops/picks: consumes a pending replace, prompts on duplicate filenames, ingests each file, records registry entries, re-canonicalizes and re-renders |
 | `startReplaceFile(fileId)` | Arms `pendingReplaceFileId` and opens the file picker — the next picked file swaps in for the old one |
 | `describeLoadedFile(result)` | One-line summary string for a file-log entry (type, rows, brands…) |
 | `renderFileLog()` | Renders `DataStore.loadedFiles` into the modal file list with per-file Replace/Remove buttons (hidden in viewer mode or for pre-registry entries) |
-| `normalizeTVRatingsRow(row)` | Coerces a raw Nielsen TV metrics row into a typed ratings row; derives segment from Program column and season from Custom Year column |
-| `ingestTVRatingsFile(rows)` | Normalizes and deduplicates Nielsen rows into `DataStore.tvRatings`; safe to re-ingest the same export |
 | `normalizeZoomphRow(row, fileType)` | Coerces a raw organic row into a typed object |
 | `extractZoomphBrand(name)` | Strips date/suffix noise from a Zoomph filename to extract brand name |
 | `filterZoomphRowsByPartnerDate(rows)` | Applies active date filter to organic rows |
@@ -532,10 +543,34 @@ A per-file index of every significant function. Use this to jump directly to the
 
 ---
 
-### `16_report_template.js` — PDF partner report
+### `16_report_template.js` — Partner report (builder, document, model)
+
+Three layers. The report is styled with the **Trail Blazers Dashboards design system** (League Gothic / Trade Gothic, its colour tokens and chart rules) and is **light only** — it never follows the dashboard theme. Fonts and logos come from `REPORT_BRAND_ASSETS` (`24_report_brand_assets.js`).
 
 | Function | What it does |
 |----------|-------------|
+| `REPORT_SECTION_DEFS` | Report sections in print order (`key`, `label`) |
+| `buildReportModel(brand, season, period)` | `period = { mode: 'full' }` (default) or `{ mode: 'std', throughGame: N }` for **season to date**. Every figure for one partner and one season: `{ sections: { key: { available, count, kpis, chart?, bars?, table?, banner?, insights, source, totals } } }`. Unavailable sections are `{ available: false }` so the builder greys them out instead of printing zeros |
+| `rptBuildTV` / `rptBuildVS` / `rptBuildOrganic` / `rptBuildSurvey` / `rptBuildPaid` / `rptBuildANC` / `rptBuildAffidavit` / `rptBuildWeb` | Per-section builders; each returns `null` when there's nothing to show. They call the same accessors as the dashboard pages (e.g. `computeYoYForMetric`, `getVirtualSignagePartnerStats`) so report and screen always agree |
+| `getReportSeasonsForBrand(brand)` | Seasons with anything reportable, newest first |
+| `getLocalHomeBroadcasts(season)` / `setLocalHomeBroadcasts(season, n)` | The per-season "Local home broadcasts" setting (`DataStore.seasonSettings[season].localHomeBroadcasts`), for seasons where national-only home games carry no local TV measurement. Set in the builder next to Season pace; exported with the data |
+| `getReportPeriodInfo(season)` / `rptContext(season, period)` | Home broadcast dates, the season's normal length (median of earlier full seasons), whether it's over; `ctx.inWindow(date)` cuts every source to "through home game N". Affidavits, ANC LED and web banners carry season totals only, so they're unavailable in season-to-date mode |
+| `rptSeasonPace(brand, ctx)` | TV season pace. `rptProject()` values the remaining home games at the **lower** of the pace so far and what earlier seasons delivered after the same point (`rptSeasonShapes`), so a historical back-half fade lowers it and a stronger finish is never assumed. `rptPaceRange()` gives the likely range from backtested misses (20th–80th percentile across partners in earlier seasons). **Product rules:** off by default (`opts.pace`), offered only when the report runs through home game `RPT_PACE_MIN_GAMES`–`RPT_PACE_MAX_GAMES` (14–20), and always shown as a range — no range, no projection |
+| `rptRank(brand, valuesByBrand)` / `rptShownRank(sec, opts)` / `rptCategoryFamily(brand)` | Rankings: overall among current partners, or category among current partners in the same category family (roster category before " - ", 3+ partners). **Off by default**; printed only for a top-3 position (`RPT_RANK_SHOW_MAX`) |
+| `rptCurrentSeason()` | The season single-season exports (affidavits, ANC LED, RoseQuarter.com, VS schedule) belong to: the newest TV season |
+| `rptSeasonOfMonth(ym)` / `rptSurveyPct(pct, rank)` | Month → July–June season; a 0% survey score with no rank reads as "not asked" (`null`) |
+| `renderReportDocument(model, opts)` | Self-contained HTML document; `opts = { sections, insights: {key:[idx]}, notes: {key:text}, compare, methodology, pace, rank: 'off'|'overall'|'category' }` |
+| `rptSvgPace(chart)` | Season-to-date pacing chart: cumulative QI media value by home game, this season vs last, dashed pace estimate with its range |
+| `rptSectionBlocks` / `rptSummaryBlocks` | Build the blocks for one section / the executive summary (only when 3+ sections are selected) |
+| `rptSvgColumns` / `rptSvgLine` / `rptBarListHTML` / `rptTableHTML` / `rptKpiHTML` | Design-system charts and tiles, drawn at printed size (12px floor, one highlighted mark, direct labels) |
+| `RPT_PAGINATE_JS` | In-document paginator: loads the fonts, then moves blocks onto 816×1056 Letter pages. Blocks never split; `data-keep="next"` glues a heading to what follows; a section's takeaways never open a page alone (widow rule); a page may tighten its spacing to absorb a small overflow; pages opening mid-section say "Section (continued)". Resolves `window.reportReady` with the page count |
+| `openReportModal(brand)` / `closeReportModal()` | The one-screen builder: partner, season, sections (takeaways + note per section), options, live preview |
+| `rbRenderPanel()` / `rbRefreshPreview(immediate)` / `rbPrint()` | Builder panel, debounced preview rebuild (keeps scroll), and Save as PDF — prints the preview iframe, no pop-up |
+| `renderPartnerLogo(brand, size)` / `lookupPartnerLogo(brand)` | Partner logos (also used by partner pages and browse) |
+
+**Checking layout after a change:** `node report_layout_check.js <preloaded-dashboard.html>` (optional, needs Playwright) renders every current partner across many section combinations and fails on any page overflow, empty page or text under 12px.
+
+----------|-------------|
 | `generatePartnerReport(brand, options)` | Builds the full HTML report; `options = { sections:{key:bool}, takeaways:{key:[idx,...]} }` controls which sections and takeaway bullets render; multi-page by default (no single-page height cap) |
 | `gatherReportData(brand)` | Aggregates all channel data for a brand into a single report object |
 | `openPartnerReport(brand, options)` | Entry point: calls `generatePartnerReport(brand, options)` and opens result in a new tab |
@@ -600,14 +635,15 @@ A per-file index of every significant function. Use this to jump directly to the
 |----------|-------------|
 | `ingestVirtualSignageSchedule(rows)` | Parses and stores the schedule CSV into `DataStore.virtualSignageSchedule` |
 | `isVirtualBrandingRow(r)` | Returns `true` for TV rows where `Tool="Virtual Branding"` — used to strip these from the regular TV section |
-| `normalizeVSDate(str)` | Normalizes `M/D/YY` or `M/D/YYYY` to `YYYY-MM-DD` for cross-source matching |
-| `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → TV metrics map for home-game actuals lookup |
+| `normalizeVSDate(str)` | Normalizes `M/D/YY`, `M/D/YYYY` or `YYYY-MM-DD` (TV Matchdate) to `YYYY-MM-DD` for cross-source matching |
+| `buildVSTVDateLookup()` | Builds a `"YYYY-MM-DD\|location"` → `{ total, byBrand }` map of TV actuals for home-game lookup |
+| `vsSlotValue(slot, brand)` | The measured value for one slot: the scheduled brand's own rows when credited, else the slot total. Stops shared slots double-crediting |
 | `getLatestSeasonVSRows()` | Returns virtual branding TV rows for the most recent season only |
 | `getVirtualBrandingTVRows(brand, location)` | Filters TV rows to virtual branding rows, optionally by brand/location |
 | `computeVSQimvYoY(brand)` | YoY for virtual signage QIMV using TV VB rows by season; returns `{ curr, prev, change, basis }` or null when < 2 seasons exist |
-| `computeVSLocationMeans()` | Computes per-position simple means from home-game TV actuals (used for away-game estimates and the averages table) |
-| `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates |
-| `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals |
+| `computeVSLocationMeans()` | Per-position means from home-game TV actuals, one value per game slot (the scheduled brand's value on shared slots). Used for away-game estimates and the averages table |
+| `getVirtualSignagePartnerStats()` | Builds per-brand stats combining home actuals (by date lookup) and away estimates; carries `measuredGames/Qimv` and `estimatedGames/Qimv` separately |
+| `getVirtualSignagePortfolioTotals(partnerStats)` | Sums partner stats into portfolio-level totals, including the measured/estimated split and `unmeasuredBrands` |
 | `computeVSLocationAverages()` | Delegates to `computeVSLocationMeans()` for the averages display table |
 | `groupVSPartnerStats(partnerStats)` | Groups sub-brands by shared prefix into brand-family aggregates |
 | `hasVirtualSignageDataForBrand(brand)` | Guard for the partner-page section |
@@ -639,31 +675,6 @@ A per-file index of every significant function. Use this to jump directly to the
 | `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |
 | `parseWebNum(v)` / `parseWebPct(v)` | Web & Digital numeric parsers (support K/M/B suffixes and `%`-formatted CTR) |
 | `parseWebCSVMatrix(text)` | Parses a CSV as a raw matrix — these delivery reports carry preamble rows above the header |
-
----
-
-### `22_tv_ratings_section.js` — TV Ratings Dashboard (Nielsen Viewership)
-
-**⚠️ This file format will change.** Detection is column-schema-based; ingest/normalize lives in `14_organic_section.js`. Update `normalizeTVRatingsRow()` when columns change.
-
-| Function | What it does |
-|----------|-------------|
-| `openTVRatingsPage()` | Navigation helper: sets `currentPage='tv-ratings'` and calls `renderApp()` |
-| `renderTVRatingsPage(main)` | Main page renderer — season selector, KPI cards, all sub-sections |
-| `getTVRatingsSeasons()` | Returns sorted distinct season strings from `DataStore.tvRatings` |
-| `getTVRatingsActiveSeason()` | Returns the currently selected season, resolving `'latest'` to the most recent |
-| `getTVRatingsRows(season)` | Returns all rows for a season string, or all rows when `season='all'` |
-| `getTVRatingsGameDates(season)` | Returns sorted unique game dates for the Game segment in a season |
-| `avgTVMetric(rows, key)` | Average of a numeric field across rows (skips zeros) |
-| `maxTVMetric(rows, key)` | Max of a numeric field across rows |
-| `renderTVRatingsLineChart(season, priorSeason)` | SVG season trend chart; game-only; togglable metric; optional YoY overlay aligned by game number |
-| `renderTVRatingsSegmentComparison(rows)` | Pre/Game/Post avg HH and P2+ rating horizontal bar chart + summary table |
-| `renderTVRatingsOpponentTable(season)` | Sortable opponent breakdown — avg HH Rtg/Imp, P2+ Rtg/Imp, peak HH Rtg, avg HH Share |
-| `renderTVRatingsAdDemoChart(gameRows)` | Avg game rating/impressions bar chart for P18-49, M18-49, P25-54, M25-54 (HH and P2+ excluded intentionally) |
-| `renderTVRatingsGamesTable(season)` | Sortable full game log — date, opponent, HH and P2+ metrics |
-| `wireTVRatingsPage()` | Wires season selector, metric toggle, YoY toggle, opponent sort, games sort |
-
-**State variables declared here:** `tvRatingsSeasonFilter`, `tvRatingsChartMetric`, `tvRatingsYoY`, `tvRatingsOpponentSort`, `tvRatingsGamesSort`
 
 ---
 

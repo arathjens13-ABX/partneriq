@@ -3,7 +3,7 @@
 //
 // These are the functions that silently produce wrong numbers rather than throwing,
 // so they are the ones worth pinning down. Run with:  node unit_test.js
-const { loadDashboard, expose, createRunner } = require('./test_harness');
+const { loadDashboard, expose, evalIn, createRunner } = require('./test_harness');
 
 const ctx = loadDashboard();
 expose(ctx, [
@@ -153,6 +153,163 @@ t.check('near-miss pairs are found', (() => {
 })());
 t.check('identical names are not flagged as near-misses',
   ctx.findNearMissBrandPairs(['Toyota', 'Adidas', 'Nike']).length === 0);
+
+// ────────────────────────────────────────────────────────────
+// Calculation fixes from the v0.53 data review. These use small synthetic
+// datasets so each one pins the exact behaviour that was wrong.
+t.group('TV YoY — prior window matches venue, not just game count');
+t.eq('home fixture is home',            evalIn(ctx, `isHomeBroadcast({ Match: 'Phoenix Suns @ Portland Trail Blazers' })`), true);
+t.eq('away fixture is away',            evalIn(ctx, `isHomeBroadcast({ Match: 'Portland Trail Blazers @ Phoenix Suns' })`), false);
+t.eq('unnamed fixture is unknown',      evalIn(ctx, `isHomeBroadcast({ Match: 'Unspecified' })`), null);
+const tvRow = (date, season, home, qimv) => ({
+  Brand: 'Moda Health', Tool: 'On Surface Branding', Location: 'Court', Matchdate: date, Season: season,
+  Match: home ? 'Opp @ Portland Trail Blazers' : 'Portland Trail Blazers @ Opp', 'QI Media Value ($)': qimv,
+});
+const tvFixture = [
+  tvRow('2025-10-01', '2025-26', true, 100), tvRow('2025-10-05', '2025-26', true, 100),
+  // prior season: an away game falls between the first two home games
+  tvRow('2024-10-01', '2024-25', true, 80), tvRow('2024-10-03', '2024-25', false, 1),
+  tvRow('2024-10-05', '2024-25', true, 80), tvRow('2024-10-07', '2024-25', true, 80),
+];
+evalIn(ctx, `(() => { DataStore.reset(); DataStore.tvSignage = ${JSON.stringify(tvFixture)}; canonicalizeAllBrandData(true); comparisonMode = 'auto-match'; })()`);
+t.eq('window takes the first 2 home dates, skipping the away game',
+  evalIn(ctx, `[...getPortfolioPriorWindow('2025-26', '2024-25').dates].sort().join(',')`), '2024-10-01,2024-10-05');
+t.eq('portfolio YoY compares 200 with 160',
+  evalIn(ctx, `(() => { const s = getPortfolioYoYRowSets('2025-26'); return sum(s.currRows, 'QI Media Value ($)') + '/' + sum(s.priorRows, 'QI Media Value ($)'); })()`), '200/160');
+t.eq('partner YoY uses the same window', evalIn(ctx, `computeYoYForMetric('Moda Health', '2025-26', 'QI Media Value ($)').prev`), 160);
+t.check('basis names home broadcasts',  /home broadcasts/.test(evalIn(ctx, `getPortfolioYoYRowSets('2025-26').basis`)));
+
+t.group('virtual signage — date matching and shared slots');
+t.eq('ISO dates normalise',             evalIn(ctx, `normalizeVSDate('2025-10-22')`), '2025-10-22');
+t.eq('schedule dates normalise',        evalIn(ctx, `normalizeVSDate('10/22/25')`), '2025-10-22');
+const vsRow = (brand, date, loc, qimv) => ({ Brand: brand, Tool: 'Virtual Branding', Location: loc, Matchdate: date, Season: '2025-26', Match: 'Opp @ Portland Trail Blazers', 'QI Media Value ($)': qimv });
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.tvSignage = ${JSON.stringify([vsRow("McDonald's", '2026-01-17', 'Center', 30), vsRow('Mortgage Matchup', '2026-01-17', 'Center', 28), vsRow('Toyota', '2026-01-19', 'Center', 50)])};
+  DataStore.virtualSignageSchedule = [
+    { DateRaw: '1/17/26', IsHome: true,  BrandA: "McDonald's", _rawBrandA: "McDonald's" },
+    { DateRaw: '1/19/26', IsHome: true,  BrandA: 'Toyota',     _rawBrandA: 'Toyota' },
+    { DateRaw: '1/21/26', IsHome: false, BrandA: 'Toyota',     _rawBrandA: 'Toyota' },
+  ];
+  canonicalizeAllBrandData(true);
+})()`);
+const vsStats = JSON.parse(evalIn(ctx, `JSON.stringify(getVirtualSignagePartnerStats())`));
+const mcd = vsStats.find(p => p.brand === "McDonald's"), toy = vsStats.find(p => p.brand === 'Toyota');
+t.eq('shared slot credits only the scheduled brand', mcd.qimv, 30);
+t.eq('home game with a TV row is measured',          mcd.measuredGames, 1);
+t.eq('away game is estimated from the slot mean',    toy.estimatedQimv, 40);
+t.eq('measured and estimated add up',                toy.measuredQimv + toy.estimatedQimv, toy.qimv);
+
+t.group('dates — spreadsheet serials');
+t.eq('46113 is Apr 1, 2026',            evalIn(ctx, `parseDateLoose('46113').toDateString()`), 'Wed Apr 01 2026');
+t.eq('serial rewritten for display',    evalIn(ctx, `fixSpreadsheetDateString('46113')`), '4/1/2026');
+t.eq('normal dates are untouched',      evalIn(ctx, `fixSpreadsheetDateString('4/1/2026')`), '4/1/2026');
+t.eq('small numbers are not dates',     evalIn(ctx, `spreadsheetSerialToDate('12345')`), null);
+t.eq('far-future years are rejected',   evalIn(ctx, `parseDateLoose('Jan 1, 46113')`), null);
+
+t.group('paid — season comes from the campaign name');
+t.eq('June-flighted 2025-26 campaign is 2025-26', evalIn(ctx, `normalizePaidRow({ 'Campaign name': '2025-26_GS_PupCity_TRF_CLKS_META_6/25/25_Traffic', Starts: '6/25/2025', Ends: '7/26/2025', 'Amount spent (USD)': 1 }).Season`), '2025-26');
+t.eq('no season in name → flight date',  evalIn(ctx, `normalizePaidRow({ 'Campaign name': 'Spring push', Starts: '3/1/2025', Ends: '3/9/2025', 'Amount spent (USD)': 1 }).Season`), '2024-25');
+
+t.group('organic — Brand Performance sums monthly reports');
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.zoomphBrandPerf = [
+    { Brand: 'Nike', _reportMonth: '2025-07', ViewsImpressions: 217, Engagements: 10, BrandValue: 5 },
+    { Brand: 'Nike', _reportMonth: '2025-08', ViewsImpressions: 28,  Engagements: 4,  BrandValue: 1 },
+  ];
+  organicPortfolioDateMode = 'all';
+})()`);
+t.eq('all months = sum, not latest',    evalIn(ctx, `getOrganicPortfolioRowsForTab('perf')[0].ViewsImpressions`), 245);
+t.eq('months counted',                  evalIn(ctx, `getOrganicPortfolioRowsForTab('perf')[0].rowCount`), 2);
+
+t.group('brand aliases — roster and schedule spellings');
+[['Polar Beverages', 'Polar'], ['Vortex', 'Vortex Legacy Group'], ['KeyBank - National', 'KeyBank'],
+ ['Comcast Cable Communications', 'Xfinity'], ['Yakama Nation Legends Casino Hotel', 'Legends Casino']]
+  .forEach(([raw, want]) => t.eq(`${raw} → ${want}`, resolveCanonicalBrandName(raw), want));
+
+t.group('export — built from a template, not the live page');
+const tmpl = `<!DOCTYPE html>\n<html lang="en" class="stale">\n<script>/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = null;\n/* PRELOADED_DATA_END */\n/* DASHBOARD_META_START */\nconst DASHBOARD_META = {};\n/* DASHBOARD_META_END */\n/* VIEWER_MODE_START */\nconst VIEWER_MODE = false;\n/* VIEWER_MODE_END */</script></html>`;
+ctx.__tmpl = tmpl;
+const built = evalIn(ctx, `buildExportHTML(globalThis.__tmpl, { tvSignage: [{ Brand: 'Nike' }] }, { updateNotes: "Up $' and $& too" }, true)`);
+t.check('opens in light mode',             /<html lang="en" data-theme="light" class="pqi-preboot">/.test(built));
+t.check('editor exports skip the intro cover', !/pqi-preboot/.test(evalIn(ctx, `buildExportHTML(globalThis.__tmpl, {}, {}, false)`)));
+t.check('viewer mode switched on',         built.includes('const VIEWER_MODE = true;'));
+t.check('"$\'" and "$&" in notes survive', built.includes("Up $' and $\\u0026 too")); // & is JSON-escaped
+t.eq('payload round-trips',                evalIn(ctx, `JSON.parse(LZString.decompressFromBase64(globalThis.__built.match(/decompressFromBase64\\('([^']+)'/)[1])).tvSignage[0].Brand`.replace('globalThis.__built', JSON.stringify(built))), 'Nike');
+t.check('tvRatings is no longer exported', !('tvRatings' in evalIn(ctx, `getSerializableDataStore()`)));
+
+t.group('TV Ratings files are recognised and declined');
+t.eq('Nielsen schema detected', detectFileType('vw_nielsen_tv_metrics.csv', [{ 'HH Rtg': 1, Demo: 'HH', Opponent: 'PHX' }]), 'tvRatings');
+
+t.group('partner report — model and document');
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.zoomphBrandPerf = [
+    { Brand: 'Nike', _reportMonth: '2025-06', ViewsImpressions: 999, BrandValue: 999, Engagements: 1, OrganicPosts: 1 },
+    { Brand: 'Nike', _reportMonth: '2025-07', ViewsImpressions: 217, BrandValue: 5, Engagements: 10, OrganicPosts: 3 },
+    { Brand: 'Nike', _reportMonth: '2025-08', ViewsImpressions: 28,  BrandValue: 1, Engagements: 4,  OrganicPosts: 2 },
+  ];
+  DataStore.surveys = [
+    { Brand: 'Nike', Survey: '2025-26 Early', Season: '2025-26', Phase: 'Early', UnaidedPct: 0.3, UnaidedRecallRank: 2, AidedPct: 0, AidedRecallRank: null, LocalHQPct: null },
+  ];
+  canonicalizeAllBrandData(true);
+})()`);
+const rm = JSON.parse(evalIn(ctx, `JSON.stringify((() => { const m = buildReportModel('Nike', '2025-26'); return { organic: m.sections.organic.totals, orgCount: m.sections.organic.count, tv: m.sections.tv.available, survey: m.sections.survey.kpis.map(k => k.value) }; })())`));
+t.eq('organic sums the season\'s monthly reports (Jul–Jun)', rm.organic.views, 245);
+t.eq('June belongs to the previous season',                 rm.orgCount, '2 reports');
+t.eq('sections without data are unavailable, not zero',     rm.tv, false);
+t.eq('0% with no rank reads as "not asked"',                rm.survey[1], '—');
+const docHtml = evalIn(ctx, `renderReportDocument(buildReportModel('Nike', '2025-26'), {})`);
+t.check('document embeds the design-system fonts',          docHtml.includes('font-family:"League Gothic"') && docHtml.includes('data:font/woff2;base64,'));
+t.check('document is light only (no dark theme)',           !/prefers-color-scheme|data-theme="dark"/.test(docHtml));
+t.check('document names the partner and season',            docHtml.includes('<title>Nike — Partnership report 2025-26</title>'));
+t.check('dashboard source never closes its own <script>',   !evalIn(ctx, `RPT_PAGINATE_JS`).includes('</script'));
+
+t.group('season pace — conservative projection');
+// A season shape where 60% of value lands in the first half (a back-half fade).
+t.check('a historical fade lowers the projection below straight pace',
+  evalIn(ctx, `(() => { const fade = [0.3, 0.6, 0.8, 1.0]; return rptProject(100, 2, 4, [fade]) < 100 * 4 / 2; })()`));
+t.eq('projection with a fade', evalIn(ctx, `Math.round(rptProject(100, 2, 4, [[0.3, 0.6, 0.8, 1.0]]))`), 167);
+t.eq('a historically stronger finish is never assumed', evalIn(ctx, `rptProject(100, 2, 4, [[0.2, 0.4, 0.7, 1.0]])`), 200);
+t.eq('no history → straight pace', evalIn(ctx, `rptProject(100, 2, 4, [])`), 200);
+
+t.eq('pace is offered only from home game 14 to 20', evalIn(ctx, `RPT_PACE_MIN_GAMES + '-' + RPT_PACE_MAX_GAMES`), '14-20');
+t.check('pace is off unless asked for', (() => {
+  const h = evalIn(ctx, `renderReportDocument({ brand: 'X', season: '2025-26', generated: new Date(), period: { std: true, throughGame: 20, total: 41, throughDate: '2026-01-17', dates: [] },
+    sections: Object.fromEntries(REPORT_SECTION_DEFS.map(d => [d.key, { ...d, available: d.key === 'tv', count: '', kpis: [], insights: [], source: '',
+      pace: { value: 5, lo: 4, hi: 6, n: 20, G: 41 }, paceInsight: { html: 'On pace for 4–6', estimated: true }, perMinute: { label: 'Per minute', value: '1' }, totals: {} }])) }, {})`);
+  return !h.includes('On pace for');
+})());
+
+t.group('local home broadcasts — season setting');
+evalIn(ctx, `(() => { DataStore.reset(); setLocalHomeBroadcasts('2025-26', 38); })()`);
+t.eq('setting is read back',                 evalIn(ctx, `getLocalHomeBroadcasts('2025-26')`), 38);
+t.eq('setting is included in exports',       evalIn(ctx, `getSerializableDataStore().seasonSettings['2025-26'].localHomeBroadcasts`), 38);
+t.eq('period uses it as the season length',  evalIn(ctx, `getReportPeriodInfo('2025-26').total`), 38);
+evalIn(ctx, `setLocalHomeBroadcasts('2025-26', null)`);
+t.eq('clearing it removes the season entry', evalIn(ctx, `JSON.stringify(DataStore.seasonSettings)`), '{}');
+t.eq('reset clears season settings',         evalIn(ctx, `(() => { setLocalHomeBroadcasts('2025-26', 38); DataStore.reset(); return JSON.stringify(DataStore.seasonSettings); })()`), '{}');
+
+t.group('rankings — off by default, top three only, category families');
+evalIn(ctx, `(() => {
+  DataStore.reset();
+  DataStore.partnerRoster = [
+    { Account: 'Coca-Cola', Category: 'Beverage - Soft Drink' }, { Account: 'Sprite', Category: 'Beverage - Soft Drink' },
+    { Account: 'Gatorade', Category: 'Beverage - Isotonic Sports Drink' }, { Account: 'Polar', Category: 'Beverage - Other' },
+    { Account: 'Nike', Category: 'Athletic Apparel & Footwear' }, { Account: 'Adidas', Category: 'Athletic Apparel & Footwear' },
+  ];
+  canonicalizeAllBrandData(true);
+})()`);
+const rk = JSON.parse(evalIn(ctx, `JSON.stringify(rptRank('Gatorade', { 'Coca-Cola': 9, Sprite: 8, Gatorade: 7, Polar: 1, Nike: 50, Adidas: 40, 'Not A Partner': 99 }))`));
+t.eq('overall rank ignores non-partners',            rk.overall.rank + '/' + rk.overall.of, '5/6');
+t.eq('category rank uses the family ("Beverage")',   rk.category.rank + '/' + rk.category.of + ' ' + rk.category.label, '3/4 Beverage partners');
+t.eq('a family under three partners gets no rank',   evalIn(ctx, `rptRank('Nike', { Nike: 5, Adidas: 4 }).category`), null);
+const sec = { rankable: { metric: 'm', ranks: { overall: { rank: 5, of: 6, label: 'x' }, category: { rank: 3, of: 4, label: 'y' } } } };
+ctx.__sec = sec;
+t.eq('rankings are off by default',                  evalIn(ctx, `rptShownRank(globalThis.__sec, {})`), null);
+t.eq('a 5th place is never shown',                   evalIn(ctx, `rptShownRank(globalThis.__sec, { rank: 'overall' })`), null);
+t.eq('a 3rd place in category is shown',             evalIn(ctx, `rptShownRank(globalThis.__sec, { rank: 'category' }).rank`), 3);
 
 t.group('version constant');
 t.check('DASHBOARD_VERSION is defined', typeof ctx.DASHBOARD_VERSION === 'string' && /^v\d+\.\d+$/.test(ctx.DASHBOARD_VERSION));

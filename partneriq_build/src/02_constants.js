@@ -1,4 +1,16 @@
 // ============================================================
+// EXPORT TEMPLATE — must stay the first statement of the first script
+// ============================================================
+// A snapshot of the document exactly as the file was opened, taken before any
+// script renders into it (init waits for DOMContentLoaded). Exports are built
+// from this rather than from the live DOM, which used to bake in whatever was
+// on screen: the header partner dropdown with every logo image (~3 MB), the
+// general-survey review modal (~1 MB), open modals, and the exporter's theme.
+const EXPORT_TEMPLATE_HTML = (typeof document !== 'undefined' && document.documentElement && document.documentElement.outerHTML)
+  ? '<!DOCTYPE html>\n' + document.documentElement.outerHTML
+  : '';
+
+// ============================================================
 // GLOSSARY OF METRICS
 // ============================================================
 const GLOSSARY = {
@@ -43,9 +55,12 @@ const GLOSSARY = {
 // ============================================================
 // DASHBOARD METADATA — manually update this when sharing a refresh
 // ============================================================
+// Placeholder label. While it is still in place the "Latest update" stamp shows
+// the newest date in the data instead (getLatestUpdateStampHTML).
+const DEFAULT_UPDATE_LABEL = 'Manual refresh date not set';
 /* DASHBOARD_META_START */
 const DASHBOARD_META = {
-  latestUpdateLabel: 'Manual refresh date not set',
+  latestUpdateLabel: DEFAULT_UPDATE_LABEL,
   latestUpdateDate: '',
   updateNotes: 'Update this note before sharing the next refreshed dashboard.',
   preparedBy: 'Partnership Strategy',
@@ -77,5 +92,14 @@ const VIEWER_MODE = false;
 // Version history lives in CHANGELOG.md, not in the dashboard. It used to be a
 // 1,400-line array rendered as an in-app page, which shipped ~92 KB of internal
 // development notes to every viewer. Update both together when you ship.
-const DASHBOARD_VERSION = 'v0.52';
+const DASHBOARD_VERSION = 'v0.53';
 const DASHBOARD_VERSION_DATE = 'September 2026';
+
+// ============================================================
+// HOME TEAM
+// ============================================================
+// TV rows carry the fixture as "Away Team @ Home Team". Matching the part after
+// the "@" against this tells home broadcasts from away ones, which YoY needs:
+// some seasons were measured home-only and others home + away, and an away
+// broadcast is worth a fraction of a home one.
+const HOME_TEAM_PATTERN = /trail\s*blazers/i;

@@ -28,18 +28,18 @@ build there and mirror it into `rebuild.py`.
 | `13_survey_section.js` | Survey section and portfolio page |
 | `14_organic_section.js` | Organic (Zoomph) section, `detectFileType`, all file ingest |
 | `15_wiring.js` | Event wiring, delegated handlers, app init |
-| `16_report_template.js` | PDF partner report template |
+| `16_report_template.js` | Partner report builder, document and paginator |
 | `17_general_survey_assignment.js` | General survey question-to-partner assignment |
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage |
 | `21_web_digital_section.js` | Web & Digital (Blazers.com, RoseQuarter.com, pre-roll) |
-| `22_tv_ratings_section.js` | TV Ratings (Nielsen viewership) |
 | `23_intro_section.js` | Viewer-mode how-to intro overlay |
+| `24_report_brand_assets.js` | Generated from `brand/` by `brand/make_assets.py` — report fonts and logos |
 | `shell.html` | HTML skeleton (header, main, modals, footer) |
 
-There is no `03_changelog.js` — version history lives in `CHANGELOG.md` so it
-isn't shipped to viewers. The numbering gap is deliberate; don't reuse `03_`.
+There is no `22_` file — TV Ratings moved to their own dashboard in v0.53. There is also no `03_changelog.js` — version history lives in `CHANGELOG.md` so it
+isn't shipped to viewers. The numbering gaps are deliberate; don't reuse `03_` or `22_`.
 
 ## Workflow
 
@@ -56,8 +56,16 @@ isn't shipped to viewers. The numbering gap is deliberate; don't reuse `03_`.
 1. Make changes to the relevant source file(s)
 2. Add an entry at the top of `CHANGELOG.md`
 3. Bump `DASHBOARD_VERSION` in `src/02_constants.js` — the footer renders from it
-4. Update `VERSION` in the export cells of `build.ipynb` if you're producing an AM export
+4. The AM export cells in `build.ipynb` read the version from `DASHBOARD_VERSION` — nothing to update there
 5. Rebuild and re-run both test suites
+
+## Partner report
+
+The report uses the Trail Blazers design system's fonts and logos, kept in
+`brand/`. After changing them, run `python3 brand/make_assets.py`, then rebuild.
+
+To check report layout across every partner after a change (optional, needs
+Playwright): `node report_layout_check.js path/to/preloaded-export.html`.
 
 ## Checking partner naming
 

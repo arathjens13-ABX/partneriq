@@ -79,6 +79,13 @@ const BRAND_ALIAS_DEFAULTS = {
   'Alaska Dunk Of The Game': 'Alaska Airlines',
   // ANC LED Report — Comcast Xfinity (existing 'Comcast' alias only matches the bare word)
   'Comcast Xfinity': 'Xfinity',
+  // Partner roster and virtual-signage schedule spellings that didn't match the
+  // name every other channel uses, so each partner showed up twice
+  'Comcast Cable Communications': 'Xfinity',
+  'Polar Beverages': 'Polar',
+  'Vortex': 'Vortex Legacy Group',
+  'KeyBank - National': 'KeyBank',
+  'Yakama Nation Legends Casino Hotel': 'Legends Casino',
   // Misspellings and legal-name variants seen in source exports. Case and
   // punctuation variants no longer need entries here — CANONICAL_BRANDS handles
   // those — so this list is only for names that differ by more than spelling.
@@ -452,6 +459,9 @@ const DataStore = {
   brandMergeRules: { ...BRAND_ALIAS_DEFAULTS },
   autoDetectedAliases: {},   // computed post-load; variant → canonical (word-prefix + case-normalization groupings)
   autoAliasBlocks: new Set(), // user-flagged names that should NOT be auto-merged; persisted in exports
+  // Per-season settings entered by hand, e.g. { '2025-26': { localHomeBroadcasts: 38 } }
+  // when national broadcasts mean fewer home games are measured than usual.
+  seasonSettings: {},
   brandNameChanges: new Set(), // alias keys that represent "formerly known as" renames (vs pure shorthand aliases)
   surveys: [],
   surveyGeneral: [],             // File 1 — GeneralSurvey_ — fan segment questions (beverages, game nights, bar spaces, TV segments)
@@ -465,7 +475,6 @@ const DataStore = {
   webBlazersBanners: [],            // Blazers.com display banner delivery rows
   webRQBanners: [],                 // RoseQuarter.com display banner delivery rows
   webPreRoll: [],                   // Pre-Roll video delivery rows
-  tvRatings: [],                    // Nielsen TV broadcast viewership data (game-level ratings, not partner data)
   loadedFiles: [],                  // Per-file ingest registry { fileId, filename, type, rows, loadedAt, ... } — backs Remove/Replace in the file log
   brands: new Set(),
   channelsByBrand: {},
@@ -484,6 +493,7 @@ const DataStore = {
     invalidateTVIndex();
     this.autoAliasBlocks = new Set();
     this.brandNameChanges = new Set();
+    this.seasonSettings = {};
     this.surveys = [];
     this.surveyGeneral = [];
     this.surveyPartner = [];
@@ -496,7 +506,6 @@ const DataStore = {
     this.webBlazersBanners = [];
     this.webRQBanners = [];
     this.webPreRoll = [];
-    this.tvRatings = [];
     this.loadedFiles = [];
     this.brands = new Set();
     this.channelsByBrand = {};
@@ -527,8 +536,7 @@ const DataStore = {
     const surveyPrograms = Array.isArray(this.surveyPrograms) ? this.surveyPrograms.length : 0;
     const vsSchedule     = Array.isArray(this.virtualSignageSchedule) ? this.virtualSignageSchedule.length : 0;
     const webDisplay     = (this.webBlazersBanners||[]).length + (this.webRQBanners||[]).length + (this.webPreRoll||[]).length;
-    const tvRatings      = Array.isArray(this.tvRatings) ? this.tvRatings.length : 0;
-    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay + tvRatings > 0;
+    return tv + organic + paid + surveys + surveyGeneral + surveyPartner + surveyPrograms + zoomph + vsSchedule + webDisplay > 0;
   }
 };
 
@@ -569,7 +577,6 @@ function removeFileDataById(fileId) {
   DataStore.webBlazersBanners  = (DataStore.webBlazersBanners || []).filter(byFile);
   DataStore.webRQBanners       = (DataStore.webRQBanners || []).filter(byFile);
   DataStore.webPreRoll         = (DataStore.webPreRoll || []).filter(byFile);
-  DataStore.tvRatings          = (DataStore.tvRatings || []).filter(byFile);
   // Brand-keyed collections: filter each bucket, drop buckets that empty out
   [DataStore.organicSocial, DataStore.paidSocial].forEach(obj => {
     if (!obj || typeof obj !== 'object') return;
@@ -623,8 +630,7 @@ function hasPreloadedData() {
     (Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners.length : 0) +
     (Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners.length : 0) +
     (Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll.length : 0);
-  const tvRatings = Array.isArray(PRELOADED_DATA.tvRatings) ? PRELOADED_DATA.tvRatings.length : 0;
-  return tv + organic + paid + surveys + webDisplay + tvRatings > 0;
+  return tv + organic + paid + surveys + webDisplay > 0;
 }
 
 function normalizeLoadedRows() {
@@ -647,6 +653,12 @@ function normalizeLoadedRows() {
         if (!r._year && r._date instanceof Date && !isNaN(r._date)) r._year = r._date.getFullYear();
       } catch(e) { console.warn('normalizeLoadedRows: skipped malformed organic row', e); }
     });
+  });
+
+  // Survey dates saved before the spreadsheet-serial fix ("46113") are
+  // repaired on load, so older exports display the real date too.
+  [DataStore.surveys, DataStore.surveyGeneral, DataStore.surveyPartner, DataStore.surveyPrograms].forEach(arr => {
+    (arr || []).forEach(r => { if (r && r.Date !== undefined) r.Date = fixSpreadsheetDateString(r.Date); });
   });
 
   Object.entries(DataStore.paidSocial || {}).forEach(([brand, rows]) => {
@@ -761,6 +773,13 @@ function canonicalizeAllBrandData(skipAutoDetect = false) {
   });
   (DataStore.webPreRoll || []).forEach(r => {
     if (r) r.Brand = resolveCanonicalBrandName(r._rawPartner || r.Brand);
+  });
+  // Virtual signage schedule — both slots, from the raw schedule names. Without
+  // this an alias added after ingest never reached the schedule.
+  (DataStore.virtualSignageSchedule || []).forEach(g => {
+    if (!g) return;
+    if (g._rawBrandA || g.BrandA) g.BrandA = resolveCanonicalBrandName(g._rawBrandA || g.BrandA);
+    if (g._rawBrandB || g.BrandB) g.BrandB = resolveCanonicalBrandName(g._rawBrandB || g.BrandB);
   });
   if (currentBrand) currentBrand = resolveCanonicalBrandName(currentBrand);
   rebuildBrandRegistryFromData();
@@ -967,8 +986,8 @@ function collectRawBrandObservations() {
   (DataStore.webRQBanners || []).forEach(r => firstOf(r, 'Web', ['_rawAdvertiser', 'Brand']));
   (DataStore.webPreRoll || []).forEach(r => firstOf(r, 'Web', ['_rawPartner', 'Brand']));
   (DataStore.virtualSignageSchedule || []).forEach(g => {
-    if (g && g.BrandA) note(g.BrandA, 'Virtual Signage');
-    if (g && g.BrandB) note(g.BrandB, 'Virtual Signage');
+    if (g && (g._rawBrandA || g.BrandA)) note(g._rawBrandA || g.BrandA, 'Virtual Signage');
+    if (g && (g._rawBrandB || g.BrandB)) note(g._rawBrandB || g.BrandB, 'Virtual Signage');
   });
 
   return [...seen.values()].map(e => ({
@@ -1024,7 +1043,7 @@ function getBrandNamingReport() {
   const brandSet = new Set(canonicalNames);
   const rosterMismatch = (DataStore.partnerRoster || [])
     .map(r => r.Account)
-    .filter(a => a && !brandSet.has(a))
+    .filter(a => a && !brandSet.has(resolveCanonicalBrandName(a)))
     .sort((a, b) => a.localeCompare(b));
 
   return {
@@ -1133,9 +1152,12 @@ function loadPreloadedData() {
   DataStore.webBlazersBanners = Array.isArray(PRELOADED_DATA.webBlazersBanners) ? PRELOADED_DATA.webBlazersBanners : [];
   DataStore.webRQBanners = Array.isArray(PRELOADED_DATA.webRQBanners) ? PRELOADED_DATA.webRQBanners : [];
   DataStore.webPreRoll = Array.isArray(PRELOADED_DATA.webPreRoll) ? PRELOADED_DATA.webPreRoll : [];
-  DataStore.tvRatings = Array.isArray(PRELOADED_DATA.tvRatings) ? PRELOADED_DATA.tvRatings : [];
-  DataStore.loadedFiles = Array.isArray(PRELOADED_DATA.loadedFiles) ? PRELOADED_DATA.loadedFiles : [];
+  // Exports made before v0.53 may carry a tvRatings collection and its file-log
+  // entries. TV Ratings moved to their own dashboard, so both are dropped here.
+  DataStore.loadedFiles = (Array.isArray(PRELOADED_DATA.loadedFiles) ? PRELOADED_DATA.loadedFiles : [])
+    .filter(f => !(f && f.type === 'tvRatings'));
   DataStore.autoAliasBlocks = new Set(Array.isArray(PRELOADED_DATA.autoAliasBlocks) ? PRELOADED_DATA.autoAliasBlocks : []);
+  DataStore.seasonSettings = (PRELOADED_DATA.seasonSettings && typeof PRELOADED_DATA.seasonSettings === 'object') ? PRELOADED_DATA.seasonSettings : {};
   DataStore.brandNameChanges = new Set(Array.isArray(PRELOADED_DATA.brandNameChanges) ? PRELOADED_DATA.brandNameChanges : []);
   normalizeLoadedRows();
   canonicalizeAllBrandData();
@@ -1253,10 +1275,10 @@ function getSerializableDataStore() {
     webBlazersBanners: DataStore.webBlazersBanners || [],
     webRQBanners: DataStore.webRQBanners || [],
     webPreRoll: DataStore.webPreRoll || [],
-    tvRatings: DataStore.tvRatings || [],
     // Only successful ingests carry data worth round-tripping; error log lines stay session-only
     loadedFiles: (DataStore.loadedFiles || []).filter(f => f && f.success !== false),
     autoAliasBlocks: [...(DataStore.autoAliasBlocks instanceof Set ? DataStore.autoAliasBlocks : [])],
+    seasonSettings: DataStore.seasonSettings || {},
     brandNameChanges: [...(DataStore.brandNameChanges instanceof Set ? DataStore.brandNameChanges : [])],
     userPresets: getCurrentUserPresets()
   };
@@ -1272,7 +1294,25 @@ function sanitizeFilenamePart(value) {
 
 function replaceExportBlock(html, startName, endName, replacement) {
   const re = new RegExp('/\\* ' + startName + ' \\*/[\\s\\S]*?/\\* ' + endName + ' \\*/');
-  return html.replace(re, replacement);
+  // Function form: a string replacement would expand "$&", "$'" and "$`", so an
+  // update note containing "$'" pasted the rest of the document into the export.
+  return html.replace(re, () => replacement);
+}
+
+// Builds the shared HTML file from the pristine template. Pure — no DOM, no
+// prompts — so it can be tested directly. Every export opens in light mode;
+// viewer exports also get the pre-boot cover class so the intro shows first.
+function buildExportHTML(templateHtml, payload, meta, viewerMode) {
+  let html = String(templateHtml || '').replace(/<html\b[^>]*>/i,
+    `<html lang="en" data-theme="light"${viewerMode ? ' class="pqi-preboot"' : ''}>`);
+  const compressed = LZString.compressToBase64(JSON.stringify(payload));
+  html = replaceExportBlock(html, 'PRELOADED_DATA_START', 'PRELOADED_DATA_END',
+    '/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = JSON.parse(LZString.decompressFromBase64(\'' + compressed + '\'));\n/* PRELOADED_DATA_END */');
+  html = replaceExportBlock(html, 'DASHBOARD_META_START', 'DASHBOARD_META_END',
+    '/* DASHBOARD_META_START */\nconst DASHBOARD_META = ' + safeJSONStringify(meta, 2) + ';\n/* DASHBOARD_META_END */');
+  html = replaceExportBlock(html, 'VIEWER_MODE_START', 'VIEWER_MODE_END',
+    '/* VIEWER_MODE_START */\nconst VIEWER_MODE = ' + (viewerMode ? 'true' : 'false') + ';\n/* VIEWER_MODE_END */');
+  return html;
 }
 
 function safeJSONStringify(value, space) {
@@ -1291,33 +1331,23 @@ function exportPreloadedDashboard() {
   }
 
   const nextMeta = { ...DASHBOARD_META };
-  const label = prompt('Latest update label shown in the shared dashboard:', nextMeta.latestUpdateLabel || '');
-  if (label !== null) nextMeta.latestUpdateLabel = label.trim() || nextMeta.latestUpdateLabel;
-  const date = prompt('Latest update date, optional:', nextMeta.latestUpdateDate || '');
+  const currentLabel = nextMeta.latestUpdateLabel === DEFAULT_UPDATE_LABEL ? '' : (nextMeta.latestUpdateLabel || '');
+  const label = prompt('Latest update label shown in the shared dashboard (e.g. "2025-26 season wrap"):', currentLabel);
+  if (label === null) return; // Cancel on the first question cancels the export
+  nextMeta.latestUpdateLabel = label.trim() || nextMeta.latestUpdateLabel;
+  // Prefill with the newest date actually in the data rather than a blank.
+  const latestData = getLatestDataDate();
+  const date = prompt('Latest update date, optional:', nextMeta.latestUpdateDate || (latestData ? formatShortDate(latestData) : ''));
   if (date !== null) nextMeta.latestUpdateDate = date.trim();
   const notes = prompt('Update notes shown on the Home page, optional:', nextMeta.updateNotes || '');
   if (notes !== null) nextMeta.updateNotes = notes.trim();
 
   const viewerMode = document.getElementById('exportViewerMode') ? document.getElementById('exportViewerMode').checked : true;
-  const payload = getSerializableDataStore();
-  // The Export button lives inside the import modal, so the modal is open right
-  // now. Serializing the live DOM would bake it in and flash it on the viewer's
-  // first load — strip transient open state before snapshotting. Viewer exports
-  // also get the pre-boot cover class so the intro is the first thing seen.
-  document.querySelectorAll('.modal-backdrop').forEach(m => m.classList.remove('active'));
-  const introRoot = document.getElementById('introRoot');
-  if (introRoot) introRoot.innerHTML = '';
-  document.documentElement.classList.toggle('pqi-preboot', viewerMode);
-  let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-  document.documentElement.classList.remove('pqi-preboot'); // don't affect the live builder view
-
-  const compressed = LZString.compressToBase64(JSON.stringify(payload));
-  html = replaceExportBlock(html, 'PRELOADED_DATA_START', 'PRELOADED_DATA_END',
-    '/* PRELOADED_DATA_START */\nconst PRELOADED_DATA = JSON.parse(LZString.decompressFromBase64(\'' + compressed + '\'));\n/* PRELOADED_DATA_END */');
-  html = replaceExportBlock(html, 'DASHBOARD_META_START', 'DASHBOARD_META_END',
-    '/* DASHBOARD_META_START */\nconst DASHBOARD_META = ' + safeJSONStringify(nextMeta, 2) + ';\n/* DASHBOARD_META_END */');
-  html = replaceExportBlock(html, 'VIEWER_MODE_START', 'VIEWER_MODE_END',
-    '/* VIEWER_MODE_START */\nconst VIEWER_MODE = ' + (viewerMode ? 'true' : 'false') + ';\n/* VIEWER_MODE_END */');
+  if (!EXPORT_TEMPLATE_HTML) {
+    showErrorToast('Export unavailable: the page template could not be captured.');
+    return;
+  }
+  const html = buildExportHTML(EXPORT_TEMPLATE_HTML, getSerializableDataStore(), nextMeta, viewerMode);
 
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
   const a = document.createElement('a');

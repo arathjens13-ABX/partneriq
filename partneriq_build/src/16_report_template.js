@@ -1,69 +1,28 @@
-
 // ============================================================
-// PARTNER REPORT — PDF-ready single-page export
+// PARTNER REPORT
 // ============================================================
-// generatePartnerReport(brand) → HTML string
-// Called by openPartnerReport(brand) which opens a new window.
-// Layout: dark background with Blazers logo mark watermark,
-// top-line KPI strip, channel cards, survey recall bars.
-// Print CSS handles PDF output via Cmd+P / Ctrl+P.
+// Three layers, each usable on its own:
+//
+//   1. Model     buildReportModel(brand, season) — every figure the report can
+//                show, per section, for ONE season. Uses the same accessors as
+//                the dashboard pages, so a number on the report always matches
+//                the number on screen.
+//   2. Document  renderReportDocument(model, opts) — a self-contained HTML
+//                document styled with the Trail Blazers design system (League
+//                Gothic / Trade Gothic, light only). It paginates itself onto US
+//                Letter pages in the browser, so the preview is exactly what
+//                prints: nothing is ever cut across a page.
+//   3. Builder   openReportModal(brand) — one screen: choices on the left, the
+//                live preview on the right, "Save as PDF" prints the preview.
+//
+// Fonts and logos come from REPORT_BRAND_ASSETS (src/24_report_brand_assets.js,
+// generated from brand/).
 // ============================================================
-// The page background is embedded as a data URI directly in the report CSS
-// below. A duplicate copy used to sit up here in a REPORT_BG_B64 constant that
-// nothing referenced — 27.6 KB of dead weight in every exported dashboard, and
-// worse, editing the constant that looked like it controlled the background did
-// nothing at all.
 
-// ── Logo configuration ─────────────────────────────────────
-// Set REPORT_ORG_LOGO to swap the placeholder "TB" circle with a real logo.
-//
-// Option A — PNG/JPG (base64 string from Cell 7 in build.ipynb):
-//   const REPORT_ORG_LOGO = 'data:image/png;base64,YOUR_BASE64_HERE';
-//   const REPORT_ORG_LOGO_TYPE = 'img';
-//
-// Option B — Inline SVG:
-//   const REPORT_ORG_LOGO = '<svg xmlns="..." viewBox="0 0 100 100">...</svg>';
-//   const REPORT_ORG_LOGO_TYPE = 'svg';
-//
-// Option C — Keep placeholder (default):
-const REPORT_ORG_LOGO      = null;   // ← replace with base64 string or SVG string
-const REPORT_ORG_LOGO_TYPE = 'img';  // 'img' or 'svg'
-
-// Helper: renders either a real logo or the "TB" placeholder circle.
-// Resolution order: REPORT_ORG_LOGO (explicit override) → PARTNER_LOGOS["TrailBlazers"] → TB placeholder
-function renderOrgLogo(size = 52) {
-  let src  = REPORT_ORG_LOGO;
-  let type = REPORT_ORG_LOGO_TYPE;
-  if (!src && typeof PARTNER_LOGOS !== 'undefined' && PARTNER_LOGOS['TrailBlazers']) {
-    src  = PARTNER_LOGOS['TrailBlazers'].data;
-    type = PARTNER_LOGOS['TrailBlazers'].type; // 'img' for PNG/JPG
-  }
-  if (!src) {
-    // Placeholder — red circle with TB initials
-    return `<div style="width:${size}px;height:${size}px;background:var(--brand-red, #C8102E);
-      border-radius:50%;display:flex;align-items:center;justify-content:center;
-      font-family:var(--fd,'Arial Narrow','Helvetica Neue',Arial,sans-serif);font-weight:800;font-size:${Math.round(size*0.31)}px;
-      letter-spacing:-0.05em;color:#fff;flex-shrink:0;">TB</div>`;
-  }
-  if (type === 'svg') {
-    return `<div style="width:${size}px;height:${size}px;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
-      ${src}
-    </div>`;
-  }
-  // PNG / JPG image — no border-radius so the actual logo mark isn't clipped
-  return `<img src="${src}" width="${size}" height="${size}"
-    style="object-fit:contain;flex-shrink:0;"
-    alt="Portland Trail Blazers" />`;
-}
-// Helper: renders a partner logo (from logos/ folder or DataStore override)
-// Three-tier fallback:
-//   1. DataStore.partnerLogos[brand]  (future logo manager UI override)
-//   2. PARTNER_LOGOS[brand]           (logos/ folder, baked in at build time)
-//   3. Text fallback                  (partner name, always works)
+// ── Partner logos (also used by the partner pages and browse grid) ──
 // Resolves a partner name to a baked-in logo. Exact key first, then a
 // compact-token match (case, spaces and punctuation stripped) so filenames
-// don't have to be byte-identical to the canonical brand name. The compact
-// index is built once and reused.
+// don't have to be byte-identical to the canonical brand name.
 let _partnerLogoIndex = null;
 function lookupPartnerLogo(brand) {
   if (typeof PARTNER_LOGOS === 'undefined' || !PARTNER_LOGOS || !brand) return null;
@@ -78,1404 +37,1507 @@ function lookupPartnerLogo(brand) {
   return _partnerLogoIndex.get(compactBrandToken(brand)) || null;
 }
 
+// Three tiers: DataStore override (future logo manager) → logos/ folder → initials badge.
 function renderPartnerLogo(brand, size = 36) {
-  // Tier 1: DataStore runtime override (logo manager UI — future feature)
   const dsLogo = (DataStore.partnerLogos || {})[brand];
-  if (dsLogo) {
-    return dsLogo.type === 'svg'
-      ? `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${dsLogo.data}</div>`
-      : `<img src="${dsLogo.data}" width="${size}" height="${size}" style="object-fit:contain;flex-shrink:0;" alt="${brand}"/>`;
-  }
-
-  // Tier 2: PARTNER_LOGOS from logos/ folder (baked in at build time).
-  // Falls back to a compact-token match so a filename that differs only in
-  // case, spacing or punctuation still resolves — "DeltaDental.png" for
-  // "Delta Dental" used to silently produce no logo at all.
-  const logo = lookupPartnerLogo(brand);
+  const logo = dsLogo || lookupPartnerLogo(brand);
   if (logo) {
     return logo.type === 'svg'
       ? `<div style="width:${size}px;height:${size}px;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${logo.data}</div>`
       : `<img src="${logo.data}" width="${size}" height="${size}" style="object-fit:contain;flex-shrink:0;" alt="${escapeAttr(brand)}"/>`;
   }
-
-  // Tier 3: Text fallback — partner name styled as a compact badge
   const initials = brand.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
   return `<div style="width:${size}px;height:${size}px;background:rgba(255,255,255,0.06);
     border:1px solid rgba(255,255,255,0.12);border-radius:4px;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;
     font-family:var(--fd,'Arial Narrow','Helvetica Neue',Arial,sans-serif);font-weight:700;
     font-size:${Math.max(9, Math.round(size * 0.32))}px;
-    letter-spacing:0.04em;color:rgba(255,255,255,0.6);">${initials}</div>`;
+    letter-spacing:0.04em;color:rgba(255,255,255,0.6);">${escapeHTML(initials)}</div>`;
 }
 
 
+// ============================================================
+// 1. MODEL
+// ============================================================
 
+// Report order. VS sits beside TV because both are QI media value.
+const REPORT_SECTION_DEFS = [
+  { key: 'tv',             label: 'TV visible signage' },
+  { key: 'virtualSignage', label: 'On-court virtual signage' },
+  { key: 'organic',        label: 'Organic social' },
+  { key: 'survey',         label: 'Brand awareness survey' },
+  { key: 'paid',           label: 'Paid social' },
+  { key: 'ancLED',         label: 'In-arena LED' },
+  { key: 'affidavit',      label: 'TV & radio spots' },
+  { key: 'webDisplay',     label: 'Web & digital' },
+];
 
-// ── Data gathering ─────────────────────────────────────────
-function gatherReportData(brand) {
-  const channels = DataStore.channelsByBrand[brand] || {};
+function rptPriorSeason(season) {
+  const m = String(season || '').match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const start = Number(m[1]) - 1;
+  return `${start}-${String(start + 1).slice(-2)}`;
+}
 
-  // TV
-  const tvSeasons = [...new Set((getBrandTVData(brand)||[]).map(r => r.Season).filter(Boolean))].sort();
-  const latestTVSeason = tvSeasons[tvSeasons.length - 1] || null;
-  const tvRows = latestTVSeason ? getBrandTVData(brand, latestTVSeason) : [];
-  const tvYoY  = latestTVSeason ? getYoYRowSets(brand, latestTVSeason) : null;
+// The season the single-season exports (affidavits, ANC LED, RoseQuarter.com,
+// virtual signage schedule) describe: they carry no season of their own, so
+// they belong to the newest season the TV data covers.
+function rptCurrentSeason() {
+  const s = getPortfolioSeasons();
+  return s[s.length - 1] || null;
+}
 
-  const tvQimv    = sum(tvRows, 'QI Media Value ($)');
-  const tvImpr    = sum(tvRows, 'Sponsorship QI Impressions');
-  const tvQimvPrior = tvYoY ? sum(tvYoY.priorRows, 'QI Media Value ($)') : null;
-  const tvYoyPct  = (tvQimvPrior && tvQimvPrior > 0) ? pctChange(tvQimv, tvQimvPrior) : null;
-  const tvSoV     = tvRows.length ? (sum(tvRows,'Share of Voice (%)') / tvRows.length).toFixed(1) : null;
-  const tvMatches = [...new Set(tvRows.map(r => r.Matchdate).filter(Boolean))].length;
+function rptSeasonOfMonth(ym) {
+  if (!ym) return null;
+  const [y, m] = ym.split('-').map(Number);
+  return fiscalSeasonFromDate(new Date(y, m - 1, 15));
+}
 
-  // Assets — top 4 by QIMV
-  const assetMap = {};
-  tvRows.forEach(r => {
-    const loc = r.Location || r.Tool || 'Unknown';
-    if (!assetMap[loc]) assetMap[loc] = { name: loc, impressions: 0, qimv: 0, duration: 0 };
-    assetMap[loc].impressions += Number(r['Sponsorship QI Impressions']) || 0;
-    assetMap[loc].qimv        += Number(r['QI Media Value ($)'])      || 0;
-    assetMap[loc].duration    += Number(r['Duration (Minutes)'])      || 0;
-  });
-  const topAssets = Object.values(assetMap)
-    .sort((a, b) => b.qimv - a.qimv)
-    .slice(0, 4)
-    .map(a => ({
-      ...a,
-      qimvPerMin: a.duration > 0 ? a.qimv / a.duration : 0,
-    }));
+// A survey percentage of 0 with no rank means the brand wasn't asked about in
+// that wave, not that nobody recalled it.
+function rptSurveyPct(pct, rank) {
+  if (pct === null || pct === undefined) return null;
+  if (pct === 0 && !rank) return null;
+  return pct;
+}
 
-  // Organic (Zoomph)
-  const zRows   = getBrandZoomphPerf(brand);
-  const zLatest = zRows.length ? zRows[zRows.length - 1] : null;
-  const zPostsYoY = getZoomphYoY(brand, 'OrganicPosts');
-  const zImprYoY  = getZoomphYoY(brand, 'ViewsImpressions');
-  const zValYoY   = getZoomphYoY(brand, 'BrandValue');
+function rptFmtPct0(p) { return p === null || p === undefined ? '—' : `${Math.round(p * 100)}%`; }
+function rptShortSeason(s) { return String(s || '').replace(/^20(\d{2})-(\d{2})$/, '$1-$2'); }
+function rptMonthLabel(ym) {
+  const [y, m] = String(ym).split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-US', { month: 'short' });
+}
 
-  // Paid
-  const paidSeasons = getPaidSeasons(brand);
-  const latestPaidSeason = paidSeasons[paidSeasons.length - 1] || null;
-  const paidRows = latestPaidSeason ? getBrandPaidData(brand, latestPaidSeason) : [];
-  const paidAgg  = paidRows.length ? paidAggregate(paidRows) : null;
+// Seasons in which the partner has anything reportable, newest first.
+function getReportSeasonsForBrand(brand) {
+  const s = new Set();
+  getBrandTVData(brand).forEach(r => r.Season && s.add(r.Season));
+  getBrandSurveyData(brand).forEach(r => r.Season && s.add(r.Season));
+  getBrandPaidData(brand).forEach(r => r.Season && r.Season !== 'Unknown' && s.add(r.Season));
+  getBrandZoomphPerf(brand).forEach(r => { const x = rptSeasonOfMonth(r._reportMonth); if (x) s.add(x); });
+  getBlazersBannersForBrand(brand).forEach(r => { const x = normalizeSeasonLabel(r.Season || ''); if (x) s.add(x); });
+  const cur = rptCurrentSeason();
+  if (cur && (hasAffidavitDataForBrand(brand) || hasANCLEDDataForBrand(brand) || hasVirtualSignageDataForBrand(brand) || hasWebDisplayDataForBrand(brand))) s.add(cur);
+  return [...s].filter(x => /^\d{4}-\d{2}$/.test(x)).sort().reverse();
+}
 
-  // Survey — latest Early and Late waves
-  const surveyEarly = getSurveyLatestWave(brand, 'Early');
-  const surveyLate  = getSurveyLatestWave(brand, 'Late');
-  const surveyWave  = surveyLate || surveyEarly;
-  const totalInWave = surveyWave
-    ? (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length
-    : 0;
+// ── Per-section builders ─────────────────────────────────────
+// Each returns null when the partner has nothing for that season, otherwise
+// { count, kpis, chart?, table?, bars?, banner?, insights, source }.
+// Figures are raw numbers; formatting happens in the document layer.
 
-  // On-Court Virtual Signage QIMV (combined into total)
-  const vsQimv = (() => {
-    if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
-      const allVS = typeof getVirtualSignagePartnerStats === 'function' ? getVirtualSignagePartnerStats() : [];
-      const vsB = allVS.find(s => s.brand === brand);
-      return vsB ? (vsB.qimv || 0) : 0;
-    }
-    return 0;
-  })();
+// ── Period: full season or season to date ──────────────────────
+// "Season to date" is anchored on home broadcasts: through home game N means
+// every source up to that game's date. Prior-season comparisons use the same
+// point in the prior season (its first N home broadcasts) for TV, the same
+// months for organic, and the same wave for the survey.
 
+function rptISO(v) {
+  if (!v) return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+  const d = v instanceof Date ? v : parseDateLoose(v);
+  if (!d || isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Days since October 1 of the season's start year — lines seasons up by calendar.
+function rptDayOfSeason(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const start = m >= 7 ? y : y - 1;
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(start, 9, 1)) / 864e5);
+}
+
+function rptHomeDates(season) {
+  return season ? splitMatchdatesByVenue(getTVRowsForPeriod(season)).home : [];
+}
+
+// The local home broadcasts set for a season (fewer than usual when some home
+// games are national-only and carry no local TV measurement), or null.
+function getLocalHomeBroadcasts(season) {
+  const v = ((DataStore.seasonSettings || {})[season] || {}).localHomeBroadcasts;
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+function setLocalHomeBroadcasts(season, value) {
+  if (!DataStore.seasonSettings) DataStore.seasonSettings = {};
+  const n = Math.round(Number(value));
+  const cur = DataStore.seasonSettings[season] || {};
+  if (Number.isFinite(n) && n > 0) cur.localHomeBroadcasts = n; else delete cur.localHomeBroadcasts;
+  if (Object.keys(cur).length) DataStore.seasonSettings[season] = cur; else delete DataStore.seasonSettings[season];
+}
+
+// Home broadcasts measured so far, how many this season will have (the
+// "Local home broadcasts" setting, else the median of earlier full seasons),
+// and whether the season is over (every expected broadcast measured, or its
+// latest game as late in the calendar as earlier seasons' last games).
+function getReportPeriodInfo(season) {
+  const dates = rptHomeDates(season);
+  const prior = getPortfolioSeasons().filter(s => s < season).map(rptHomeDates).filter(d => d.length >= 30);
+  const counts = prior.map(d => d.length).sort((a, b) => a - b);
+  const usual = counts.length ? counts[Math.floor(counts.length / 2)] : 41;
+  const local = getLocalHomeBroadcasts(season);
+  const total = Math.max(local || usual, dates.length);
+  const lastDays = prior.map(d => rptDayOfSeason(d[d.length - 1]));
+  const complete = dates.length >= total ||
+    (lastDays.length > 0 && dates.length > 0 && rptDayOfSeason(dates[dates.length - 1]) >= Math.min(...lastDays) - 3);
+  return { dates, total, complete, usual, local, national: local && usual > local ? usual - local : 0 };
+}
+
+function rptContext(season, period) {
+  const info = getReportPeriodInfo(season);
+  const std = !!(period && period.mode === 'std' && info.dates.length);
+  const n = std ? Math.min(Math.max(1, period.throughGame || info.dates.length), info.dates.length) : null;
+  const through = std ? info.dates[n - 1] : null;
   return {
-    brand, channels,
-    tv: { season: latestTVSeason, qimv: tvQimv, impressions: tvImpr,
-          yoyPct: tvYoyPct, soV: tvSoV, matches: tvMatches, topAssets, vsQimv },
-    organic: { latest: zLatest, postsYoY: zPostsYoY, imprYoY: zImprYoY, valYoY: zValYoY },
-    paid: { season: latestPaidSeason, agg: paidAgg },
-    survey: { wave: surveyWave, early: surveyEarly, late: surveyLate, totalInWave },
+    season, std, info, throughGame: n, throughDate: through,
+    inWindow: v => { if (!std) return true; const iso = rptISO(v); return !!iso && iso <= through; },
   };
 }
 
-// ── Helpers ────────────────────────────────────────────────
-function reportDelta(pct, invert = false) {
-  if (pct === null || pct === undefined) return '';
-  const up = invert ? pct < 0 : pct >= 0;
-  const cls = up ? 'delta-up' : 'delta-down';
-  const arrow = up ? '▲' : '▼';
-  return `<span class="${cls}">${arrow} ${Math.abs(pct * 100).toFixed(0)}% YoY</span>`;
-}
+// ── Season pace (TV QI media value) ────────────────────────────
+// Projects the rest of the season conservatively: the remaining home games are
+// valued at the LOWER of (a) the pace so far and (b) what earlier seasons
+// delivered after the same point. So a season that historically fades in the
+// back half pulls the projection down, but the projection never assumes the
+// back half will be stronger than the pace so far.
+//
+// Backtested on 2021-22 → 2024-25 (104 partner-seasons): the typical miss is
+// ~34% from game 10, ~19% from game 20, ~10% from game 30 — the same as a
+// straight per-game pace, with the least over-projection early. Hence no
+// projection before RPT_PACE_MIN_GAMES, and a range drawn from those misses.
+//
+// Product rules: off by default; offered only between home games
+// RPT_PACE_MIN_GAMES and RPT_PACE_MAX_GAMES (mid-season, when a pace is both
+// meaningful and still useful); and always shown as a range, never a single
+// figure. No range → no projection.
 
-function surveyBar(pct, rank, label, total) {
-  if (pct === null) return '';
-  const pctVal = Math.round(pct * 100);
-  const rankStr = rank ? `#${rank}${total ? ' of ' + total : ''}` : '';
-  return `
-    <div class="r-survey-row">
-      <span class="r-survey-label">${label}</span>
-      <div class="r-survey-track"><div class="r-survey-fill" style="width:${pctVal}%"></div></div>
-      <span class="r-survey-pct">${pctVal}%</span>
-      <span class="r-survey-rank">${rankStr}</span>
-    </div>`;
-}
+const RPT_PACE_MIN_GAMES = 14;
+const RPT_PACE_MAX_GAMES = 20;
+const _rptPaceCache = new Map();
 
-// ── Main render ────────────────────────────────────────────
-// options = { sections: {tv:bool,...}, takeaways: {tv:[0,1,...],...} }
-// When options is null/undefined all sections with data are included.
-function generatePartnerReport(brand, options) {
-  const d   = gatherReportData(brand);
-  const now = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const hasOpts = !!(options && options.sections);
-
-  function secEnabled(key) {
-    if (!hasOpts) return true;
-    return !!options.sections[key];
-  }
-  function secTakeaways(key) {
-    const all = allTakeawaysMap[key] || [];
-    if (!hasOpts) return all;
-    const idxs = (options.takeaways || {})[key];
-    if (!idxs || !idxs.length) return [];
-    return idxs.map(i => all[i]).filter(Boolean);
-  }
-  function secNote(key) {
-    if (!options || !options.notes) return '';
-    return (options.notes[key] || '').trim();
-  }
-  function renderTakeawayStrip(takeaways, note) {
-    if ((!takeaways || !takeaways.length) && !note) return '';
-    const boxes = (takeaways || []).map((t, i) => `<div class="r-takeaway-box">
-        <span class="r-takeaway-num">${String(i + 1).padStart(2, '0')}</span>
-        <div class="r-takeaway-body">${t}</div>
-      </div>`).join('');
-    const noteHtml = note ? `<div class="r-takeaway-note">${escapeHTML(note)}</div>` : '';
-    return `<div class="r-takeaway-strip">
-      <div class="r-takeaway-kicker">Key Takeaways</div>
-      <div class="r-takeaway-grid">${boxes}</div>
-      ${noteHtml}
-    </div>`;
-  }
-
-  // Compute all takeaways once (uses season from gathered data)
-  const allTakeawaysMap = _computeSectionTakeaways(brand, d.tv.season);
-
-  // Top-line KPIs — pick the 4 most meaningful for enabled sections
-  const topKpis = [];
-  const _vsEnabled = secEnabled('virtualSignage') && (d.tv.vsQimv || 0) > 0;
-  const _totalQimv = d.tv.qimv + (_vsEnabled ? (d.tv.vsQimv || 0) : 0);
-  if (secEnabled('tv') && _totalQimv > 0) topKpis.push({
-    label: 'Total QI Media Value',
-    value: formatCurrency(_totalQimv),
-    delta: reportDelta(d.tv.yoyPct),
-    sub:   _vsEnabled ? `TV + On-Court · ${d.tv.season || ''}` : (d.tv.season || ''),
+// Per-home-game QIMV for each brand in a season: { dates, byBrand: {brand: [v…]}, portfolio: [v…] }
+function rptSeasonGameValues(season) {
+  const key = 'games|' + season + '|' + (DataStore.tvSignage || []).length;
+  if (_rptPaceCache.has(key)) return _rptPaceCache.get(key);
+  const dates = rptHomeDates(season);
+  const idx = new Map(dates.map((d, i) => [d, i]));
+  const byBrand = {}, portfolio = dates.map(() => 0);
+  getTVRowsForPeriod(season).forEach(r => {
+    const i = idx.get(String(r.Matchdate));
+    if (i === undefined) return;
+    const v = Number(r['QI Media Value ($)']) || 0;
+    (byBrand[r.Brand] = byBrand[r.Brand] || dates.map(() => 0))[i] += v;
+    portfolio[i] += v;
   });
-  if (secEnabled('tv') && d.tv.impressions > 0) topKpis.push({
-    label: 'QI Impressions',
-    value: formatNum(d.tv.impressions),
-    delta: '',
-    sub:   `${d.tv.matches} games`,
-  });
-  if (secEnabled('organic') && d.organic.latest?.ViewsImpressions) topKpis.push({
-    label: 'Social Impressions',
-    value: formatNum(d.organic.latest.ViewsImpressions),
-    delta: reportDelta(d.organic.imprYoY?.change),
-    sub:   d.organic.latest._reportMonth || '',
-  });
-  if (secEnabled('survey') && d.survey.wave?.UnaidedPct != null) topKpis.push({
-    label: 'Unaided Brand Recall',
-    value: Math.round(d.survey.wave.UnaidedPct * 100) + '%',
-    delta: '',
-    sub: `#${d.survey.wave.UnaidedRecallRank || '—'} of ${d.survey.totalInWave}`,
-  });
-  if (topKpis.length < 4 && secEnabled('paid') && d.paid.agg) topKpis.push({
-    label: 'Paid Impressions',
-    value: formatNum(d.paid.agg.impressions),
-    delta: '',
-    sub: d.paid.season || '',
-  });
-  // Ensure exactly 4
-  while (topKpis.length < 4) topKpis.push({ label: '—', value: '—', delta: '', sub: '' });
-  const kpisHTML = topKpis.slice(0, 4).map(k => `
-    <div class="r-kpi">
-      <div class="r-kpi-label">${k.label}</div>
-      <div class="r-kpi-value">${k.value}</div>
-      ${k.delta ? `<div class="r-kpi-delta">${k.delta}</div>` : ''}
-      ${k.sub   ? `<div class="r-kpi-sub">${k.sub}</div>` : ''}
-    </div>`).join('');
-
-  // ── Section blocks ────────────────────────────────────────
-  // Each enabled section is a full-width card that flows naturally across PDF pages.
-
-  const sectionBlocks = [];
-
-  // TV Visible Signage
-  if (secEnabled('tv')) {
-    const tvTable = d.tv.topAssets.length ? `
-      <table class="r-table">
-        <thead><tr>
-          <th>Asset</th>
-          <th class="r-num">Duration</th>
-          <th class="r-num">QI Impressions</th>
-          <th class="r-num">QI Media Value</th>
-          <th class="r-num">QIMV / Min</th>
-        </tr></thead>
-        <tbody>
-          ${d.tv.topAssets.map(a => `<tr>
-            <td>${a.name}</td>
-            <td class="r-num">${formatDurationFromMinutes(a.duration)}</td>
-            <td class="r-num">${formatNum(a.impressions)}</td>
-            <td class="r-num r-accent">${formatCurrency(a.qimv)}</td>
-            <td class="r-num">${formatCurrency(a.qimvPerMin)}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="r-totals-row">
-        <span>TV Signage QI Media Value</span>
-        <span class="r-accent">${formatCurrency(d.tv.qimv)}</span>
-      </div>
-      ${(_vsEnabled && d.tv.vsQimv > 0) ? `<div class="r-totals-row" style="border-top:1px solid rgba(200,16,46,0.25);padding-top:7px;margin-top:2px;">
-        <span style="font-weight:800;">Total incl. On-Court Virtual</span>
-        <span class="r-accent">${formatCurrency(_totalQimv)}</span>
-      </div>` : ''}
-    ` : `<div class="r-empty">No TV signage data loaded for ${d.tv.season || 'this season'}.</div>`;
-
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card tv">
-          <div class="r-card-header">
-            <span class="r-card-icon">📺</span>
-            <span class="r-card-title">TV Visible Signage</span>
-            <span class="r-card-badge">${d.tv.matches} games · ${d.tv.season || ''}</span>
-          </div>
-          ${renderTakeawayStrip(secTakeaways('tv'), secNote('tv'))}
-          <div class="r-card-body">${tvTable}</div>
-        </div>
-      </div>`);
-  }
-
-  // Organic Social
-  if (secEnabled('organic')) {
-    const organicSeries = (typeof getBrandZoomphSeries === 'function') ? getBrandZoomphSeries(brand) : [];
-    const seriesBlock = organicSeries.length ? (() => {
-      const rows = organicSeries.slice(0, 6).map(s => `<tr>
-        <td>${escapeHTML(s.Name || '—')}</td>
-        <td class="r-num">${formatNum(s.ViewsImpressions)}</td>
-        <td class="r-num">${formatNum(s.Engagements)}</td>
-        <td class="r-num r-accent">${formatCurrency(s.BrandValue)}</td>
-      </tr>`).join('');
-      return `<div class="r-sub-label">Campaign Series</div>
-      <table class="r-table">
-        <thead><tr>
-          <th>Series</th>
-          <th class="r-num">Views / Impressions</th>
-          <th class="r-num">Engagements</th>
-          <th class="r-num">Brand Value</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>`;
-    })() : '';
-
-    const organicBody = d.organic.latest ? `
-      <div class="r-metric-row"><span>Views / Impressions</span>
-        <span>${formatNum(d.organic.latest.ViewsImpressions)} ${reportDelta(d.organic.imprYoY?.change)}</span></div>
-      <div class="r-metric-row"><span>Engagements</span>
-        <span>${formatNum(d.organic.latest.Engagements)}</span></div>
-      <div class="r-metric-row"><span>Engagement Rate</span>
-        <span>${d.organic.latest.EngagementRate != null ? formatPct(d.organic.latest.EngagementRate, 2) : '—'}</span></div>
-      <div class="r-metric-row"><span>Organic Posts</span>
-        <span>${formatNum(d.organic.latest.OrganicPosts)}</span></div>
-      <div class="r-metric-row r-accent-row"><span>Brand Exposure Value</span>
-        <span class="r-accent">${formatCurrency(d.organic.latest.BrandValue)} ${reportDelta(d.organic.valYoY?.change)}</span></div>
-      ${seriesBlock}
-    ` : `<div class="r-empty">No organic social data loaded.</div>`;
-
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card org">
-          <div class="r-card-header">
-            <span class="r-card-icon">📱</span>
-            <span class="r-card-title">Organic Social</span>
-            ${d.organic.latest ? `<span class="r-card-badge">${d.organic.latest._reportMonth || 'Latest'}</span>` : ''}
-          </div>
-          ${renderTakeawayStrip(secTakeaways('organic'), secNote('organic'))}
-          <div class="r-card-body">${organicBody}</div>
-        </div>
-      </div>`);
-  }
-
-  // Brand Awareness Survey
-  if (secEnabled('survey')) {
-    const surveyBody = d.survey.wave ? `
-      ${surveyBar(d.survey.wave.UnaidedPct, d.survey.wave.UnaidedRecallRank, 'Unaided Recall', d.survey.totalInWave)}
-      ${surveyBar(d.survey.wave.AidedPct,   d.survey.wave.AidedRecallRank,   'Aided Recall',   d.survey.totalInWave)}
-      ${d.survey.wave.LocalHQPct != null
-        ? surveyBar(d.survey.wave.LocalHQPct, d.survey.wave.LocalHQRecallRank, 'Local HQ Recall', d.survey.totalInWave)
-        : ''}
-      <div class="r-survey-meta">${d.survey.wave.Survey}</div>
-    ` : `<div class="r-empty">No survey data loaded.</div>`;
-
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card survey">
-          <div class="r-card-header">
-            <span class="r-card-icon">📊</span>
-            <span class="r-card-title">Brand Awareness Survey</span>
-            ${d.survey.wave ? `<span class="r-card-badge">${d.survey.wave.Survey}</span>` : ''}
-          </div>
-          ${renderTakeawayStrip(secTakeaways('survey'), secNote('survey'))}
-          <div class="r-card-body">${surveyBody}</div>
-        </div>
-      </div>`);
-  }
-
-  // Paid Social
-  if (secEnabled('paid') && d.paid.agg && d.channels.paid) {
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card paid">
-          <div class="r-card-header">
-            <span class="r-card-icon">💰</span>
-            <span class="r-card-title">Paid Social</span>
-            <span class="r-card-badge">${d.paid.season || ''}</span>
-          </div>
-          ${renderTakeawayStrip(secTakeaways('paid'), secNote('paid'))}
-          <div class="r-card-body r-paid-grid">
-            <div class="r-paid-kpi"><div class="r-paid-label">Spend</div><div class="r-paid-val">${formatCurrency(d.paid.agg.spend)}</div></div>
-            <div class="r-paid-kpi"><div class="r-paid-label">Impressions</div><div class="r-paid-val">${formatNum(d.paid.agg.impressions)}</div></div>
-            <div class="r-paid-kpi"><div class="r-paid-label">Reach</div><div class="r-paid-val">${formatNum(d.paid.agg.reach)}</div></div>
-            <div class="r-paid-kpi"><div class="r-paid-label">Link Clicks</div><div class="r-paid-val">${formatNum(d.paid.agg.clicks)}</div></div>
-            <div class="r-paid-kpi"><div class="r-paid-label">CTR</div><div class="r-paid-val">${formatPct(d.paid.agg.ctr, 2)}</div></div>
-            <div class="r-paid-kpi"><div class="r-paid-label">Campaigns</div><div class="r-paid-val">${d.paid.agg.campaignCount}</div></div>
-          </div>
-        </div>
-      </div>`);
-  }
-
-  // ANC LED
-  if (secEnabled('ancLED') && typeof hasANCLEDDataForBrand === 'function' && hasANCLEDDataForBrand(brand)) {
-    const ancSummary = typeof getANCLEDSummary === 'function' ? getANCLEDSummary(brand) : null;
-    const ancBody = ancSummary ? (() => {
-      const fmt = typeof formatDuration === 'function' ? formatDuration : s => s + 's';
-      const dateLabel = ancSummary.dateRange ? `${ancSummary.dateRange[0]} – ${ancSummary.dateRange[1]}` : '';
-      const assetRows = (ancSummary.perAsset || []).map(b => `<tr>
-        <td>${escapeHTML(b.asset)}</td>
-        <td class="r-num">${fmt(b.preGame)}</td>
-        <td class="r-num">${fmt(b.inGame)}</td>
-        <td class="r-num">${fmt(b.postGame)}</td>
-        <td class="r-num">${fmt(b.eventAvg)}</td>
-        <td class="r-num r-accent">${fmt(b.timeTotal)}</td>
-      </tr>`).join('');
-      return `
-        <div class="r-mini-grid cols-4" style="margin-bottom:14px;">
-          <div class="r-mini-kpi"><div class="r-mini-label">Total Exposure</div><div class="r-mini-val">${fmt(ancSummary.totalTime)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Event Avg / Game</div><div class="r-mini-val">${fmt(ancSummary.totalEventAvg)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Assets</div><div class="r-mini-val">${ancSummary.assetCount}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Variants</div><div class="r-mini-val">${ancSummary.variantCount}</div></div>
-        </div>
-        ${assetRows ? `<table class="r-table">
-          <thead><tr>
-            <th>Asset</th>
-            <th class="r-num">Pre-Game Avg</th>
-            <th class="r-num">In-Game Avg</th>
-            <th class="r-num">Post-Game Avg</th>
-            <th class="r-num">Event Avg</th>
-            <th class="r-num">Time Total</th>
-          </tr></thead>
-          <tbody>${assetRows}</tbody>
-        </table>` : ''}
-        ${dateLabel ? `<div class="r-note">Coverage window: ${escapeHTML(dateLabel)}</div>` : ''}
-      `;
-    })() : `<div class="r-empty">ANC LED data available but could not be summarized.</div>`;
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card anc">
-          <div class="r-card-header">
-            <span class="r-card-icon">🏟️</span>
-            <span class="r-card-title">ANC LED Report</span>
-            ${ancSummary ? `<span class="r-card-badge">${ancSummary.assetCount} asset${ancSummary.assetCount === 1 ? '' : 's'}</span>` : ''}
-          </div>
-          ${renderTakeawayStrip(secTakeaways('ancLED'), secNote('ancLED'))}
-          <div class="r-card-body">${ancBody}</div>
-        </div>
-      </div>`);
-  }
-
-  // TV/Radio Affidavits
-  if (secEnabled('affidavit') && typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(brand)) {
-    const affSummary = typeof getAffidavitSummary === 'function' ? getAffidavitSummary(brand) : null;
-    const affBody = affSummary ? (() => {
-      const bonusPct = affSummary.bonusRate !== null ? (affSummary.bonusRate * 100).toFixed(1) + '%' : '—';
-      // Daypart breakdown table — only show dayparts that have any data
-      const DAYPARTS = ['Pregame', 'PlayByPlay', 'Postgame'];
-      const activeDP = DAYPARTS.filter(dp => {
-        const b = (affSummary.breakdown || {})[dp];
-        return b && (b.tvContracted + b.tvBonused + b.radioContracted + b.radioBonused) > 0;
-      });
-      const daypartRows = activeDP.map(dp => {
-        const b = affSummary.breakdown[dp];
-        const tvTotal = b.tvContracted + b.tvBonused;
-        const radioTotal = b.radioContracted + b.radioBonused;
-        const label = dp === 'PlayByPlay' ? 'Play-by-Play' : dp;
-        return `<tr>
-          <td>${label}</td>
-          <td class="r-num">${formatNum(b.tvContracted)}</td>
-          <td class="r-num">${formatNum(b.tvBonused)}</td>
-          <td class="r-num">${formatNum(tvTotal)}</td>
-          <td class="r-num">${formatNum(b.radioContracted)}</td>
-          <td class="r-num">${formatNum(b.radioBonused)}</td>
-          <td class="r-num r-accent">${formatNum(radioTotal)}</td>
-        </tr>`;
-      }).join('');
-      // Season summary (if multiple seasons)
-      const seasons = Object.entries(affSummary.seasonBreakdown || {}).sort((a, b) => a[0].localeCompare(b[0]));
-      const seasonRows = seasons.length > 1 ? seasons.map(([s, d]) =>
-        `<tr><td>${escapeHTML(s)}</td><td class="r-num">${formatNum(d.tv)}</td><td class="r-num">${formatNum(d.radio)}</td><td class="r-num r-accent">${formatNum(d.total)}</td></tr>`
-      ).join('') : '';
-      return `
-        <div class="r-mini-grid cols-4" style="margin-bottom:14px;">
-          <div class="r-mini-kpi"><div class="r-mini-label">TV Spots</div><div class="r-mini-val">${formatNum(affSummary.tvTotal)}</div><div class="r-mini-sub">${formatNum(affSummary.tvContracted)} contracted · ${formatNum(affSummary.tvBonused)} bonus</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Radio Spots</div><div class="r-mini-val">${formatNum(affSummary.radioTotal)}</div><div class="r-mini-sub">${formatNum(affSummary.radioContracted)} contracted · ${formatNum(affSummary.radioBonused)} bonus</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Total Spots</div><div class="r-mini-val">${formatNum(affSummary.totalSpots)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Bonus Rate</div><div class="r-mini-val">${bonusPct}</div><div class="r-mini-sub">vs contracted</div></div>
-        </div>
-        ${daypartRows ? `<table class="r-table">
-          <thead><tr>
-            <th>Daypart</th>
-            <th class="r-num">TV Contracted</th>
-            <th class="r-num">TV Bonus</th>
-            <th class="r-num">TV Total</th>
-            <th class="r-num">Radio Contracted</th>
-            <th class="r-num">Radio Bonus</th>
-            <th class="r-num">Radio Total</th>
-          </tr></thead>
-          <tbody>${daypartRows}</tbody>
-        </table>` : ''}
-        ${seasonRows ? `<div class="r-sub-label">Season Breakdown</div>
-        <table class="r-table">
-          <thead><tr><th>Season</th><th class="r-num">TV</th><th class="r-num">Radio</th><th class="r-num">Total</th></tr></thead>
-          <tbody>${seasonRows}</tbody>
-        </table>` : ''}
-      `;
-    })() : `<div class="r-empty">Affidavit data available but could not be summarized.</div>`;
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card aff">
-          <div class="r-card-header">
-            <span class="r-card-icon">📝</span>
-            <span class="r-card-title">TV / Radio Affidavits</span>
-            ${affSummary ? `<span class="r-card-badge">${formatNum(affSummary.totalSpots)} total spots</span>` : ''}
-          </div>
-          ${renderTakeawayStrip(secTakeaways('affidavit'), secNote('affidavit'))}
-          <div class="r-card-body">${affBody}</div>
-        </div>
-      </div>`);
-  }
-
-  // On-Court Virtual Signage
-  if (secEnabled('virtualSignage') && typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
-    const vsBody = (() => {
-      const allStats = (typeof getVirtualSignagePartnerStats === 'function') ? getVirtualSignagePartnerStats() : [];
-      const vsBrand  = allStats.find(s => s.brand === brand) || null;
-      // Determine which position(s) this brand holds on the schedule
-      const vsSchedule = DataStore.virtualSignageSchedule || [];
-      const positions = [];
-      if (vsSchedule.some(g => g.BrandA === brand)) positions.push('Center');
-      if (vsSchedule.some(g => g.BrandB === brand)) positions.push('3-Point Line');
-      if (!vsBrand) return `<div class="r-empty">Virtual signage schedule loaded — no game-level data matched for ${escapeHTML(brand)}.</div>`;
-      const fmt = typeof formatDurationFromMinutes === 'function' ? formatDurationFromMinutes : m => m + ' min';
-      return `
-        <div class="r-mini-grid cols-4" style="margin-bottom:14px;">
-          <div class="r-mini-kpi"><div class="r-mini-label">QI Media Value</div><div class="r-mini-val r-accent">${formatCurrency(vsBrand.qimv)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">QI Impressions</div><div class="r-mini-val">${formatNum(vsBrand.qiImp)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">On-Screen Duration</div><div class="r-mini-val">${fmt(vsBrand.duration)}</div></div>
-          <div class="r-mini-kpi"><div class="r-mini-label">Games</div><div class="r-mini-val">${vsBrand.totalGames}</div><div class="r-mini-sub">${vsBrand.homeGames} home · ${vsBrand.awayGames} away</div></div>
-        </div>
-        ${positions.length ? `<div class="r-metric-row"><span>Court Position</span><span>${positions.join(' &amp; ')}</span></div>` : ''}
-        ${vsBrand.hasEstimates ? `<div class="r-note">Away-game values are estimated using the season average for each position. Home-game actuals sourced from TV visible signage data.</div>` : ''}
-      `;
-    })();
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card vs">
-          <div class="r-card-header">
-            <span class="r-card-icon">🏀</span>
-            <span class="r-card-title">On-Court Virtual Signage</span>
-          </div>
-          ${renderTakeawayStrip(secTakeaways('virtualSignage'), secNote('virtualSignage'))}
-          <div class="r-card-body">${vsBody}</div>
-        </div>
-      </div>`);
-  }
-
-  // Web & Digital
-  if (secEnabled('webDisplay') && typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(brand)) {
-    const webBody = (() => {
-      const blazersRows = typeof getBlazersBannersForBrand === 'function' ? getBlazersBannersForBrand(brand) : [];
-      const rqRows      = typeof getRQBannersForBrand     === 'function' ? getRQBannersForBrand(brand)     : [];
-      const preRollRows = typeof getPreRollForBrand       === 'function' ? getPreRollForBrand(brand)       : [];
-      const agg = rows => {
-        if (!rows.length) return null;
-        const imp = rows.reduce((a, r) => a + (Number(r.TotalImpressions) || 0), 0);
-        const clk = rows.reduce((a, r) => a + (Number(r.TotalClicks)      || 0), 0);
-        return { impressions: imp, clicks: clk, ctr: imp > 0 ? clk / imp : 0 };
-      };
-      const bAgg  = agg(blazersRows);
-      const rqAgg = agg(rqRows);
-      const prAgg = agg(preRollRows);
-      const blocks = [];
-      if (bAgg)  blocks.push(`<div class="r-mini-kpi"><div class="r-mini-label">Blazers.com Impr.</div><div class="r-mini-val">${formatNum(bAgg.impressions)}</div><div class="r-mini-sub">${formatNum(bAgg.clicks)} clicks · ${formatPct(bAgg.ctr, 2)} CTR</div></div>`);
-      if (rqAgg) blocks.push(`<div class="r-mini-kpi"><div class="r-mini-label">RoseQuarter.com Impr.</div><div class="r-mini-val">${formatNum(rqAgg.impressions)}</div><div class="r-mini-sub">${formatNum(rqAgg.clicks)} clicks · ${formatPct(rqAgg.ctr, 2)} CTR</div></div>`);
-      if (prAgg) blocks.push(`<div class="r-mini-kpi"><div class="r-mini-label">Pre-Roll Plays</div><div class="r-mini-val">${formatNum(prAgg.impressions)}</div></div>`);
-      if (!blocks.length) return `<div class="r-empty">Web &amp; digital data loaded — no data matched for ${escapeHTML(brand)}.</div>`;
-      const cols = Math.min(blocks.length, 3);
-      return `<div class="r-mini-grid cols-${cols}">${blocks.join('')}</div>`;
-    })();
-    sectionBlocks.push(`
-      <div class="r-section-block">
-        <div class="r-card web">
-          <div class="r-card-header">
-            <span class="r-card-icon">🌐</span>
-            <span class="r-card-title">Web &amp; Digital</span>
-          </div>
-          ${renderTakeawayStrip(secTakeaways('webDisplay'), secNote('webDisplay'))}
-          <div class="r-card-body">${webBody}</div>
-        </div>
-      </div>`);
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>PartnerIQ · ${brand} · Partnership Report</title>
-<style>
-:root {
-  --red:#C8102E; --black:#0c0c0e; --surface:rgba(255,255,255,0.045);
-  --surface-2:rgba(255,255,255,0.075);
-  --border:rgba(255,255,255,0.09); --border-strong:rgba(255,255,255,0.16);
-  --border-red:rgba(200,16,46,0.35);
-  --text:#F5F5F5; --dim:rgba(255,255,255,0.60); --muted:rgba(255,255,255,0.35);
-  --fd:'Arial Narrow','Helvetica Neue',Arial,sans-serif; --fb:'Helvetica Neue',Arial,sans-serif;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-html{font-size:10px;}
-body{font-family:var(--fb);background:var(--black);color:var(--text);-webkit-font-smoothing:antialiased;}
-
-.r-page{width:1100px;margin:40px auto;position:relative;
-  background:var(--black);box-shadow:0 40px 120px rgba(0,0,0,0.8);}
-.r-bg{position:absolute;inset:0;
-  background-image:url('data:image/jpeg;base64,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');
-  background-size:70%;background-position:right center;background-repeat:no-repeat;
-  opacity:0.12;pointer-events:none;z-index:0;}
-.r-bg::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);
-  width:60%;height:80%;
-  background:radial-gradient(ellipse at 70% 50%,rgba(200,16,46,0.08) 0%,transparent 65%);
-  pointer-events:none;}
-.r-content{position:relative;z-index:1;padding:50px 58px;}
-
-/* ── Header ─────────────────────────────────────────────── */
-.r-header{display:flex;align-items:flex-start;justify-content:space-between;
-  padding-bottom:32px;border-bottom:2px solid var(--border-strong);margin-bottom:32px;}
-.r-header-left{display:flex;flex-direction:column;gap:10px;}
-.r-logos{display:flex;align-items:center;gap:14px;}
-.r-logo-div{width:1px;height:36px;background:var(--border-strong);}
-.r-partner-name{font-family:var(--fd);font-weight:800;font-size:2.8rem;
-  letter-spacing:-0.01em;text-transform:uppercase;line-height:1;color:var(--text);}
-.r-partner-sub{font-family:var(--fd);font-size:1.0rem;font-weight:500;
-  letter-spacing:0.16em;text-transform:uppercase;color:var(--muted);}
-.r-meta{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;padding-top:2px;}
-.r-report-label{font-family:var(--fd);font-size:1.0rem;font-weight:600;
-  letter-spacing:0.22em;text-transform:uppercase;color:var(--red);}
-.r-title{font-family:var(--fd);font-weight:800;font-size:2.6rem;
-  letter-spacing:-0.01em;line-height:1;text-transform:uppercase;}
-.r-season-badge{font-family:var(--fd);font-size:1.0rem;font-weight:600;
-  letter-spacing:0.14em;text-transform:uppercase;
-  color:var(--red);background:rgba(200,16,46,0.1);border:1px solid rgba(200,16,46,0.28);
-  padding:4px 12px;border-radius:3px;margin-top:4px;display:inline-block;}
-.r-date{font-size:0.95rem;color:var(--muted);margin-top:4px;}
-
-/* ── KPI strip ───────────────────────────────────────────── */
-.r-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
-  margin-bottom:32px;border:1px solid var(--border-red);border-radius:6px;overflow:hidden;
-  background:var(--border-red);}
-.r-kpi{background:#130508;padding:20px 22px 15px;position:relative;}
-.r-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--red);}
-.r-kpi-label{font-family:var(--fd);font-size:0.9rem;font-weight:600;
-  letter-spacing:0.16em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
-.r-kpi-value{font-family:var(--fd);font-weight:800;font-size:3.2rem;
-  letter-spacing:-0.02em;line-height:1;color:var(--text);}
-.r-kpi-delta{font-family:var(--fd);font-size:1.1rem;font-weight:600;margin-top:6px;}
-.r-kpi-sub{font-size:0.95rem;color:var(--muted);margin-top:5px;}
-.delta-up{color:#5dba73;}.delta-down{color:#d95f5f;}
-
-/* ── Section blocks ──────────────────────────────────────── */
-.r-sections{display:flex;flex-direction:column;gap:16px;margin-bottom:20px;}
-.r-section-block{break-inside:avoid;page-break-inside:avoid;}
-.r-section-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;break-inside:avoid;page-break-inside:avoid;}
-.r-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;}
-.r-card-header{display:flex;align-items:center;gap:10px;padding:14px 20px 12px;
-  border-bottom:1px solid var(--border);background:rgba(255,255,255,0.025);
-  border-top:3px solid transparent;}
-.r-card.tv    .r-card-header{border-top-color:#4A90D9;}
-.r-card.org   .r-card-header{border-top-color:#27AE60;}
-.r-card.survey .r-card-header{border-top-color:#8E44AD;}
-.r-card.paid  .r-card-header{border-top-color:#E67E22;}
-.r-card.anc   .r-card-header{border-top-color:#E74C3C;}
-.r-card.aff   .r-card-header{border-top-color:#16A085;}
-.r-card.vs    .r-card-header{border-top-color:var(--red);}
-.r-card.web   .r-card-header{border-top-color:#3498DB;}
-.r-card-icon{font-size:1.4rem;flex-shrink:0;}
-.r-card-title{font-family:var(--fd);font-weight:700;font-size:1.15rem;
-  letter-spacing:0.14em;text-transform:uppercase;flex:1;}
-.r-card-badge{font-family:var(--fd);font-size:0.82rem;font-weight:600;
-  letter-spacing:0.08em;text-transform:uppercase;color:var(--red);
-  background:rgba(200,16,46,0.1);border:1px solid rgba(200,16,46,0.25);
-  padding:3px 9px;border-radius:3px;white-space:nowrap;}
-.r-card-body{padding:18px 20px;}
-
-/* ── Tables ──────────────────────────────────────────────── */
-.r-table{width:100%;border-collapse:collapse;font-size:1.05rem;margin-bottom:2px;}
-.r-table th{font-family:var(--fd);font-size:0.82rem;letter-spacing:0.12em;
-  text-transform:uppercase;color:var(--muted);font-weight:600;padding:5px 8px;
-  border-bottom:1px solid var(--border-strong);text-align:left;}
-.r-table th.r-num,.r-table td.r-num{text-align:right;}
-.r-table td{padding:7px 8px;color:var(--dim);border-bottom:1px solid rgba(255,255,255,0.035);}
-.r-table td.r-num{font-family:var(--fd);font-weight:600;font-size:1.15rem;color:var(--text);}
-.r-table tr:nth-child(even) td{background:rgba(255,255,255,0.02);}
-.r-table tr:last-child td{border-bottom:none;}
-.r-accent{color:var(--red) !important;}
-.r-totals-row{display:flex;justify-content:space-between;padding:10px 8px 3px;
-  border-top:1px solid var(--border-strong);font-family:var(--fd);font-size:1.2rem;font-weight:700;margin-top:4px;}
-
-/* ── Metric rows ─────────────────────────────────────────── */
-.r-metric-row{display:flex;justify-content:space-between;align-items:baseline;
-  padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.045);font-size:1.1rem;}
-.r-metric-row:last-child{border-bottom:none;}
-.r-metric-row span:first-child{color:var(--dim);font-size:1.05rem;}
-.r-metric-row span:last-child{font-family:var(--fd);font-weight:700;font-size:1.5rem;letter-spacing:-0.01em;}
-.r-accent-row span:last-child{color:var(--red);}
-.r-note{font-size:0.88rem;color:var(--muted);margin-top:12px;font-style:italic;line-height:1.5;}
-
-/* ── KPI mini-grid (inside section cards) ────────────────── */
-.r-mini-grid{display:grid;gap:1px;margin-bottom:14px;
-  border:1px solid var(--border);border-radius:5px;overflow:hidden;background:var(--border);}
-.r-mini-grid.cols-2{grid-template-columns:repeat(2,1fr);}
-.r-mini-grid.cols-3{grid-template-columns:repeat(3,1fr);}
-.r-mini-grid.cols-4{grid-template-columns:repeat(4,1fr);}
-.r-mini-kpi{background:var(--surface);padding:13px 15px;}
-.r-mini-label{font-family:var(--fd);font-size:0.78rem;letter-spacing:0.16em;
-  text-transform:uppercase;color:var(--muted);margin-bottom:5px;font-weight:600;}
-.r-mini-val{font-family:var(--fd);font-weight:700;font-size:1.8rem;letter-spacing:-0.01em;color:var(--text);}
-.r-mini-sub{font-size:0.82rem;color:var(--muted);margin-top:3px;line-height:1.4;}
-
-/* ── Survey bars ─────────────────────────────────────────── */
-.r-survey-row{display:flex;align-items:center;gap:12px;padding:9px 0;
-  border-bottom:1px solid rgba(255,255,255,0.045);}
-.r-survey-row:last-of-type{border-bottom:none;}
-.r-survey-label{font-size:1.05rem;color:var(--dim);width:120px;flex-shrink:0;}
-.r-survey-track{flex:1;height:5px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden;}
-.r-survey-fill{height:100%;background:var(--red);border-radius:3px;}
-.r-survey-pct{font-family:var(--fd);font-weight:800;font-size:1.5rem;min-width:44px;text-align:right;}
-.r-survey-rank{font-family:var(--fd);font-size:0.9rem;color:var(--muted);min-width:60px;text-align:right;}
-.r-survey-meta{font-size:0.92rem;color:var(--muted);margin-top:12px;padding-top:10px;border-top:1px solid var(--border);}
-
-/* ── Takeaway strip ──────────────────────────────────────── */
-.r-takeaway-strip{border-bottom:1px solid var(--border);padding:14px 20px 12px;
-  background:rgba(200,16,46,0.03);}
-.r-takeaway-kicker{font-family:var(--fd);font-size:0.78rem;letter-spacing:0.18em;
-  text-transform:uppercase;color:var(--red);margin-bottom:10px;font-weight:700;}
-.r-takeaway-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:8px;}
-.r-takeaway-box{background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);
-  border-radius:5px;padding:10px 13px;display:flex;gap:10px;align-items:flex-start;}
-.r-takeaway-num{font-family:var(--fd);font-size:0.7rem;font-weight:700;color:var(--red);
-  letter-spacing:0.08em;min-width:18px;padding-top:3px;flex-shrink:0;}
-.r-takeaway-body{font-size:1.0rem;color:var(--dim);line-height:1.5;}
-.r-takeaway-body strong{color:var(--text);}
-.r-takeaway-body .delta-up{color:#5dba73;font-weight:600;}
-.r-takeaway-body .delta-down{color:#d95f5f;font-weight:600;}
-.r-takeaway-note{font-size:0.88rem;color:var(--muted);font-style:italic;
-  margin-top:10px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.05);line-height:1.5;}
-
-/* ── Paid grid ───────────────────────────────────────────── */
-.r-paid-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;
-  border:1px solid var(--border);border-radius:5px;overflow:hidden;background:var(--border);}
-.r-paid-kpi{background:var(--surface);padding:13px 16px;}
-.r-paid-label{font-family:var(--fd);font-size:0.78rem;letter-spacing:0.14em;text-transform:uppercase;
-  color:var(--muted);margin-bottom:5px;font-weight:600;}
-.r-paid-val{font-family:var(--fd);font-weight:700;font-size:1.9rem;letter-spacing:-0.01em;}
-
-/* ── Sub-section label ───────────────────────────────────── */
-.r-sub-label{font-family:var(--fd);font-size:0.8rem;letter-spacing:0.16em;
-  text-transform:uppercase;color:var(--muted);font-weight:600;
-  margin:16px 0 8px;padding-top:14px;border-top:1px solid var(--border);}
-
-.r-empty{font-size:1.05rem;color:var(--muted);padding:14px 0;font-style:italic;}
-
-/* ── Footer ──────────────────────────────────────────────── */
-.r-footer{display:flex;justify-content:space-between;align-items:center;
-  padding-top:22px;border-top:1px solid var(--border-strong);margin-top:6px;}
-.r-footer-left{font-family:var(--fd);font-size:0.95rem;letter-spacing:0.1em;
-  text-transform:uppercase;color:var(--muted);}
-.r-footer-left strong{color:var(--red);}
-.r-footer-right{font-size:0.9rem;color:var(--muted);}
-
-/* Export button injected by openPartnerReport() after the document is written.
-   Styled here rather than with inline literals so it tracks the report theme. */
-.r-export-btn{position:fixed;top:16px;right:16px;z-index:9999;
-  background:var(--red);color:#fff;border:none;border-radius:5px;
-  padding:10px 20px;font-family:var(--fd);font-weight:700;font-size:1.3rem;
-  letter-spacing:0.1em;text-transform:uppercase;cursor:pointer;
-  box-shadow:0 4px 16px rgba(200,16,46,0.4);}
-.r-export-btn:hover{filter:brightness(1.1);}
-.r-export-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
-
-/* ── Print ───────────────────────────────────────────────── */
-@media print{
-  .r-export-btn{display:none !important;}
-  html,body{background:#0c0c0e;margin:0;padding:0;}
-  .r-page{width:100%;margin:0;box-shadow:none;}
-  .r-no-print{display:none!important;}
-  .r-section-block,.r-section-row{break-inside:avoid;page-break-inside:avoid;}
-  *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-  @page{size:letter;margin:0.4in;}
-}
-</style>
-</head>
-<body>
-<div class="r-page">
-  <div class="r-bg"></div>
-  <div class="r-content">
-
-    <header class="r-header">
-      <div class="r-header-left">
-        <div class="r-logos">
-          ${renderOrgLogo(46)}
-          <div class="r-logo-div"></div>
-          ${renderPartnerLogo(brand, 40)}
-        </div>
-        <div class="r-partner-name">${brand}</div>
-        <div class="r-partner-sub">Partnership Performance Overview</div>
-      </div>
-      <div class="r-meta">
-        <div class="r-report-label">Partnership Report</div>
-        <div class="r-title">Performance<br>Summary</div>
-        <div class="r-season-badge">${d.tv.season || d.paid.season || d.survey.wave?.Season || 'Current Season'}</div>
-        <div class="r-date">Prepared ${now} · Confidential</div>
-      </div>
-    </header>
-
-    <div class="r-strip">${kpisHTML}</div>
-
-    <div class="r-sections">${sectionBlocks.join('\n')}</div>
-
-    <footer class="r-footer">
-      <div class="r-footer-left"><strong>PartnerIQ</strong> · Portland Trail Blazers Partnership Intelligence</div>
-      <div class="r-footer-right">Data current through ${now} · For internal use only</div>
-    </footer>
-
-  </div>
-</div>
-</body>
-</html>`;
+  const out = { dates, byBrand, portfolio };
+  _rptPaceCache.set(key, out);
+  return out;
 }
 
-// ── Open report in new window ──────────────────────────────
-function openPartnerReport(brand, options) {
-  if (!brand) return;
-  const html = generatePartnerReport(brand, options || null);
-  const win  = window.open('', '_blank');
-  if (!win) {
-    showErrorToast('Pop-up blocked. Please allow pop-ups for this page and try again.');
-    return;
-  }
-  win.document.write(html);
-  win.document.close();
-
-  // The Export button is injected synchronously, right after document.close().
-  // It used to be registered inside win.addEventListener('load', …) behind an
-  // 800 ms timer — but on a window.open('') target the load event has normally
-  // already fired by the time that listener is attached, so the button often
-  // never appeared and the user had to know to press Ctrl+P. (The timer was
-  // there to "give Google Fonts ~1s to load"; this project loads no external
-  // fonts at all, so it was guarding against nothing.)
-  //
-  // Styling comes from the report's own stylesheet rather than inline literals,
-  // so it stays in step with the report theme.
-  try {
-    const btn = win.document.createElement('button');
-    btn.textContent = '⬇ Export PDF';
-    btn.className = 'r-export-btn';
-    btn.onclick = () => win.print();
-    win.document.body.appendChild(btn);
-  } catch (e) {
-    console.warn('openPartnerReport: could not add the export button', e);
-  }
+function rptCumulative(vals) {
+  let s = 0; const c = vals.map(v => (s += v));
+  return c;
 }
 
+// Cumulative share of the season's value at a fraction of the way through.
+function rptShareAt(cumShare, frac) {
+  const G = cumShare.length, x = frac * G, i = Math.floor(x);
+  const lo = i <= 0 ? 0 : cumShare[Math.min(i, G) - 1], hi = cumShare[Math.min(i, G - 1)];
+  return lo + (hi - lo) * (x - i);
+}
 
+// Season shapes (portfolio cumulative share by game) for complete seasons.
+function rptSeasonShapes(seasons) {
+  return seasons.map(s => {
+    const v = rptSeasonGameValues(s).portfolio;
+    const t = v.reduce((a, b) => a + b, 0);
+    return t > 0 ? rptCumulative(v).map(c => c / t) : null;
+  }).filter(Boolean);
+}
 
-// ============================================================
-// REPORT EXPORT MODAL — step-through UI
-// Steps: 1) Pick partner  2) Pick season  3) Customize sections & takeaways  4) Confirm & generate
-// ============================================================
+function rptProject(toDate, n, G, shapes) {
+  const linear = toDate * G / n;
+  if (!shapes.length) return linear;
+  const F = shapes.reduce((a, c) => a + rptShareAt(c, n / G), 0) / shapes.length;
+  return F > 0 ? Math.min(linear, toDate / F) : linear;
+}
 
-const _reportModal = {
-  step: 1,
-  brand: null,
-  season: null,
-  searchQuery: '',
-  selectedSections: null,   // { tv: bool, organic: bool, ... } — null = not yet initialized
-  selectedTakeaways: null,  // { tv: Set<index>, organic: Set<index>, ... }
-  sectionNotes: {},         // { tv: 'note text', ... }
-  _expandedSections: new Set(), // which section panels are open in the customizer UI
+function rptCompleteSeasonsBefore(season) {
+  return getPortfolioSeasons().filter(s => s < season && rptHomeDates(s).length >= 30);
+}
+
+// How far the method missed in earlier seasons at this point: the 20th and 80th
+// percentile of actual ÷ projected, over every partner present all season.
+function rptPaceRange(season, n, G) {
+  const key = `range|${season}|${n}|${G}|${(DataStore.tvSignage || []).length}`;
+  if (_rptPaceCache.has(key)) return _rptPaceCache.get(key);
+  const pool = rptCompleteSeasonsBefore(season);
+  const ratios = [];
+  pool.forEach(target => {
+    const others = rptSeasonShapes(pool.filter(s => s !== target));
+    const { dates, byBrand } = rptSeasonGameValues(target);
+    const Gt = dates.length, nt = Math.max(1, Math.round(n / G * Gt));
+    Object.values(byBrand).forEach(v => {
+      if (v.filter(x => x > 0).length < Gt * 0.8) return;
+      const actual = v.reduce((a, b) => a + b, 0);
+      const toDate = v.slice(0, nt).reduce((a, b) => a + b, 0);
+      if (actual > 0 && toDate > 0) ratios.push(actual / rptProject(toDate, nt, Gt, others));
+    });
+  });
+  ratios.sort((a, b) => a - b);
+  const q = p => ratios[Math.min(ratios.length - 1, Math.max(0, Math.round(p * (ratios.length - 1))))];
+  const out = ratios.length >= 10 ? { lo: q(0.2), hi: q(0.8), cases: ratios.length } : null;
+  _rptPaceCache.set(key, out);
+  return out;
+}
+
+// { value, lo, hi, n, G } for one brand's TV QIMV, or null with a reason.
+function rptSeasonPace(brand, ctx) {
+  const { info, throughGame: n } = ctx;
+  if (!ctx.std) return null;
+  if (info.complete && n >= info.dates.length) return { unavailable: 'The season is over, so there is nothing left to project.' };
+  if (n < RPT_PACE_MIN_GAMES || n > RPT_PACE_MAX_GAMES) return { unavailable: `Only when the report runs through home game ${RPT_PACE_MIN_GAMES}–${RPT_PACE_MAX_GAMES}.` };
+  const G = info.total;
+  const v = (rptSeasonGameValues(ctx.season).byBrand[brand] || []).slice(0, n);
+  const toDate = v.reduce((a, b) => a + b, 0);
+  if (!(toDate > 0)) return null;
+  const value = rptProject(toDate, n, G, rptSeasonShapes(rptCompleteSeasonsBefore(ctx.season)));
+  const range = rptPaceRange(ctx.season, n, G);
+  if (!range) return { unavailable: 'Not enough earlier seasons to give a range.' };
+  return { value, lo: value * range.lo, hi: value * range.hi, n, G, toDate };
+}
+
+// ── Rankings (off by default; shown only for a top-3 finish) ───
+// Overall = among current partners (every brand if no roster is loaded).
+// Category = among current partners in the same category family — the part of
+// the roster category before " - " ("Beverage - Soft Drink" → "Beverage") —
+// and only when the family has at least three partners with data.
+const RPT_RANK_SHOW_MAX = 3;
+
+function rptCategoryFamily(brand) {
+  const r = (DataStore.partnerRoster || []).find(x => resolveCanonicalBrandName(x.Account || '') === brand);
+  return r && r.Category ? String(r.Category).split(' - ')[0].trim() : null;
+}
+
+function rptRank(brand, valuesByBrand) {
+  const hasRoster = (DataStore.partnerRoster || []).length > 0;
+  const pool = Object.entries(valuesByBrand).filter(([b, v]) => v > 0 && (!hasRoster || isCurrentPartner(b)));
+  const rankIn = list => {
+    const sorted = list.slice().sort((a, b) => b[1] - a[1]);
+    const i = sorted.findIndex(x => x[0] === brand);
+    return i < 0 ? null : { rank: i + 1, of: sorted.length };
+  };
+  const overall = rankIn(pool);
+  const fam = rptCategoryFamily(brand);
+  const famPool = fam ? pool.filter(([b]) => rptCategoryFamily(b) === fam) : [];
+  const category = famPool.length >= 3 ? rankIn(famPool) : null;
+  return {
+    overall: overall && { ...overall, label: hasRoster ? 'current partners' : 'brands' },
+    category: category && { ...category, label: `${fam} partners` },
+  };
+}
+
+// Section builders take (brand, season, ctx) — ctx from rptContext().
+
+function rptBuildTV(brand, season, ctx) {
+  const rows = getBrandTVData(brand, season).filter(r => ctx.inWindow(r.Matchdate));
+  if (!rows.length) return null;
+  const qimv = sum(rows, 'QI Media Value ($)');
+  const imp  = sum(rows, 'Sponsorship QI Impressions');
+  const mins = sum(rows, 'Duration (Minutes)');
+  const games = getUniqueMatchdates(rows).length;
+  const portfolioRows = getTVRowsForPeriod(season).filter(r => ctx.inWindow(r.Matchdate));
+  const portfolioGames = getUniqueMatchdates(portfolioRows).length;
+
+  // Comparison with the same broadcasts last season.
+  let dq = null, di = null, basis = null, priorSeason = null;
+  if (ctx.std) {
+    priorSeason = getPreviousPortfolioSeason(season);
+    if (priorSeason && comparisonMode === 'auto-match') {
+      const win = getMatchedPriorWindow(portfolioRows, getTVRowsForPeriod(priorSeason));
+      const prev = getBrandTVData(brand, priorSeason).filter(r => win.dates.has(String(r.Matchdate)));
+      dq = pctChange(qimv, sum(prev, 'QI Media Value ($)'));
+      di = pctChange(imp, sum(prev, 'Sponsorship QI Impressions'));
+      basis = describePriorWindow(win, priorSeason);
+    }
+  } else {
+    const yq = computeYoYForMetric(brand, season, 'QI Media Value ($)');
+    const yi = computeYoYForMetric(brand, season, 'Sponsorship QI Impressions');
+    const sets = getYoYRowSets(brand, season);
+    dq = yq && yq.change; di = yi && yi.change;
+    basis = yq ? yq.basis.replace(/^.*?\bvs\s+/, '') : null;
+    priorSeason = sets ? sets.priorSeason : null;
+  }
+  const vsPrior = priorSeason ? `vs ${priorSeason}` : '';
+
+  const byBrand = {};
+  portfolioRows.forEach(r => { byBrand[r.Brand] = (byBrand[r.Brand] || 0) + (Number(r['QI Media Value ($)']) || 0); });
+  const ranks = rptRank(brand, byBrand);
+
+  const locMap = {};
+  rows.forEach(r => {
+    const loc = r.Location || 'No location';
+    locMap[loc] = (locMap[loc] || 0) + (Number(r['QI Media Value ($)']) || 0);
+  });
+  let locs = Object.entries(locMap).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  if (locs.length > 8) {
+    const rest = locs.slice(7).reduce((s, l) => s + l.value, 0);
+    locs = locs.slice(0, 7).concat([{ label: `Other (${locs.length - 7})`, value: rest }]);
+  }
+  if (locs.length) locs[0].highlight = true;
+  const top = locs[0];
+
+  const pace = rptSeasonPace(brand, ctx);
+  let chart = null;
+  if (ctx.std) {
+    // Pacing: cumulative QI media value by home game, this season vs last.
+    const cur = rptSeasonGameValues(season).byBrand[brand] || [];
+    const prevVals = priorSeason ? (rptSeasonGameValues(priorSeason).byBrand[brand] || []) : [];
+    chart = {
+      kind: 'pace', title: 'QI media value by home game, cumulative',
+      G: ctx.info.total, curr: rptCumulative(cur.slice(0, ctx.throughGame)),
+      prior: prevVals.length ? rptCumulative(prevVals) : null, priorLabel: priorSeason,
+      pace: pace && !pace.unavailable ? pace : null, format: formatCurrency,
+    };
+  } else {
+    const allSeasons = [...new Set(getBrandTVData(brand).map(r => r.Season).filter(Boolean))].sort()
+      .filter(s => s <= season).slice(-5);
+    const history = allSeasons.map(s => {
+      const sr = getBrandTVData(brand, s);
+      return { label: s, value: sum(sr, 'QI Media Value ($)'), highlight: s === season,
+               flag: splitMatchdatesByVenue(sr).away.length > 0 };
+    });
+    if (history.length > 1) chart = { kind: 'column', title: 'QI media value by season', data: history, format: formatCurrency,
+      footnote: history.some(h => h.flag) ? '* Season also measured away broadcasts, so its total isn\'t directly comparable.' : '' };
+  }
+
+  const insights = [];
+  insights.push({ html: ctx.std
+      ? `<b>${formatCurrency(qimv)}</b> in QI media value through home game ${ctx.throughGame} of ${ctx.info.total}${ctx.info.local ? ' local broadcasts' : ''}.`
+      : `<b>${formatCurrency(qimv)}</b> in QI media value across <b>${games}</b> of ${portfolioGames} measured broadcasts.`,
+    delta: dq !== null && dq !== undefined && basis && { change: dq, basis } });
+  // The pace line is controlled by the "Season pace" option, not the takeaway
+  // ticks, so it lives outside the tickable list (which keeps the same order in
+  // both periods).
+  const paceInsight = pace && !pace.unavailable
+    ? { html: `On pace for <b>${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}</b> over ${pace.G} ${ctx.info.local ? 'local home broadcasts' : 'home games'}.`, estimated: true }
+    : null;
+  if (top && qimv > 0) insights.push({ html: `<b>${escapeHTML(top.label)}</b> delivered <b>${formatCurrency(top.value)}</b>, ${Math.round(top.value / qimv * 100)}% of the total.` });
+  if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: di !== null && di !== undefined && basis && { change: di, basis } });
+  if (mins > 0) insights.push({ html: `<b>${formatCurrency(qimv / mins)}</b> of QI media value per on-screen minute.` });
+
+  const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : '—', meta: 'QI media value per on-screen minute' };
+  const fourth = pace && !pace.unavailable
+    ? { label: 'Season pace', value: `${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}`, meta: `likely range over ${pace.G} ${ctx.info.local ? 'local broadcasts' : 'home games'}`, estimated: true, small: true }
+    : perMinute;
+
+  return {
+    count: ctx.std ? `${games} of ${ctx.info.total} ${ctx.info.local ? 'local home broadcasts' : 'home games'}` : `${games} broadcast${games === 1 ? '' : 's'}`,
+    kpis: [
+      { label: ctx.std ? 'QI media value to date' : 'QI media value', value: formatCurrency(qimv), delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
+      { label: 'QI impressions', value: formatNum(imp), delta: di, cmp: ctx.std ? 'vs same point last season' : vsPrior },
+      { label: ctx.std ? (ctx.info.local ? 'Local home broadcasts' : 'Home games') : 'Broadcasts', value: ctx.std ? `${games} of ${ctx.info.total}` : `${games} of ${portfolioGames}`, meta: ctx.std ? `through ${formatShortDate(parseDateLoose(ctx.throughDate))}` : 'with this partner visible' },
+      fourth,
+    ],
+    rankable: { metric: 'TV QI media value', ranks, kpiIndex: pace && !pace.unavailable ? null : 3 },
+    pace, perMinute, paceInsight,
+    chart,
+    bars: { title: `QI media value by location · ${season}${ctx.std ? ' to date' : ''}`, items: locs, format: formatCurrency },
+    insights,
+    source: `TV visible signage (QI media value).${basis ? ` Changes compare this season with the ${basis}.` : ''}`,
+    totals: { qimv, imp, games, portfolioGames, delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
+  };
+}
+
+function rptBuildVS(brand, season, ctx) {
+  if (season !== rptCurrentSeason() || !hasVirtualSignageDataForBrand(brand)) return null;
+  const upTo = ctx.std ? g => { const d = normalizeVSDate(g.DateRaw); return !!d && d <= ctx.throughDate; } : null;
+  const group = groupVSPartnerStats(getVirtualSignagePartnerStats(upTo))
+    .find(g => g.brand === brand || g.members.some(m => m.brand === brand));
+  if (!group || !group.totalGames) return null;
+  const est = group.estimatedGames > 0;
+  const insights = [
+    { html: `<b>${formatCurrency(group.qimv)}</b> in QI media value across <b>${group.totalGames}</b> scheduled game${group.totalGames === 1 ? '' : 's'} (${group.homeGames} home, ${group.awayGames} away).` },
+  ];
+  if (group.measuredGames) insights.push({ html: `<b>${formatCurrency(group.measuredQimv)}</b> measured from TV across <b>${group.measuredGames}</b> home game${group.measuredGames === 1 ? '' : 's'}.` });
+  if (est) insights.push({ html: `<b>${formatCurrency(group.estimatedQimv)}</b> estimated for ${group.estimatedGames} game${group.estimatedGames === 1 ? '' : 's'} at the season average for each position.` });
+  return {
+    count: `${group.totalGames} game${group.totalGames === 1 ? '' : 's'}`,
+    kpis: [
+      { label: 'QI media value', value: formatCurrency(group.qimv), estimated: est },
+      { label: 'Games', value: String(group.totalGames), meta: `${group.homeGames} home · ${group.awayGames} away` },
+      { label: 'Measured games', value: `${group.measuredGames} of ${group.totalGames}`, meta: 'with a TV measurement' },
+      { label: 'QI impressions', value: formatNum(group.qiImp), estimated: est },
+    ],
+    banner: !group.measuredGames
+      ? { tone: 'warning', title: 'All estimated.', text: `None of these ${group.totalGames} games has a TV measurement, so the full value is the season average for each position.` }
+      : null,
+    bars: est && group.measuredGames ? { title: 'Measured vs estimated QI media value', items: [
+      { label: 'Measured', value: group.measuredQimv, highlight: true },
+      { label: 'Estimated', value: group.estimatedQimv },
+    ], format: formatCurrency } : null,
+    insights,
+    source: 'Virtual signage schedule; home games valued from TV visible signage, away games and unmeasured home games estimated.',
+    totals: { qimv: group.qimv, estimated: est },
+  };
+}
+
+// A monthly report counts toward season-to-date once its month has ended.
+function rptMonthInWindow(ym, ctx) {
+  if (!ctx.std) return true;
+  const [y, m] = ym.split('-').map(Number);
+  return rptISO(new Date(y, m, 0)) <= ctx.throughDate;
+}
+
+function rptBuildOrganic(brand, season, ctx) {
+  const all = getBrandZoomphPerf(brand);
+  const inSeason = r => rptSeasonOfMonth(r._reportMonth) === season && rptMonthInWindow(r._reportMonth, ctx);
+  const rows = all.filter(inSeason);
+  if (!rows.length) return null;
+  const tot = k => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const views = tot('ViewsImpressions'), eng = tot('Engagements'), value = tot('BrandValue'),
+        posts = tot('OrganicPosts'), logo = tot('LogoImpressions');
+  const months = rows.map(r => r._reportMonth).sort();
+
+  // Like-for-like change: only when the prior season has every one of these months.
+  const priorByMonth = new Map(all.map(r => [r._reportMonth, r]));
+  const priorRows = months.map(m => priorByMonth.get(`${Number(m.slice(0, 4)) - 1}${m.slice(4)}`)).filter(Boolean);
+  const comparable = priorRows.length === months.length;
+  const pv = k => priorRows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const d = k => comparable ? pctChange(tot(k), pv(k)) : null;
+
+  const monthly = [...rows].sort((a, b) => a._reportMonth.localeCompare(b._reportMonth))
+    .map(r => ({ label: rptMonthLabel(r._reportMonth), value: Number(r.BrandValue) || 0 }));
+  const peakIdx = monthly.reduce((bi, m, i, arr) => m.value > arr[bi].value ? i : bi, 0);
+  if (monthly.length) monthly[peakIdx].highlight = true;
+
+  const topOf = arr => {
+    const m = {};
+    arr.filter(inSeason).forEach(r => { m[r.Name] = (m[r.Name] || 0) + (Number(r.BrandValue) || 0); });
+    return Object.entries(m).sort((a, b) => b[1] - a[1])[0];
+  };
+  const topSeries = topOf(getBrandZoomphSeries(brand));
+  const topAsset  = topOf(getBrandZoomphAssets(brand));
+  const range = `${rptMonthLabel(months[0])} – ${rptMonthLabel(months[months.length - 1])}`;
+
+  const insights = [
+    { html: `<b>${formatCurrency(value)}</b> in brand value from <b>${formatNum(posts)}</b> posts across ${months.length} monthly report${months.length === 1 ? '' : 's'} (${range}).`, delta: d('BrandValue') !== null && { change: d('BrandValue'), basis: 'same months last season' } },
+    { html: `<b>${formatNum(views)}</b> views and impressions and <b>${formatNum(eng)}</b> engagements (${formatPct(views ? eng / views : 0, 2)} engagement rate).` },
+  ];
+  if (monthly.length > 1 && monthly[peakIdx].value > 0) insights.push({ html: `Peak month: <b>${monthly[peakIdx].label}</b> at ${formatCurrency(monthly[peakIdx].value)}.` });
+  if (topSeries && topSeries[1] > 0) insights.push({ html: `Top content series: <b>${escapeHTML(topSeries[0])}</b> (${formatCurrency(topSeries[1])}).` });
+  if (topAsset && topAsset[1] > 0) insights.push({ html: `Top branded asset: <b>${escapeHTML(topAsset[0])}</b> (${formatCurrency(topAsset[1])}).` });
+
+  const valueByBrand = {};
+  (DataStore.zoomphBrandPerf || []).filter(inSeason).forEach(r => { valueByBrand[r.Brand] = (valueByBrand[r.Brand] || 0) + (Number(r.BrandValue) || 0); });
+
+  return {
+    count: `${months.length} report${months.length === 1 ? '' : 's'}`,
+    rankable: { metric: 'organic brand value', ranks: rptRank(brand, valueByBrand), kpiIndex: null },
+    kpis: [
+      { label: 'Brand value', value: formatCurrency(value), delta: d('BrandValue'), cmp: 'vs same months last season' },
+      { label: 'Views / impressions', value: formatNum(views), delta: d('ViewsImpressions'), cmp: 'vs same months last season' },
+      { label: 'Engagements', value: formatNum(eng), meta: `${formatPct(views ? eng / views : 0, 2)} engagement rate` },
+      { label: 'Organic posts', value: formatNum(posts), meta: `${formatNum(logo)} logo impressions` },
+    ],
+    banner: value === 0 && logo === 0
+      ? { tone: 'info', title: 'Not measured.', text: 'Zoomph reports no logo impressions or brand value for this partner in any report, which usually means the logo isn\'t tracked rather than that it had no exposure.' }
+      : null,
+    chart: monthly.length > 1 ? { kind: 'column', title: 'Brand value by month · peak highlighted', data: monthly, format: formatCurrency } : null,
+    insights,
+    source: `Zoomph monthly reports, summed across ${range} (seasons run July–June).`,
+    totals: { views, value },
+  };
+}
+
+function rptBuildSurvey(brand, season, ctx) {
+  const phaseOrder = p => (p === 'Late' ? 1 : 0);
+  const waves = getBrandSurveyData(brand)
+    .map(w => ({ ...w,
+      u: rptSurveyPct(w.UnaidedPct, w.UnaidedRecallRank),
+      a: rptSurveyPct(w.AidedPct, w.AidedRecallRank),
+      h: rptSurveyPct(w.LocalHQPct, w.LocalHQRecallRank) }))
+    .filter(w => w.Season && w.Season <= season && (w.Season < season || ctx.inWindow(w.Date)))
+    .sort((x, y) => x.Season.localeCompare(y.Season) || phaseOrder(x.Phase) - phaseOrder(y.Phase));
+  const inSeason = waves.filter(w => w.Season === season && (w.u !== null || w.a !== null));
+  if (!inSeason.length) return null;
+  const latest = inSeason[inSeason.length - 1];
+  const prior = waves.filter(w => w.Season === rptPriorSeason(season) && w.Phase === latest.Phase)[0] || null;
+  const pp = k => (prior && prior[k] !== null && latest[k] !== null) ? latest[k] - prior[k] : null;
+  const surveyed = (DataStore.surveys || []).filter(r => r.Survey === latest.Survey).length;
+  const wave = `${latest.Season} ${latest.Phase}`;
+
+  const chartWaves = waves.slice(-8);
+  // Recall is ranked only through the rankings option, so an unflattering
+  // position never prints by default.
+  const unaidedByBrand = {};
+  (DataStore.surveys || []).filter(r => r.Survey === latest.Survey).forEach(r => {
+    const v = rptSurveyPct(r.UnaidedPct, r.UnaidedRecallRank);
+    if (v !== null) unaidedByBrand[r.Brand] = v;
+  });
+  const insights = [];
+  if (latest.u !== null) insights.push({ html: `<b>${rptFmtPct0(latest.u)}</b> unaided recall in the ${wave} survey.`, delta: pp('u') !== null && { change: pp('u'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
+  if (latest.a !== null) insights.push({ html: `<b>${rptFmtPct0(latest.a)}</b> aided recall.`, delta: pp('a') !== null && { change: pp('a'), basis: `${prior.Season} ${prior.Phase}`, points: true } });
+  if (latest.h !== null) insights.push({ html: `<b>${rptFmtPct0(latest.h)}</b> identify the partner as locally headquartered.` });
+  const firstU = waves.find(w => w.u !== null);
+  if (firstU && firstU !== latest && latest.u !== null) insights.push({ html: `Unaided recall has moved from ${rptFmtPct0(firstU.u)} (${firstU.Season} ${firstU.Phase}) to ${rptFmtPct0(latest.u)}.` });
+
+  return {
+    count: `${inSeason.length} wave${inSeason.length === 1 ? '' : 's'}`,
+    kpis: [
+      { label: 'Unaided recall', value: rptFmtPct0(latest.u), delta: pp('u'), points: true, cmp: prior ? `vs ${prior.Season} ${prior.Phase}` : '' },
+      { label: 'Aided recall', value: rptFmtPct0(latest.a), delta: pp('a'), points: true, cmp: prior ? `vs ${prior.Season} ${prior.Phase}` : '' },
+      { label: 'Local HQ', value: rptFmtPct0(latest.h), meta: latest.h !== null ? 'see the partner as local' : 'not asked' },
+      { label: 'Brands surveyed', value: String(surveyed), meta: `${wave} wave` },
+    ],
+    chart: chartWaves.length > 1 ? {
+      kind: 'line', title: 'Recall by survey wave',
+      labels: chartWaves.map(w => [rptShortSeason(w.Season), w.Phase]),
+      // Unaided is the headline measure, so it takes series-1 (red).
+      series: [
+        { name: 'Unaided', data: chartWaves.map(w => w.u) },
+        { name: 'Aided', data: chartWaves.map(w => w.a) },
+      ],
+      format: rptFmtPct0,
+    } : null,
+    table: {
+      title: 'Survey waves',
+      columns: [{ label: 'Wave' }, { label: 'Unaided', num: true }, { label: 'Aided', num: true }, { label: 'Local HQ', num: true }],
+      rows: chartWaves.slice().reverse().map(w => [`${w.Season} ${w.Phase}`, rptFmtPct0(w.u), rptFmtPct0(w.a), rptFmtPct0(w.h)]),
+    },
+    rankable: { metric: 'unaided recall', ranks: rptRank(brand, unaidedByBrand), kpiIndex: 3 },
+    insights,
+    source: `Blazers fan survey, ${surveyed} brands in the ${wave} wave. "—" means the brand wasn't asked about in that wave. Changes are percentage points vs the same wave last season.`,
+    totals: { unaided: latest.u, rank: latest.UnaidedRecallRank, surveyed, wave },
+  };
+}
+
+function rptBuildPaid(brand, season, ctx) {
+  const rows = getBrandPaidData(brand, season).filter(r => ctx.inWindow(r.DailyDate || r.ReportingStart));
+  if (!rows.length) return null;
+  const agg = paidAggregate(rows);
+  if (!(agg.spend > 0 || agg.impressions > 0)) return null;
+  const camps = aggregatePaidByCampaign(rows).sort((a, b) => b.spend - a.spend);
+  const shown = camps.slice(0, 8);
+  const tableRows = shown.map(c => [
+    c.rows[0] && c.rows[0].ActivationName ? c.rows[0].ActivationName : c.name,
+    c.objective, formatCurrency(c.spend), formatNum(c.impressions), formatNum(c.clicks), formatPct(c.ctr, 2),
+  ]);
+  if (camps.length > shown.length) tableRows.push([`+ ${camps.length - shown.length} more campaigns`, '', '', '', '', '']);
+  const insights = [
+    { html: `<b>${formatCurrency(agg.spend)}</b> invested across <b>${agg.campaignCount}</b> campaign${agg.campaignCount === 1 ? '' : 's'}, delivering <b>${formatNum(agg.impressions)}</b> impressions.` },
+  ];
+  if (agg.clicks > 0) insights.push({ html: `<b>${formatNum(agg.clicks)}</b> link clicks at a <b>${formatPct(agg.ctr, 2)}</b> click-through rate.` });
+  if (agg.impressions > 0) insights.push({ html: `<b>$${(agg.spend / agg.impressions * 1000).toFixed(2)}</b> per thousand impressions.` });
+  return {
+    count: `${agg.campaignCount} campaign${agg.campaignCount === 1 ? '' : 's'}`,
+    kpis: [
+      { label: 'Spend', value: formatCurrency(agg.spend) },
+      { label: 'Impressions', value: formatNum(agg.impressions) },
+      { label: 'Link clicks', value: formatNum(agg.clicks) },
+      { label: 'Click-through', value: formatPct(agg.ctr, 2) },
+    ],
+    table: {
+      title: 'Campaigns by spend',
+      columns: [{ label: 'Campaign' }, { label: 'Objective' }, { label: 'Spend', num: true }, { label: 'Impr.', num: true }, { label: 'Clicks', num: true }, { label: 'CTR', num: true }],
+      rows: tableRows,
+    },
+    insights,
+    source: 'Meta Ads Manager export; season from the campaign name. Spend on campaigns not yet assigned to a partner is not included. Reach isn\'t shown because it double-counts people across campaigns.',
+    totals: { spend: agg.spend },
+  };
+}
+
+function rptBuildANC(brand, season, ctx) {
+  const rows = getANCLEDRowsForBrand(brand)
+    .filter(r => (fiscalSeasonFromDate(r.StartDate) || rptCurrentSeason()) === season);
+  if (!rows.length) return null;
+  const totalTime = rows.reduce((a, r) => a + (r.TimeTotal || 0), 0);
+  const perEvent  = rows.reduce((a, r) => a + (r.EventAvg || 0), 0);
+  const byAsset = {};
+  rows.forEach(r => { byAsset[r.Asset] = (byAsset[r.Asset] || 0) + (r.TimeTotal || 0); });
+  const items = Object.entries(byAsset).map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value).slice(0, 10);
+  if (items.length) items[0].highlight = true;
+  const variants = new Set(rows.map(r => r.Variant)).size;
+  const start = rows.map(r => r.StartDate).filter(Boolean).sort()[0];
+  const end = rows.map(r => r.EndDate).filter(Boolean).sort().pop();
+  return {
+    count: `${items.length} asset${items.length === 1 ? '' : 's'}`,
+    kpis: [
+      { label: 'Total exposure', value: formatDuration(totalTime), meta: 'on-screen time' },
+      { label: 'Per event', value: formatDuration(perEvent), meta: 'average' },
+      { label: 'LED assets', value: String(Object.keys(byAsset).length) },
+      { label: 'Creative variants', value: String(variants) },
+    ],
+    bars: { title: 'Exposure time by LED asset', items, format: formatDuration },
+    insights: [
+      { html: `<b>${formatDuration(totalTime)}</b> of in-arena LED exposure, <b>${formatDuration(perEvent)}</b> per event on average.` },
+      ...(items[0] ? [{ html: `<b>${escapeHTML(items[0].label)}</b> carried the most time (${formatDuration(items[0].value)}).` }] : []),
+      { html: `Ran on <b>${Object.keys(byAsset).length}</b> LED asset${Object.keys(byAsset).length === 1 ? '' : 's'} with <b>${variants}</b> creative variant${variants === 1 ? '' : 's'}.` },
+    ],
+    source: `ANC LED sponsor reports, Moda Center${start ? `, ${start} to ${end}` : ''}.`,
+    totals: { totalTime },
+  };
+}
+
+function rptBuildAffidavit(brand, season, ctx) {
+  if (season !== rptCurrentSeason()) return null;
+  const a = getAffidavitSummary(brand);
+  if (!a || !a.totalSpots) return null;
+  const labels = { Pregame: 'Pregame', PlayByPlay: 'Play-by-play', Postgame: 'Postgame' };
+  const rows = AFFIDAVIT_DAYPARTS.map(dp => {
+    const b = a.breakdown[dp];
+    return [labels[dp] || dp, formatNum(b.tvContracted), formatNum(b.tvBonused), formatNum(b.radioContracted), formatNum(b.radioBonused),
+      formatNum(b.tvContracted + b.tvBonused + b.radioContracted + b.radioBonused)];
+  });
+  rows.push(['Total', formatNum(a.tvContracted), formatNum(a.tvBonused), formatNum(a.radioContracted), formatNum(a.radioBonused), formatNum(a.totalSpots)]);
+  const pre = (a.seasonBreakdown.Preseason || {}).total || 0;
+  return {
+    count: `${formatNum(a.totalSpots)} spots`,
+    kpis: [
+      { label: 'Total spots', value: formatNum(a.totalSpots) },
+      { label: 'TV spots', value: formatNum(a.tvTotal), meta: `${formatNum(a.tvContracted)} contracted` },
+      { label: 'Radio spots', value: formatNum(a.radioTotal), meta: `${formatNum(a.radioContracted)} contracted` },
+      { label: 'Bonus rate', value: a.bonusRate === null ? '—' : formatPct(a.bonusRate, 0), meta: 'bonus vs contracted spots' },
+    ],
+    table: {
+      title: 'Spots by daypart',
+      columns: [{ label: 'Daypart' }, { label: 'TV contracted', num: true }, { label: 'TV bonus', num: true }, { label: 'Radio contracted', num: true }, { label: 'Radio bonus', num: true }, { label: 'Total', num: true }],
+      rows, totalRow: true,
+    },
+    insights: [
+      { html: `<b>${formatNum(a.totalSpots)}</b> broadcast spots: <b>${formatNum(a.tvTotal)}</b> on TV and <b>${formatNum(a.radioTotal)}</b> on radio.` },
+      ...(a.totalBonused ? [{ html: `<b>${formatNum(a.totalBonused)}</b> bonus spots on top of ${formatNum(a.totalContracted)} contracted (${formatPct(a.bonusRate || 0, 0)}).` }] : []),
+    ],
+    source: `TV and radio affidavits. Affidavits give season totals, not air dates${pre ? `; includes ${formatNum(pre)} preseason spots` : ''}.`,
+    totals: { spots: a.totalSpots },
+  };
+}
+
+function rptBuildWeb(brand, season, ctx) {
+  const cur = rptCurrentSeason();
+  const banners = getBlazersBannersForBrand(brand).filter(r => normalizeSeasonLabel(r.Season || '') === season && !isWebDNU(r.LineItem || ''));
+  const rq = season === cur ? getRQBannersForBrand(brand) : [];
+  const pre = getPreRollForBrand(brand).filter(r => fiscalSeasonFromDate(r.EventDate) === season);
+  const b = aggregateWebBannerRows(banners), q = aggregateWebBannerRows(rq);
+  const plays = pre.reduce((s, r) => s + (Number(r.Plays) || 0), 0);
+  const bi = b.impressions || 0, qi = q.impressions || 0;
+  if (!bi && !qi && !plays) return null;
+  const clicks = (b.clicks || 0) + (q.clicks || 0);
+  const items = [
+    { label: 'Blazers.com banners', value: bi },
+    { label: 'RoseQuarter.com banners', value: qi },
+  ].filter(x => x.value > 0);
+  if (items.length) items[0].highlight = true;
+  return {
+    count: `${formatNum(bi + qi)} impressions`,
+    kpis: [
+      { label: 'Display impressions', value: formatNum(bi + qi) },
+      { label: 'Clicks', value: formatNum(clicks) },
+      { label: 'Click-through', value: bi + qi ? formatPct(clicks / (bi + qi), 2) : '—' },
+      plays ? { label: 'Pre-roll plays', value: formatNum(plays) }
+            : { label: 'Blazers.com', value: formatNum(bi), meta: 'banner impressions' },
+    ],
+    bars: items.length > 1 ? { title: 'Display impressions by site', items, format: formatNum } : null,
+    insights: [
+      ...(bi + qi ? [{ html: `<b>${formatNum(bi + qi)}</b> display impressions and <b>${formatNum(clicks)}</b> clicks.` }] : []),
+      ...(plays ? [{ html: `<b>${formatNum(plays)}</b> pre-roll video plays.` }] : []),
+    ],
+    source: 'Blazers.com and RoseQuarter.com ad server delivery; pre-roll plays from the video platform.',
+    totals: { impressions: bi + qi },
+  };
+}
+
+const REPORT_SECTION_BUILDERS = {
+  tv: rptBuildTV, virtualSignage: rptBuildVS, organic: rptBuildOrganic, survey: rptBuildSurvey,
+  paid: rptBuildPaid, ancLED: rptBuildANC, affidavit: rptBuildAffidavit, webDisplay: rptBuildWeb,
 };
 
-function openReportModal(prefilledBrand = null) {
-  _reportModal.step     = prefilledBrand ? 2 : 1;
-  _reportModal.brand    = prefilledBrand || null;
-  _reportModal.season   = null;
-  _reportModal.searchQuery = '';
-  _reportModal.selectedSections = null;
-  _reportModal.selectedTakeaways = null;
-  _reportModal.sectionNotes = {};
-  _reportModal._expandedSections = new Set();
+// These sources carry season totals, not dates, so they can't be cut to a date.
+const RPT_SEASON_TOTALS_ONLY = new Set(['ancLED', 'affidavit', 'webDisplay']);
 
+// Every figure the report can show for one partner and season. Sections with
+// nothing to show come back as { available: false, reason } so the builder can
+// grey them out instead of printing zeros.
+// period: { mode: 'full' } (default) or { mode: 'std', throughGame: N }.
+function buildReportModel(brand, season, period) {
+  const ctx = rptContext(season, period);
+  const sections = {};
+  REPORT_SECTION_DEFS.forEach(def => {
+    if (ctx.std && RPT_SEASON_TOTALS_ONLY.has(def.key)) {
+      sections[def.key] = { ...def, available: false, reason: 'Season totals only' };
+      return;
+    }
+    let data = null, error = null;
+    try { data = REPORT_SECTION_BUILDERS[def.key](brand, season, ctx); }
+    catch (e) { error = e; console.warn(`Report section ${def.key} failed`, e); }
+    sections[def.key] = data ? { ...def, available: true, ...data } : { ...def, available: false, error, reason: `No ${season} data` };
+  });
+  return {
+    brand, season, priorSeason: rptPriorSeason(season), sections, generated: new Date(),
+    period: { std: ctx.std, throughGame: ctx.throughGame, throughDate: ctx.throughDate, total: ctx.info.total,
+              local: ctx.info.local, usual: ctx.info.usual, national: ctx.info.national,
+              measured: ctx.info.dates.length, complete: ctx.info.complete, dates: ctx.info.dates },
+  };
+}
+
+
+// ============================================================
+// 2. DOCUMENT
+// ============================================================
+// US Letter at 96 px/in: 816 × 1056. The content column is 712px wide; charts
+// are drawn at their printed size (viewBox = rendered width), so 12px in the
+// SVG is 12px on paper: the design system's floor for Trade Gothic.
+
+const RPT_CARD_W = 680; // chart width inside a card (712 − padding − border)
+
+function rptDeltaHTML(change, points) {
+  if (change === null || change === undefined || !isFinite(change)) return '';
+  const dir = change > 0.0005 ? 'up' : change < -0.0005 ? 'down' : 'flat';
+  const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '▬';
+  const sign = change > 0 ? '+' : change < 0 ? '−' : '';
+  const v = Math.abs(change * 100).toFixed(1);
+  return `<span class="dl ${dir}">${arrow} ${sign}${v}${points ? ' pts' : '%'}</span>`;
+}
+
+function rptKpiHTML(k, opts, hero) {
+  const delta = opts.compare ? rptDeltaHTML(k.delta, k.points) : '';
+  const sub = delta ? `${delta}${k.cmp ? ` ${escapeHTML(k.cmp)}` : ''}` : (k.meta ? escapeHTML(k.meta) : '&nbsp;');
+  return `<div class="kpi${hero ? ' hero' : ''}${k.estimated ? ' est' : ''}">
+    <div class="kpi-l">${escapeHTML(k.label)}${k.estimated ? '<span class="estflag">Est.</span>' : ''}</div>
+    <div class="kpi-v${k.small ? ' sm' : ''}">${escapeHTML(k.value)}</div>
+    <div class="kpi-d">${sub}</div>
+  </div>`;
+}
+
+function rptSvgColumns(data, format, W = RPT_CARD_W, H = 184) {
+  const padT = 22, padB = 28, ph = H - padT - padB;
+  const n = data.length, slot = W / n, bw = Math.min(24, slot * 0.6);
+  const max = Math.max(...data.map(d => d.value), 0) || 1;
+  const base = padT + ph;
+  const marks = data.map((d, i) => {
+    const x = slot * i + (slot - bw) / 2, cx = x + bw / 2;
+    const h = d.value > 0 ? Math.max(2, d.value / max * ph) : 0, y = base - h, r = Math.min(4, h);
+    const bar = h ? `<path d="M${x},${base} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${base} Z" fill="var(${d.highlight ? '--accent' : '--bar-neutral'})"/>` : '';
+    return `${bar}
+      <text x="${cx}" y="${y - 7}" text-anchor="middle" class="${d.highlight ? 'vl hl' : 'vl'}">${escapeHTML(format(d.value))}</text>
+      <text x="${cx}" y="${H - 8}" text-anchor="middle" class="xl">${escapeHTML(d.label)}${d.flag ? '*' : ''}</text>`;
+  }).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">
+    <line x1="0" x2="${W}" y1="${base}" y2="${base}" class="ax"/>${marks}</svg>`;
+}
+
+function rptSvgLine(labels, series, format, W = RPT_CARD_W, H = 214) {
+  const padL = 40, padR = 104, padT = 12, padB = 40;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const vals = series.flatMap(s => s.data).filter(v => v !== null && v !== undefined);
+  const vmax = Math.max(...vals, 0.01);
+  const step = vmax > 0.5 ? 0.25 : 0.1;
+  const yMax = Math.min(1, Math.ceil((vmax + step * 0.2) / step) * step) || step;
+  const n = labels.length;
+  const X = i => padL + (n === 1 ? pw / 2 : i * pw / (n - 1));
+  const Y = v => padT + ph - (v / yMax) * ph;
+  let grid = '';
+  for (let t = 0; t <= yMax + 1e-9; t += step) {
+    grid += `<line x1="${padL}" x2="${padL + pw}" y1="${Y(t)}" y2="${Y(t)}" class="${t === 0 ? 'ax' : 'gr'}"/>
+      <text x="${padL - 8}" y="${Y(t) + 4}" text-anchor="end" class="yl">${Math.round(t * 100)}%</text>`;
+  }
+  const xl = labels.map((l, i) => `<text x="${X(i)}" y="${padT + ph + 18}" text-anchor="middle" class="xl">${escapeHTML(l[0])}</text>
+    <text x="${X(i)}" y="${padT + ph + 33}" text-anchor="middle" class="xl">${escapeHTML(l[1])}</text>`).join('');
+  const colors = ['--series-1', '--series-2', '--series-3', '--series-4'];
+  const ends = [];
+  const lines = series.map((s, si) => {
+    const c = `var(${colors[si]})`;
+    let d = '', pen = false;
+    s.data.forEach((v, i) => {
+      if (v === null || v === undefined) { pen = false; return; }
+      d += `${pen ? 'L' : 'M'}${X(i)},${Y(v)} `; pen = true;
+    });
+    const dots = s.data.map((v, i) => v === null || v === undefined ? '' : `<circle cx="${X(i)}" cy="${Y(v)}" r="4" fill="${c}" stroke="#fff" stroke-width="2"/>`).join('');
+    let li = -1; s.data.forEach((v, i) => { if (v !== null && v !== undefined) li = i; });
+    if (li >= 0) ends.push({ y: Y(s.data[li]), x: X(li), text: `${s.name} ${format(s.data[li])}`, c });
+    return `<path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/>${dots}`;
+  }).join('');
+  // Direct end labels (text in text-secondary, never the series colour), spread
+  // apart so two series ending close together don't overlap.
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
+  const endLabels = ends.map(e => `<line x1="${padL + pw + 12}" x2="${padL + pw + 24}" y1="${e.y}" y2="${e.y}" stroke="${e.c}" stroke-width="2"/>
+    <text x="${padL + pw + 28}" y="${e.y + 4}" class="el">${escapeHTML(e.text)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">${grid}${xl}${lines}${endLabels}</svg>`;
+}
+
+// Cumulative value by home game: this season (solid red, to date), last season
+// (teal, full), and the pace estimate (dashed red to the season's last game,
+// with its likely range as a bracket).
+function rptSvgPace(c, W = RPT_CARD_W, H = 224) {
+  const padL = 54, padR = 118, padT = 12, padB = 34;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const G = c.G, curr = c.curr, prior = c.prior ? c.prior.slice(0, G) : null;
+  const top = Math.max(curr[curr.length - 1] || 0, prior ? prior[prior.length - 1] : 0, c.pace ? c.pace.hi : 0) * 1.06 || 1;
+  const X = g => padL + (G <= 1 ? 0 : (g - 1) / (G - 1) * pw);
+  const Y = v => padT + ph - v / top * ph;
+  let grid = '';
+  for (let k = 0; k <= 4; k++) {
+    const v = top / 4 * k;
+    grid += `<line x1="${padL}" x2="${padL + pw}" y1="${Y(v)}" y2="${Y(v)}" class="${k ? 'gr' : 'ax'}"/>
+      <text x="${padL - 8}" y="${Y(v) + 4}" text-anchor="end" class="yl">${escapeHTML(c.format(v))}</text>`;
+  }
+  const ticks = [1, ...[10, 20, 30, 40].filter(t => t < G - 3), G];
+  const xl = ticks.map(t => `<text x="${X(t)}" y="${padT + ph + 18}" text-anchor="middle" class="xl">${t}</text>`).join('') +
+    `<text x="${padL + pw / 2}" y="${H - 2}" text-anchor="middle" class="xl">Home game</text>`;
+  const path = arr => arr.map((v, i) => `${i ? 'L' : 'M'}${X(i + 1)},${Y(v)}`).join(' ');
+  const ends = [];
+  let marks = '';
+  if (prior && prior.length) {
+    marks += `<path d="${path(prior)}" fill="none" stroke="var(--series-2)" stroke-width="2"/>`;
+    ends.push({ y: Y(prior[prior.length - 1]), c: 'var(--series-2)', text: `${c.priorLabel} ${c.format(prior[prior.length - 1])}` });
+  }
+  const n = curr.length, last = curr[n - 1] || 0;
+  if (c.pace) {
+    // The likely range as a shaded cone from today to the season's last game.
+    marks += `<path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.hi)} L${X(G)},${Y(c.pace.lo)} Z" fill="var(--series-1)" opacity="0.12"/>
+      <path d="M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.hi)} M${X(n)},${Y(last)} L${X(G)},${Y(c.pace.lo)}" fill="none" stroke="var(--series-1)" stroke-width="1.5" stroke-dasharray="5 4"/>`;
+    ends.push({ y: Y((c.pace.lo + c.pace.hi) / 2), c: 'var(--series-1)', dash: true, text: `Pace ${c.format(c.pace.lo)}–${c.format(c.pace.hi)}` });
+  }
+  if (n) {
+    marks += `<path d="${path(curr)}" fill="none" stroke="var(--series-1)" stroke-width="2"/>
+      <circle cx="${X(n)}" cy="${Y(last)}" r="4" fill="var(--series-1)" stroke="#fff" stroke-width="2"/>
+      <text x="${X(n)}" y="${Y(last) - 10}" text-anchor="middle" class="vl hl">${escapeHTML(c.format(last))}</text>`;
+  }
+  ends.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
+  const endLabels = ends.map(e => `<line x1="${padL + pw + 12}" x2="${padL + pw + 24}" y1="${e.y}" y2="${e.y}" stroke="${e.c}" stroke-width="2"${e.dash ? ' stroke-dasharray="4 3"' : ''}/>
+    <text x="${padL + pw + 28}" y="${e.y + 4}" class="el">${escapeHTML(e.text)}</text>`).join('');
+  return `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img">${grid}${xl}${marks}${endLabels}</svg>`;
+}
+
+function rptBarListHTML(items, format) {
+  const max = Math.max(...items.map(i => i.value), 0) || 1;
+  return `<div class="bl">${items.map(i => `<div class="bl-r">
+      <div class="bl-l">${escapeHTML(i.label)}</div>
+      <div class="bl-t"><div class="bl-b${i.highlight ? ' hl' : ''}" style="width:${Math.max(0.5, i.value / max * 100).toFixed(1)}%"></div></div>
+      <div class="bl-v">${escapeHTML(format(i.value))}</div>
+    </div>`).join('')}</div>`;
+}
+
+function rptTableHTML(t) {
+  const last = t.rows.length - 1;
+  return `<table class="dt"><thead><tr>${t.columns.map(c => `<th class="${c.num ? 'n' : ''}">${escapeHTML(c.label)}</th>`).join('')}</tr></thead>
+    <tbody>${t.rows.map((r, ri) => `<tr class="${t.totalRow && ri === last ? 'tot' : ''}">${r.map((v, i) => `<td class="${t.columns[i].num ? 'n' : ''}">${escapeHTML(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function rptCard(title, sub, inner, extraClass = '') {
+  return `<div class="card ${extraClass}"><div class="card-h"><div class="card-t">${escapeHTML(title)}</div>${sub ? `<div class="card-s">${sub}</div>` : ''}</div>${inner}</div>`;
+}
+
+function rptInsightHTML(ins, opts) {
+  const d = opts.compare && ins.delta ? ` ${rptDeltaHTML(ins.delta.change, ins.delta.points)} vs ${escapeHTML(ins.delta.basis)}` : '';
+  return `<li>${ins.html}${ins.estimated ? ' <span class="estflag">Est.</span>' : ''}${d}</li>`;
+}
+
+// Blocks are the unit of pagination: each is kept whole on one page.
+// data-keep="next" glues a block to the one after it (a heading never ends a
+// page); data-break="before" starts a new page.
+function rptBlock(html, attrs = '') { return `<div class="blk"${attrs ? ' ' + attrs : ''}>${html}</div>`; }
+
+// The rank to print for a section, or null: only when rankings are switched on
+// and the partner finished in the top three of the chosen pool.
+function rptShownRank(sec, opts) {
+  if (!opts.rank || opts.rank === 'off' || !sec.rankable) return null;
+  const r = sec.rankable.ranks[opts.rank];
+  return r && r.rank <= RPT_RANK_SHOW_MAX ? { ...r, metric: sec.rankable.metric } : null;
+}
+function rptOrdinal(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th`; }
+
+function rptSectionBlocks(sec, opts) {
+  const out = [];
+  // "Season pace" switched off: drop the pace tile, line and chart segment.
+  if (!opts.pace && sec.pace && !sec.pace.unavailable) {
+    sec = { ...sec, kpis: sec.kpis.map(k => k.label === 'Season pace' ? sec.perMinute : k),
+            chart: sec.chart && { ...sec.chart, pace: null },
+            rankable: sec.rankable && { ...sec.rankable, kpiIndex: 3 } };
+  }
+  const tag = `data-sec="${escapeAttr(sec.label)}"`;
+  const blockIn = (html, attrs = '') => rptBlock(html, `${tag}${attrs ? ' ' + attrs : ''}`);
+  out.push(blockIn(`<div class="sec-h"><h2>${escapeHTML(sec.label)}</h2><div class="sec-m">${escapeHTML(sec.count)} · ${escapeHTML(opts.season)}${opts.std ? ' to date' : ''}</div></div>`, 'data-keep="next"'));
+  if (sec.banner) {
+    const icon = sec.banner.tone === 'warning' ? '!' : 'i';
+    out.push(blockIn(`<div class="banner ${sec.banner.tone}"><span class="bi">${icon}</span><div><b>${escapeHTML(sec.banner.title)}</b> ${escapeHTML(sec.banner.text)}</div></div>`, 'data-keep="next"'));
+  }
+  const shown = rptShownRank(sec, opts);
+  let kpis = sec.kpis;
+  if (shown && sec.rankable.kpiIndex !== null && sec.rankable.kpiIndex !== undefined) {
+    kpis = kpis.slice();
+    kpis[sec.rankable.kpiIndex] = { label: opts.rank === 'category' ? 'Category rank' : 'Partner rank', value: `#${shown.rank}`, meta: `of ${shown.of} ${shown.label}` };
+  }
+  out.push(blockIn(`<div class="kpis">${kpis.map(k => rptKpiHTML(k, opts)).join('')}</div>`));
+  if (sec.chart && sec.chart.kind === 'column') {
+    const fn = sec.chart.footnote ? `<div class="card-f">${escapeHTML(sec.chart.footnote)}</div>` : '';
+    out.push(blockIn(rptCard(sec.chart.title, '', rptSvgColumns(sec.chart.data, sec.chart.format) + fn)));
+  }
+  if (sec.chart && sec.chart.kind === 'pace') {
+    const legend = `<span class="lg"><i style="background:var(--series-1)"></i>${escapeHTML(opts.season)}</span>` +
+      (sec.chart.prior ? `<span class="lg"><i style="background:var(--series-2)"></i>${escapeHTML(sec.chart.priorLabel)}</span>` : '') +
+      (sec.chart.pace ? `<span class="lg"><i class="dash"></i>Pace (est.)</span>` : '');
+    out.push(blockIn(rptCard(sec.chart.title, legend, rptSvgPace(sec.chart))));
+  }
+  if (sec.chart && sec.chart.kind === 'line') {
+    const legend = sec.chart.series.map((s, i) => `<span class="lg"><i style="background:var(--series-${i + 1})"></i>${escapeHTML(s.name)}</span>`).join('');
+    out.push(blockIn(rptCard(sec.chart.title, legend, rptSvgLine(sec.chart.labels, sec.chart.series, sec.chart.format))));
+  }
+  if (sec.bars && sec.bars.items.length) out.push(blockIn(rptCard(sec.bars.title, '', rptBarListHTML(sec.bars.items, sec.bars.format))));
+  if (sec.table && sec.table.rows.length) out.push(blockIn(rptCard(sec.table.title, '', rptTableHTML(sec.table), 'tbl')));
+  const chosen = (opts.insights && opts.insights[sec.key]) || sec.insights.map((_, i) => i).slice(0, 3);
+  // The pace line follows the "Season pace" option, not the takeaway ticks.
+  const ins = chosen.map(i => sec.insights[i]).filter(Boolean);
+  if (sec.paceInsight && !!opts.pace) ins.splice(Math.min(1, ins.length), 0, sec.paceInsight);
+  if (shown) ins.unshift({ html: `<b>${rptOrdinal(shown.rank)}</b> in ${escapeHTML(shown.metric)} among ${shown.of} ${escapeHTML(shown.label)}.` });
+  const note = ((opts.notes || {})[sec.key] || '').trim();
+  if (ins.length || note) {
+    out.push(blockIn(`${ins.length ? `<ul class="ins">${ins.map(x => rptInsightHTML(x, opts)).join('')}</ul>` : ''}${note ? `<p class="unote">${escapeHTML(note)}</p>` : ''}`, 'data-keep="next" data-tail="1"'));
+  }
+  out.push(blockIn(`<p class="src">${escapeHTML(sec.source)}</p>`, `data-gap="section"${ins.length || note ? '' : ' data-tail="1"'}`));
+  return out;
+}
+
+const RPT_METHODOLOGY = {
+  tv: [['QI media value', 'The dollar value of on-screen exposure during broadcasts, discounted for logo clarity, size, position and duration.'],
+       ['QI impressions', 'Gross impressions adjusted by the same quality score.'],
+       ['Season comparisons', 'Compare the same broadcasts in both seasons: the first N home broadcasts of the prior season against this season\'s N. Seasons that also measured away broadcasts are not compared on full-season totals.']],
+  virtualSignage: [['Measured vs estimated', 'Home games with a TV measurement use that measurement. Away games, and home games without one, use the season average for the position. Estimated values are marked Est.']],
+  organic: [['Brand value', 'Zoomph\'s estimate of the value of the partner\'s logo and mentions in Blazers social content.'],
+            ['Monthly reports', 'Zoomph reports are monthly, not running totals; a season figure is the sum of its months. Seasons run July to June.']],
+  survey: [['Unaided / aided recall', 'Share of fans who name the partner as a Blazers sponsor without prompting (unaided) or recognise it from a list (aided).'],
+           ['Not asked', '"—" means the brand wasn\'t included in that survey wave; it is not a 0% result.']],
+  paid: [['Paid social', 'Meta campaigns linked to the partner. Click-through is link clicks divided by impressions. Unassigned campaigns are excluded.']],
+  ancLED: [['LED exposure', 'Time the partner\'s creative was on the Moda Center LED boards, from the ANC sponsor reports.']],
+  affidavit: [['Contracted vs bonus', 'Contracted spots are in the agreement; bonus spots ran on top at no charge.']],
+  webDisplay: [['Display impressions', 'Banner impressions served on Blazers.com and RoseQuarter.com. Pre-roll plays are video ad starts.']],
+};
+
+function rptPeriodLabel(model) {
+  return model.period.std ? `${model.season} · through home game ${model.period.throughGame}` : model.season;
+}
+
+function rptSummaryBlocks(model, keys, opts) {
+  const S = model.sections, out = [];
+  const tv = keys.includes('tv') ? S.tv : null, vs = keys.includes('virtualSignage') ? S.virtualSignage : null;
+  const tiles = [];
+  if (tv || vs) {
+    const q = (tv ? tv.totals.qimv : 0) + (vs ? vs.totals.qimv : 0);
+    const parts = [tv && `TV ${formatCurrency(tv.totals.qimv)}`, vs && `on-court ${formatCurrency(vs.totals.qimv)}${vs.totals.estimated ? ' (est.)' : ''}`].filter(Boolean);
+    const pace = tv && tv.pace && !tv.pace.unavailable && !!opts.pace ? tv.pace : null;
+    tiles.push({ label: model.period.std ? 'QI media value to date' : 'Total QI media value', value: formatCurrency(q),
+      delta: !vs && tv ? tv.totals.delta : null, cmp: tv && tv.totals.cmp,
+      meta: pace && !vs ? `TV on pace for ${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)} (est.)`
+        : parts.length > 1 ? parts.join(' + ') : (tv ? `${tv.totals.games} broadcasts` : ''),
+      estimated: !!(vs && vs.totals.estimated && !tv) });
+  }
+  const pick = [
+    ['tv', sec => sec.kpis[1]], ['organic', sec => sec.kpis[0]], ['survey', sec => sec.kpis[0]],
+    ['paid', sec => sec.kpis[0]], ['affidavit', sec => sec.kpis[0]], ['ancLED', sec => sec.kpis[0]],
+    ['webDisplay', sec => sec.kpis[0]], ['organic', sec => sec.kpis[1]],
+  ];
+  for (const [k, f] of pick) {
+    if (tiles.length >= 4) break;
+    if (keys.includes(k)) { const t = f(S[k]); if (t && !tiles.includes(t)) tiles.push(t); }
+  }
+  out.push(rptBlock(`<div class="sec-h"><h2>Executive summary</h2><div class="sec-m">${escapeHTML(rptPeriodLabel(model))}</div></div>`, 'data-keep="next"'));
+  out.push(rptBlock(`<div class="kpis${tv || vs ? ' sum' : ''}">${tiles.map((t, i) => rptKpiHTML(t, opts, i === 0 && (tv || vs))).join('')}</div>`, 'data-keep="next"'));
+  const lead = keys.map(k => {
+    const chosen = (opts.insights && opts.insights[k]) || [0];
+    return S[k].insights[chosen[0]];
+  }).filter(x => x && (!x.estimated || !!opts.pace)).slice(0, 6);
+  if (lead.length) out.push(rptBlock(`<ul class="ins">${lead.map(x => rptInsightHTML(x, opts)).join('')}</ul>`, 'data-gap="section"'));
+  return out;
+}
+
+function rptReportCSS() {
+  const F = REPORT_BRAND_ASSETS.fonts;
+  return `
+@font-face{font-family:"League Gothic";src:url(${F.leagueGothic}) format("woff2");font-weight:100 900;}
+@font-face{font-family:"Trade Gothic";src:url(${F.tradeGothic}) format("woff2");font-weight:400;}
+@font-face{font-family:"Trade Gothic";src:url(${F.tradeGothicBold}) format("woff2");font-weight:700;}
+:root{
+  --surface-page:#f4f1ec;--surface-card:#ffffff;--surface-sunken:#ebebec;
+  --text-primary:#000000;--text-secondary:#5e5e60;--text-muted:#6b6c6e;--text-accent:#c8102e;
+  --border:#dcddde;--grid:#dcddde;--axis:#b7b9bc;--accent:#c8102e;--accent-wash:rgba(200,16,46,.08);
+  --bar-neutral:#939598;--series-1:#c8102e;--series-2:#0e8fa8;--series-3:#8a9a20;--series-4:#ce6099;
+  --delta-up:#136c48;--delta-down:#a6192e;--status-warning:#8f5a10;
+  --display:"League Gothic","Arial Narrow","Helvetica Neue Condensed",sans-serif;
+  --body:"Trade Gothic","Arial Narrow","Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{background:var(--surface-page);color:var(--text-primary);font-family:var(--body);font-size:14px;line-height:1.4;}
+#flow{position:absolute;left:-10000px;top:0;width:712px}
+#pages{padding:24px 0}
+.page{width:816px;height:1056px;margin:0 auto 24px;background:var(--surface-card);box-shadow:0 4px 12px rgba(6,25,34,.10);
+  display:flex;flex-direction:column;padding:44px 52px 0;position:relative;overflow:hidden}
+.page.first{border-top:3px solid var(--accent);padding-top:41px}
+.page-head{height:30px;display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid var(--border);margin-bottom:18px;
+  font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.page-body{flex:1;overflow:hidden}
+.page-foot{height:56px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);
+  font-size:12px;color:var(--text-muted)}
+.page-foot img{height:10px;width:auto;margin-right:10px;vertical-align:-1px}
+.blk{padding-bottom:14px}
+.blk[data-gap="section"]{padding-bottom:28px}
+.page-body.tight .blk{padding-bottom:8px}.page-body.tight .blk[data-gap="section"]{padding-bottom:16px}
+.cover{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;padding-bottom:6px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-accent)}
+.name{font-family:var(--display);font-size:64px;line-height:.92;letter-spacing:.012em;text-transform:uppercase;margin:10px 0 10px;font-weight:400}
+.meta{font-size:13px;color:var(--text-secondary)}
+.cover-logos{display:flex;align-items:center;gap:18px;flex-shrink:0}
+.cover-logos .pl{height:56px;width:auto;max-width:150px;object-fit:contain}
+.cover-logos .bl-lock{height:72px;width:auto}
+.cover-logos .sep{width:1px;height:56px;background:var(--border)}
+.rule{border-bottom:1px solid var(--border);margin-bottom:0}
+.sec-h{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid var(--accent);padding-bottom:6px}
+.sec-h h2{font-family:var(--display);font-weight:400;font-size:30px;line-height:1;letter-spacing:.02em;text-transform:uppercase}
+.sec-m{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);padding-bottom:3px}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.kpis.sum{grid-template-columns:2fr 1fr 1fr 1fr}
+.kpi{border:1px solid var(--border);border-radius:6px;padding:10px 12px 11px;background:var(--surface-card);min-width:0}
+.kpi.hero{border-top:3px solid var(--accent);padding-top:8px}
+.kpi.est{border-style:dashed}
+.kpi-l{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);display:flex;gap:6px;align-items:center}
+.estflag{font-size:12px;letter-spacing:.04em;border:1px solid var(--status-warning);color:var(--status-warning);border-radius:3px;padding:0 4px;line-height:15px}
+.kpi-v{font-family:var(--display);font-size:40px;line-height:1.02;letter-spacing:.02em;margin-top:4px;white-space:nowrap}
+.kpi.hero .kpi-v{font-size:60px;line-height:.95}
+.kpi-v.sm{font-size:28px;line-height:1.1;margin-top:9px;margin-bottom:5px}
+.kpi-d{font-size:12px;color:var(--text-muted);margin-top:3px;line-height:1.3}
+.dl{font-weight:700;white-space:nowrap}.dl.up{color:var(--delta-up)}.dl.down{color:var(--delta-down)}.dl.flat{color:var(--text-secondary)}
+.card{border:1px solid var(--border);border-radius:6px;padding:12px 15px 12px;background:var(--surface-card)}
+.card-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px;gap:12px}
+.card-t{font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.card-s{font-size:12px;color:var(--text-secondary);display:flex;gap:14px}
+.card-f{font-size:12px;color:var(--text-muted);margin-top:6px}
+.lg{display:inline-flex;align-items:center;gap:6px}.lg i{display:inline-block;width:14px;height:2px}
+.lg i.dash{background:repeating-linear-gradient(90deg,var(--series-1) 0 4px,transparent 4px 7px)}
+.meta.through{font-weight:700;color:var(--text-primary);margin-bottom:3px}
+.ins .estflag{display:inline-block;margin-left:4px;vertical-align:1px}
+svg{display:block;font-family:var(--body)}
+svg .vl{font-size:12px;fill:var(--text-secondary)}svg .vl.hl{fill:var(--text-primary);font-weight:700}
+svg .xl,svg .yl{font-size:12px;fill:var(--text-muted)}svg .el{font-size:12px;fill:var(--text-secondary)}
+svg .ax{stroke:var(--axis);stroke-width:1}svg .gr{stroke:var(--grid);stroke-width:1}
+.bl{display:flex;flex-direction:column;gap:7px}
+.bl-r{display:grid;grid-template-columns:170px 1fr 74px;align-items:center;gap:12px;font-size:13px}
+.bl-l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary)}
+.bl-t{height:12px;background:var(--surface-sunken);border-radius:4px;overflow:hidden}
+.bl-b{height:100%;background:var(--bar-neutral);border-radius:4px}.bl-b.hl{background:var(--accent)}
+.bl-v{text-align:right;color:var(--text-secondary)}
+table.dt{width:100%;border-collapse:collapse;font-size:13px}
+.dt th{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-secondary);text-align:left;padding:0 8px 6px;border-bottom:1px solid var(--axis)}
+.dt td{padding:5px 8px;border-bottom:1px solid var(--grid)}
+.dt th:first-child,.dt td:first-child{padding-left:0}.dt th:last-child,.dt td:last-child{padding-right:0}
+.dt .n{text-align:right}.dt tr.tot td{font-weight:700;border-bottom:none;border-top:1px solid var(--axis)}
+.dt tr:last-child td{border-bottom:none}
+.ins{list-style:none;display:flex;flex-direction:column;gap:5px}
+.ins li{padding-left:16px;position:relative;font-size:14px;line-height:1.4}
+.ins li::before{content:"▸";position:absolute;left:0;top:0;color:var(--accent)}
+.unote{margin-top:8px;font-size:14px;padding:8px 12px;background:var(--surface-page);border-radius:6px}
+.src{font-size:12px;color:var(--text-muted);line-height:1.4}
+.banner{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:6px;padding:10px 12px;font-size:13px;background:var(--surface-card)}
+.banner .bi{flex-shrink:0;width:18px;height:18px;border-radius:50%;color:#fff;font-weight:700;font-size:12px;display:flex;align-items:center;justify-content:center;background:var(--text-secondary)}
+.banner.warning .bi{background:var(--status-warning)}.banner.warning b{color:var(--status-warning)}
+.defs{display:grid;grid-template-columns:170px 1fr;gap:6px 16px;font-size:13px}
+.defs dt{font-weight:700}.defs dd{color:var(--text-secondary)}
+@page{size:letter;margin:0}
+@media print{
+  body{background:#fff}
+  #pages{padding:0;zoom:1!important}
+  .page{margin:0;box-shadow:none;break-after:page;height:1056px}
+  .page:last-child{break-after:auto}
+}`;
+}
+
+// The in-document paginator. Moves each block from #flow onto the current page
+// and starts a new page when it doesn't fit, so a block is never split. Runs
+// after the fonts load, because block heights depend on them.
+const RPT_PAGINATE_JS = `
+(function(){
+  var HEAD = document.getElementById('pq-head').innerHTML;
+  var FOOT = document.getElementById('pq-foot').innerHTML;
+  var pagesEl = document.getElementById('pages');
+  function newPage(n){
+    var pg = document.createElement('section');
+    pg.className = 'page' + (n === 0 ? ' first' : '');
+    pg.innerHTML = (n === 0 ? '' : '<div class="page-head">' + HEAD + '</div>') +
+      '<div class="page-body"></div><div class="page-foot"><span>' + FOOT + '</span><span class="pn"></span></div>';
+    pagesEl.appendChild(pg);
+    return pg.querySelector('.page-body');
+  }
+  function paginate(){
+    var blocks = Array.prototype.slice.call(document.getElementById('flow').children);
+    var n = 0, body = newPage(n++);
+    function over(){ return body.scrollHeight > body.clientHeight + 0.5; }
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (b.getAttribute('data-break') === 'before' && body.children.length) body = newPage(n++);
+      var group = [b], j = i;
+      while (blocks[j].getAttribute('data-keep') === 'next' && j + 1 < blocks.length) { j++; group.push(blocks[j]); }
+      var hadContent = body.children.length > 0;
+      group.forEach(function(g){ body.appendChild(g); });
+      if (over() && hadContent) {
+        // A small overflow: tighten this page's spacing before giving up on it,
+        // so a two-line tail doesn't become a page of its own.
+        // Once a page has tightened it stays tight: earlier blocks may rely on it.
+        var wasTight = body.classList.contains('tight');
+        body.classList.add('tight');
+        if (!over()) { i = j; continue; }
+        if (!wasTight) body.classList.remove('tight');
+        group.forEach(function(g){ g.remove(); });
+        // Widow rule: a section's takeaways never open a page by themselves.
+        // Bring the block before them (and anything glued to it) along.
+        var pulled = [];
+        if (group[0].getAttribute('data-tail')) {
+          var prev = body.lastElementChild;
+          while (prev) {
+            pulled.unshift(prev);
+            var before = prev.previousElementSibling;
+            if (before && before.getAttribute('data-keep') === 'next') prev = before; else break;
+          }
+          if (pulled.length >= body.children.length) pulled = []; // would empty the page
+        }
+        var wasTightPage = body.classList.contains('tight');
+        pulled.forEach(function(g){ g.remove(); });
+        if (wasTightPage) { body.classList.remove('tight'); if (over()) body.classList.add('tight'); }
+        body = newPage(n++);
+        pulled.concat(group).forEach(function(g){ body.appendChild(g); });
+      }
+      i = j;
+    }
+    var pages = pagesEl.querySelectorAll('.page');
+    pages.forEach(function(p, k){
+      p.querySelector('.pn').textContent = 'Page ' + (k + 1) + ' of ' + pages.length;
+      // A page that opens mid-section names the section it continues.
+      var first = p.querySelector('.page-body > .blk');
+      var ph = p.querySelector('.page-head');
+      if (ph && first && first.getAttribute('data-sec') && !first.querySelector('.sec-h')) {
+        ph.lastElementChild.textContent = first.getAttribute('data-sec') + ' (continued)';
+      }
+    });
+    window.reportPageCount = pages.length;
+  }
+  function fit(){ pagesEl.style.zoom = Math.min(1, (window.innerWidth - 32) / 816); }
+  // fonts.ready alone can resolve before a face is even requested (nothing is
+  // laid out yet), which paginated with fallback metrics and let pages overflow
+  // once League Gothic arrived. Ask for every face explicitly first.
+  var fontsLoaded = document.fonts
+    ? Promise.all(['400 40px "League Gothic"', '400 14px "Trade Gothic"', '700 14px "Trade Gothic"'].map(function(f){ return document.fonts.load(f); }))
+        .then(function(){ return document.fonts.ready; }, function(){ return null; })
+    : Promise.resolve();
+  window.reportReady = fontsLoaded.then(function(){
+    paginate(); fit(); window.addEventListener('resize', fit); return window.reportPageCount;
+  });
+})();`;
+
+// opts: { sections: {key: bool}, insights: {key: [index]}, notes: {key: text},
+//         compare: bool, methodology: bool, preparedBy }
+function renderReportDocument(model, opts) {
+  opts = { compare: true, methodology: true, pace: false, rank: 'off', ...opts, season: model.season, std: model.period.std };
+  const keys = REPORT_SECTION_DEFS.map(d => d.key)
+    .filter(k => model.sections[k].available && (!opts.sections || opts.sections[k]));
+  const brand = model.brand;
+  const latest = getLatestDataDate();
+  const generated = model.generated.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const partnerLogo = lookupPartnerLogo(brand);
+  const L = REPORT_BRAND_ASSETS.logos;
+  const P = model.period;
+  const throughTxt = P.std ? `Through home game ${P.throughGame} of ${P.total}${P.local ? ' local broadcasts' : ''} (${formatShortDate(parseDateLoose(P.throughDate))})` : '';
+  const title = `${brand} — Partnership report ${model.season}${P.std ? ` through game ${P.throughGame}` : ''}`;
+
+  const blocks = [];
+  blocks.push(rptBlock(`<div class="cover">
+      <div>
+        <div class="eyebrow">Partnership report · ${escapeHTML(model.season)}${P.std ? ' season to date' : ''}</div>
+        <h1 class="name">${escapeHTML(brand)}</h1>
+        ${throughTxt ? `<div class="meta through">${escapeHTML(throughTxt)}</div>` : ''}
+        <div class="meta">Prepared by ${escapeHTML(opts.preparedBy || (DASHBOARD_META && DASHBOARD_META.preparedBy) || 'Partnership Strategy')} · Generated ${generated}${latest && model.season === rptCurrentSeason() && !P.std ? ` · Data through ${formatShortDate(latest)}` : ''}</div>
+      </div>
+      <div class="cover-logos">
+        ${partnerLogo && partnerLogo.type !== 'svg' ? `<img class="pl" src="${partnerLogo.data}" alt="${escapeAttr(brand)}"><span class="sep"></span>` : ''}
+        <img class="bl-lock" src="${L.stacked}" alt="Portland Trail Blazers">
+      </div>
+    </div>`, 'data-gap="section"'));
+
+  if (!keys.length) {
+    blocks.push(rptBlock(`<div class="banner"><span class="bi">i</span><div><b>No sections selected.</b> Choose at least one section with data for ${escapeHTML(model.season)}.</div></div>`));
+  } else {
+    // A summary of one or two sections would just repeat them.
+    if (keys.length >= 3) blocks.push(...rptSummaryBlocks(model, keys, opts));
+    keys.forEach(k => blocks.push(...rptSectionBlocks(model.sections[k], opts)));
+    if (opts.methodology) {
+      const defs = keys.flatMap(k => RPT_METHODOLOGY[k] || []);
+      if (P.std && P.local) defs.unshift(['Local home broadcasts', `This season has ${P.local} local home broadcasts${P.national ? ` (${P.national} home game${P.national === 1 ? ' is' : 's are'} national-only, with no local TV measurement)` : ''}. Game counts and the season pace use ${P.local}.`]);
+      if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season; organic with the same completed months; the survey with the same wave. Sources that only report season totals are left out.`]);
+      if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && !!opts.pace) {
+        defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. It is shown only as a range — how far this method missed for partners in earlier seasons at the same point (20th–80th percentile) — and only between home games ${RPT_PACE_MIN_GAMES} and ${RPT_PACE_MAX_GAMES}. It is an estimate, not a forecast of any game.`]);
+      }
+      const shownRanks = keys.map(k => rptShownRank(model.sections[k], opts)).filter(Boolean);
+      if (shownRanks.length) defs.push(['Rankings', opts.rank === 'category' ? 'Among current partners in the same category family, shown only for a top-three position.' : 'Among current partners, shown only for a top-three position.']);
+      blocks.push(rptBlock(`<div class="sec-h"><h2>Methodology and definitions</h2><div class="sec-m">${escapeHTML(model.season)}</div></div>`, 'data-keep="next"'));
+      // Not forced onto its own page: in a short report it sits under the
+      // content; in a long one it moves to a fresh page when it won't fit.
+      // Sources aren't repeated here — each section already ends with its own.
+      blocks.push(rptBlock(`<dl class="defs">${defs.map(([t, d]) => `<dt>${escapeHTML(t)}</dt><dd>${escapeHTML(d)}</dd>`).join('')}</dl>`));
+    }
+  }
+
+  const head = `<span>${escapeHTML(brand)} · Partnership report</span><span>${escapeHTML(model.season)}</span>`;
+  const foot = `<img src="${L.wordmark}" alt="Portland Trail Blazers">PartnerIQ · Confidential`;
+  return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>${escapeHTML(title)}</title>
+<style>${rptReportCSS()}</style></head>
+<body>
+<template id="pq-head">${head}</template><template id="pq-foot">${foot}</template>
+<div id="pages"></div>
+<div id="flow">${blocks.join('\n')}</div>
+<script>${RPT_PAGINATE_JS}<\/script>
+</body></html>`;
+}
+
+
+// ============================================================
+// 3. BUILDER
+// ============================================================
+// One screen: partner, season, sections (each with its takeaways and an
+// optional note), options, and a live preview of the exact pages that print.
+
+const _rb = {
+  brand: null, season: null, seasons: [], model: null,
+  sections: {}, insights: {}, notes: {}, open: {},
+  compare: true, methodology: true, timer: null, renderId: 0,
+  period: 'full', throughGame: null, pace: false, rank: 'off',
+};
+
+function rptDefaultBrand() {
+  const season = rptCurrentSeason();
+  const byQimv = {};
+  getTVRowsForPeriod(season).forEach(r => { byQimv[r.Brand] = (byQimv[r.Brand] || 0) + (Number(r['QI Media Value ($)']) || 0); });
+  const ranked = Object.keys(byQimv).filter(isCurrentPartner).sort((a, b) => byQimv[b] - byQimv[a]);
+  return ranked[0] || DataStore.getBrandList()[0] || null;
+}
+
+function rptPlainText(html) { const d = document.createElement('div'); d.innerHTML = html; return d.textContent || ''; }
+
+// preserve: keep the current section/takeaway choices where they still apply
+// (switching the period shouldn't undo someone's picks).
+function rbLoadModel(preserve) {
+  const prev = preserve ? { sections: _rb.sections, insights: _rb.insights } : null;
+  _rb.model = buildReportModel(_rb.brand, _rb.season, { mode: _rb.period, throughGame: _rb.throughGame });
+  _rb.sections = {}; _rb.insights = {};
+  REPORT_SECTION_DEFS.forEach(def => {
+    const sec = _rb.model.sections[def.key];
+    const keep = prev && prev.sections[def.key] !== undefined;
+    _rb.sections[def.key] = sec.available && (keep ? prev.sections[def.key] || !prev.insights[def.key] || !prev.insights[def.key].length : true);
+    const kept = keep ? (prev.insights[def.key] || []).filter(i => i < (sec.insights || []).length) : null;
+    _rb.insights[def.key] = sec.available ? (kept && kept.length ? kept : sec.insights.map((_, i) => i).slice(0, 3)) : [];
+  });
+}
+
+function rbSetBrand(brand) {
+  if (brand !== _rb.brand) { _rb.notes = {}; _rb.open = {}; }
+  _rb.brand = brand;
+  _rb.seasons = getReportSeasonsForBrand(brand);
+  if (!_rb.seasons.includes(_rb.season)) _rb.season = _rb.seasons[0] || rptCurrentSeason();
+  _rb.throughGame = null;
+  rbLoadModel();
+}
+
+function openReportModal(prefilledBrand = null) {
+  const brand = prefilledBrand || currentBrand || rptDefaultBrand();
+  if (!brand) { showErrorToast('Load partner data before building a report.'); return; }
+  _rb.season = null;
+  _rb.period = 'full';
+  rbSetBrand(brand);
   document.getElementById('reportModalBackdrop').classList.add('active');
-  _renderReportModalStep();
+  rbRenderPanel();
+  rbRefreshPreview(true);
 }
 
 function closeReportModal() {
   document.getElementById('reportModalBackdrop').classList.remove('active');
 }
 
-function _renderReportModalStep() {
+function rbRenderPanel() {
   const body = document.getElementById('reportModalBody');
   if (!body) return;
-
-  if (_reportModal.step === 1) _renderReportStep1(body);
-  else if (_reportModal.step === 2) _renderReportStep2(body);
-  else if (_reportModal.step === 3) _renderReportStep3(body);
-  else if (_reportModal.step === 4) _renderReportStep4(body);
-}
-
-// ── Step 1: Pick partner ────────────────────────────────────
-function _renderReportStep1(body) {
-  const rosterActive = DataStore.partnerRoster && DataStore.partnerRoster.length > 0;
-  const allBrands    = DataStore.getBrandList();
-  const q            = _reportModal.searchQuery.toLowerCase();
-
-  let brands = rosterActive
-    ? [...allBrands.filter(b => isCurrentPartner(b)), ...allBrands.filter(b => !isCurrentPartner(b))]
-    : allBrands;
-
-  if (q) brands = brands.filter(b => b.toLowerCase().includes(q));
-
-  const items = brands.slice(0, 40).map(b => {
-    const chs  = DataStore.channelsByBrand[b] || {};
-    const tags = [chs.tv && '📺', chs.organic && '📱', chs.paid && '💰', chs.survey && '📊'].filter(Boolean).join(' ');
-    const dot  = (rosterActive && isCurrentPartner(b))
-      ? '<span class="brand-option-roster-dot" title="Current partner"></span>' : '';
-    return `<div class="report-partner-item" data-brand="${b.replace(/"/g,'&quot;')}">
-      ${renderPartnerLogo(b, 28)}
-      <span class="report-partner-name">${b}${dot}</span>
-      <span class="report-partner-channels">${tags}</span>
-    </div>`;
+  const m = _rb.model;
+  const brands = DataStore.getBrandList();
+  const current = brands.filter(isCurrentPartner), others = brands.filter(b => !isCurrentPartner(b));
+  const opts = list => list.map(b => `<option value="${escapeAttr(b)}"></option>`).join('');
+  const secRows = REPORT_SECTION_DEFS.map(def => {
+    const sec = m.sections[def.key];
+    const on = !!_rb.sections[def.key], open = !!_rb.open[def.key] && sec.available;
+    const detail = open ? `<div class="rb-detail">
+        <div class="rb-mini">Takeaways to include</div>
+        ${sec.insights.map((ins, i) => `<label class="rb-ins"><input type="checkbox" data-rb-ins="${def.key}" value="${i}" ${_rb.insights[def.key].includes(i) ? 'checked' : ''}><span>${escapeHTML(rptPlainText(ins.html))}</span></label>`).join('')}
+        <textarea class="rb-note" data-rb-note="${def.key}" rows="2" placeholder="Add a note for this section (optional)">${escapeHTML(_rb.notes[def.key] || '')}</textarea>
+      </div>` : '';
+    return `<div class="rb-sec${sec.available ? '' : ' off'}${open ? ' open' : ''}">
+      <div class="rb-sec-row">
+        <label class="rb-check"><input type="checkbox" data-rb-sec="${def.key}" ${on ? 'checked' : ''} ${sec.available ? '' : 'disabled'}>
+          <span class="rb-sec-name">${escapeHTML(def.label)}</span></label>
+        <span class="rb-sec-meta">${sec.available ? escapeHTML(sec.count) : escapeHTML(sec.reason || `No ${_rb.season} data`)}</span>
+        ${sec.available ? `<button type="button" class="rb-exp" data-rb-open="${def.key}" aria-expanded="${open}" title="Takeaways and note">${open ? '▾' : '▸'}</button>` : '<span class="rb-exp-sp"></span>'}
+      </div>${detail}</div>`;
   }).join('');
+  const prior = rptPriorSeason(_rb.season);
+  const P = m.period;
+  const tv = m.sections.tv;
+  const paceInfo = tv && tv.available ? tv.pace : null;
+  const paceNote = !P.std ? '' : paceInfo && paceInfo.unavailable ? paceInfo.unavailable : !paceInfo ? 'Needs TV data to date.' : '';
+  const gameOpts = P.dates.map((d, i) => `<option value="${i + 1}" ${i + 1 === P.throughGame ? 'selected' : ''}>Game ${i + 1} · ${escapeHTML(formatShortDate(parseDateLoose(d)))}</option>`).reverse().join('');
+  const hasCategory = !!rptCategoryFamily(_rb.brand);
 
-  body.innerHTML = `
-    <div class="report-step-label">Step 1 of 3 — Choose a partner</div>
-    <div class="report-partner-search-wrap">
-      <svg class="report-partner-search-icon" width="14" height="14" viewBox="0 0 24 24"
-        fill="none" stroke="currentColor" stroke-width="2">
-        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
-      </svg>
-      <input class="report-partner-search" id="reportPartnerSearch"
-        placeholder="Search partners..." value="${_reportModal.searchQuery}" autocomplete="off"/>
-    </div>
-    <div class="report-partner-list" id="reportPartnerList">${items || '<div style="padding:16px;color:var(--text-muted);font-size:13px;">No partners match.</div>'}</div>
-  `;
-
-  // Wire search — only re-renders the list, not the whole step
-  const input = document.getElementById('reportPartnerSearch');
-  if (input) {
-    input.focus();
-    input.addEventListener('input', () => {
-      _reportModal.searchQuery = input.value;
-      const q2 = input.value.toLowerCase();
-      let b2 = rosterActive
-        ? [...allBrands.filter(b => isCurrentPartner(b)), ...allBrands.filter(b => !isCurrentPartner(b))]
-        : allBrands;
-      if (q2) b2 = b2.filter(b => b.toLowerCase().includes(q2));
-      const list = document.getElementById('reportPartnerList');
-      if (list) list.innerHTML = b2.slice(0, 40).map(b => {
-        const chs  = DataStore.channelsByBrand[b] || {};
-        const tags = [chs.tv && '📺', chs.organic && '📱', chs.paid && '💰', chs.survey && '📊'].filter(Boolean).join(' ');
-        const dot  = (rosterActive && isCurrentPartner(b))
-          ? '<span class="brand-option-roster-dot" title="Current partner"></span>' : '';
-        return `<div class="report-partner-item" data-brand="${b.replace(/"/g,'&quot;')}">
-          ${renderPartnerLogo(b, 28)}
-          <span class="report-partner-name">${b}${dot}</span>
-          <span class="report-partner-channels">${tags}</span>
-        </div>`;
-      }).join('') || '<div style="padding:16px;color:var(--text-muted);font-size:13px;">No partners match.</div>';
-      _wireReportPartnerItems();
-    });
-  }
-  _wireReportPartnerItems();
-}
-
-function _wireReportPartnerItems() {
-  document.querySelectorAll('#reportPartnerList .report-partner-item').forEach(el => {
-    el.addEventListener('click', () => {
-      _reportModal.brand  = el.dataset.brand;
-      _reportModal.season = null;
-      _reportModal.step   = 2;
-      _renderReportModalStep();
-    });
-  });
-}
-
-// ── Step 2: Pick season ─────────────────────────────────────
-function _renderReportStep2(body) {
-  const brand = _reportModal.brand;
-
-  // Collect all seasons across all channels for this brand
-  const tvSeasons  = [...new Set((getBrandTVData(brand)||[]).map(r => r.Season).filter(Boolean))].sort();
-  const paidSeasons = getPaidSeasons(brand);
-  const surveySeasons = [...new Set((DataStore.surveys||[]).filter(r => r.Brand === brand).map(r => r.Season).filter(Boolean))].sort();
-  const zSeasons   = [...new Set((getBrandZoomphPerf(brand)||[]).map(r => r._reportMonth).filter(Boolean))].sort();
-
-  // Union of all seasons (TV + paid as primary; others as context)
-  const allSeasons = [...new Set([...tvSeasons, ...paidSeasons])].sort();
-  const latestSeason = allSeasons[allSeasons.length - 1] || 'Latest available';
-
-  // Default to latest
-  if (!_reportModal.season) _reportModal.season = latestSeason;
-
-  const seasonBtns = (allSeasons.length ? allSeasons : ['Latest available']).map(s =>
-    `<button class="report-season-btn ${_reportModal.season === s ? 'active' : ''}"
-      data-report-season="${s}">${s}</button>`
-  ).join('');
-
-  body.innerHTML = `
-    <button class="report-back-btn" id="reportBackBtn1">← Back</button>
-    <div class="report-step-label">Step 2 of 4 — Choose a season</div>
-    <div style="margin-bottom:6px;">
-      <div style="font-weight:500;font-size:15px;margin-bottom:3px;">${brand}</div>
-      <div style="font-size:12px;color:var(--text-dim);">
-        ${[tvSeasons.length && `TV: ${tvSeasons.length} season${tvSeasons.length===1?'':'s'}`,
-           paidSeasons.length && `Paid: ${paidSeasons.length} season${paidSeasons.length===1?'':'s'}`,
-           surveySeasons.length && `Survey: ${surveySeasons.length} season${surveySeasons.length===1?'':'s'}`,
-           zSeasons.length && `Organic: ${zSeasons.length} snapshot${zSeasons.length===1?'':'s'}`
-          ].filter(Boolean).join(' · ')}
-      </div>
-    </div>
-    <div class="report-season-grid" style="margin:16px 0;">${seasonBtns}</div>
-    <button class="report-generate-btn" id="reportToStep3">
-      Customize Report →
-    </button>
-  `;
-
-  document.getElementById('reportBackBtn1').addEventListener('click', () => {
-    _reportModal.step = 1; _renderReportModalStep();
-  });
-  document.querySelectorAll('[data-report-season]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      _reportModal.season = btn.dataset.reportSeason;
-      document.querySelectorAll('[data-report-season]').forEach(b =>
-        b.classList.toggle('active', b.dataset.reportSeason === _reportModal.season));
-    });
-  });
-  document.getElementById('reportToStep3').addEventListener('click', () => {
-    // Reset customization so Step 3 re-initializes it for the chosen brand/season
-    _reportModal.selectedSections = null;
-    _reportModal.selectedTakeaways = null;
-    _reportModal.step = 3;
-    _renderReportModalStep();
-  });
-}
-
-// ── Step 3: Customize sections & takeaways ─────────────────
-// Definitions for every section that can appear in the report
-const REPORT_SECTION_DEFS = [
-  { key: 'tv',             icon: '📺', label: 'TV Visible Signage' },
-  { key: 'organic',        icon: '📱', label: 'Organic Social' },
-  { key: 'survey',         icon: '📊', label: 'Brand Awareness Survey' },
-  { key: 'paid',           icon: '💰', label: 'Paid Social' },
-  { key: 'ancLED',         icon: '🏟️', label: 'ANC LED' },
-  { key: 'affidavit',      icon: '📝', label: 'TV/Radio Affidavits' },
-  { key: 'virtualSignage', icon: '🏀', label: 'On-Court Virtual Signage' },
-  { key: 'webDisplay',     icon: '🌐', label: 'Web & Digital' },
-];
-
-// Compute bullet-point takeaways for each available section
-function _computeSectionTakeaways(brand, season) {
-  const out = {};
-
-  // TV Visible Signage
-  const tvRows = getBrandTVData(brand, season);
-  if (tvRows.length) {
-    const totalMV  = sum(tvRows, 'QI Media Value ($)');
-    const totalImp = sum(tvRows, 'Sponsorship QI Impressions');
-    const matches  = [...new Set(tvRows.map(r => r.Matchdate).filter(Boolean))].length;
-    const soV      = tvRows.length ? sum(tvRows, 'Share of Voice (%)') / tvRows.length : null;
-    const assetMap = {};
-    tvRows.forEach(r => {
-      const loc = r.Location || r.Tool || 'Unknown';
-      if (!assetMap[loc]) assetMap[loc] = 0;
-      assetMap[loc] += Number(r['QI Media Value ($)']) || 0;
-    });
-    const topAsset = Object.entries(assetMap).sort((a, b) => b[1] - a[1])[0];
-
-    const tvYoYQimv = computeYoYForMetric(brand, season, 'QI Media Value ($)');
-    const tvYoYImp  = computeYoYForMetric(brand, season, 'Sponsorship QI Impressions');
-    const _yoyBadge = (yoy) => {
-      if (!yoy || yoy.change === null || yoy.change === undefined) return '';
-      const up = yoy.change >= 0;
-      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(0)}% YoY</span>`;
-    };
-
-    const t = [];
-    if (totalMV  > 0) t.push(`Generated <strong>${formatCurrency(totalMV)}</strong> in QI media value${_yoyBadge(tvYoYQimv)}`);
-    if (totalImp > 0) t.push(`Delivered <strong>${formatNum(totalImp)}</strong> QI impressions across <strong>${matches}</strong> games${_yoyBadge(tvYoYImp)}`);
-    if (soV !== null && soV > 0) t.push(`<strong>${soV.toFixed(1)}%</strong> average share of voice`);
-    if (topAsset && topAsset[1] > 0) t.push(`Top asset: <strong>${topAsset[0]}</strong> — ${formatCurrency(topAsset[1])}`);
-    out.tv = t;
-  }
-
-  // Organic Social
-  const zRows = getBrandZoomphPerf(brand);
-  if (zRows.length) {
-    const latest = zRows[zRows.length - 1];
-    const zYoYImpr = getZoomphYoY(brand, 'ViewsImpressions');
-    const zYoYVal  = getZoomphYoY(brand, 'BrandValue');
-    const _zBadge = (yoy) => {
-      if (!yoy || yoy.change === null || yoy.change === undefined) return '';
-      const up = yoy.change >= 0;
-      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '▲' : '▼'} ${Math.abs(yoy.change * 100).toFixed(0)}% YoY</span>`;
-    };
-    const t = [];
-    if (latest.ViewsImpressions) t.push(`<strong>${formatNum(latest.ViewsImpressions)}</strong> views & impressions${_zBadge(zYoYImpr)}`);
-    if (latest.Engagements)      t.push(`<strong>${formatNum(latest.Engagements)}</strong> total engagements`);
-    if (latest.BrandValue)       t.push(`<strong>${formatCurrency(latest.BrandValue)}</strong> brand exposure value${_zBadge(zYoYVal)}`);
-    if (latest.OrganicPosts)     t.push(`<strong>${formatNum(latest.OrganicPosts)}</strong> organic posts published`);
-    out.organic = t;
-  }
-
-  // Survey
-  const surveyWave = getSurveyLatestWave(brand, 'Late') || getSurveyLatestWave(brand, 'Early');
-  if (surveyWave) {
-    const total = (DataStore.surveys || []).filter(r => r.Survey === surveyWave.Survey).length;
-    // Phase-matched YoY: Late→Late, Early→Early. Calling with 'all' would compare to the
-    // opposite-phase wave of the same season — intra-season, not YoY.
-    const priorWave = getSurveyPriorWave(brand, surveyWave.Phase);
-    const _ppBadge = (curr, priorKey) => {
-      if (!priorWave || priorWave[priorKey] == null || curr == null) return '';
-      const pp = (curr - priorWave[priorKey]) * 100;
-      const up = pp >= 0;
-      return ` <span class="${up ? 'delta-up' : 'delta-down'}">${up ? '+' : ''}${pp.toFixed(1)}% YoY</span>`;
-    };
-    const t = [];
-    if (surveyWave.UnaidedPct != null)
-      t.push(`<strong>${Math.round(surveyWave.UnaidedPct * 100)}%</strong> unaided brand recall (#${surveyWave.UnaidedRecallRank || '—'} of ${total})${_ppBadge(surveyWave.UnaidedPct, 'UnaidedPct')}`);
-    if (surveyWave.AidedPct != null)
-      t.push(`<strong>${Math.round(surveyWave.AidedPct * 100)}%</strong> aided brand recall (#${surveyWave.AidedRecallRank || '—'} of ${total})${_ppBadge(surveyWave.AidedPct, 'AidedPct')}`);
-    if (surveyWave.LocalHQPct != null)
-      t.push(`<strong>${Math.round(surveyWave.LocalHQPct * 100)}%</strong> local HQ awareness (#${surveyWave.LocalHQRecallRank || '—'} of ${total})${_ppBadge(surveyWave.LocalHQPct, 'LocalHQPct')}`);
-    out.survey = t;
-  }
-
-  // Paid Social
-  const paidSeasons = getPaidSeasons(brand);
-  const latestPaidSeason = paidSeasons[paidSeasons.length - 1];
-  const paidRows = latestPaidSeason ? getBrandPaidData(brand, latestPaidSeason) : [];
-  if (paidRows.length) {
-    const agg = paidAggregate(paidRows);
-    const t = [];
-    if (agg.spend      > 0) t.push(`<strong>${formatCurrency(agg.spend)}</strong> total paid investment`);
-    if (agg.impressions > 0) t.push(`<strong>${formatNum(agg.impressions)}</strong> paid impressions delivered`);
-    if (agg.clicks     > 0) t.push(`<strong>${formatNum(agg.clicks)}</strong> link clicks at <strong>${formatPct(agg.ctr, 2)}</strong> CTR`);
-    if (agg.campaignCount > 0) t.push(`<strong>${agg.campaignCount}</strong> campaign${agg.campaignCount === 1 ? '' : 's'} running`);
-    out.paid = t;
-  }
-
-  // ANC LED
-  if (typeof hasANCLEDDataForBrand === 'function' && hasANCLEDDataForBrand(brand)) {
-    const anc = typeof getANCLEDSummary === 'function' ? getANCLEDSummary(brand) : null;
-    const t = [];
-    if (anc) {
-      const fmt = typeof formatDuration === 'function' ? formatDuration : s => s + 's';
-      if (anc.totalTime)     t.push(`<strong>${fmt(anc.totalTime)}</strong> total LED exposure time across all assets`);
-      if (anc.totalEventAvg) t.push(`<strong>${fmt(anc.totalEventAvg)}</strong> average LED exposure per game`);
-      if (anc.assetCount)    t.push(`Active on <strong>${anc.assetCount}</strong> in-arena LED asset${anc.assetCount === 1 ? '' : 's'} with <strong>${anc.variantCount}</strong> creative variant${anc.variantCount === 1 ? '' : 's'}`);
-    }
-    if (!t.length) t.push('ANC LED exposure data on record');
-    out.ancLED = t;
-  }
-
-  // TV/Radio Affidavits
-  if (typeof hasAffidavitDataForBrand === 'function' && hasAffidavitDataForBrand(brand)) {
-    const aff = typeof getAffidavitSummary === 'function' ? getAffidavitSummary(brand) : null;
-    const t = [];
-    if (aff) {
-      if (aff.totalSpots) t.push(`<strong>${formatNum(aff.totalSpots)}</strong> broadcast spots delivered`);
-      if (aff.totalValue) t.push(`<strong>${formatCurrency(aff.totalValue)}</strong> total broadcast value`);
-    }
-    if (!t.length) t.push('TV/Radio affidavit data on record');
-    out.affidavit = t;
-  }
-
-  // Virtual Signage
-  if (typeof hasVirtualSignageDataForBrand === 'function' && hasVirtualSignageDataForBrand(brand)) {
-    const allVS = (typeof getVirtualSignagePartnerStats === 'function') ? getVirtualSignagePartnerStats() : [];
-    const vsB   = allVS.find(s => s.brand === brand) || null;
-    const t = [];
-    if (vsB) {
-      if (vsB.qimv      > 0) t.push(`<strong>${formatCurrency(vsB.qimv)}</strong> QI media value from on-court virtual signage`);
-      if (vsB.qiImp     > 0) t.push(`<strong>${formatNum(vsB.qiImp)}</strong> QI impressions across <strong>${vsB.totalGames}</strong> games`);
-      if (vsB.totalGames > 0) t.push(`Featured in <strong>${vsB.homeGames}</strong> home and <strong>${vsB.awayGames}</strong> away games`);
-    }
-    if (!t.length) t.push('On-court virtual signage placement on record');
-    out.virtualSignage = t;
-  }
-
-  // Web & Digital
-  if (typeof hasWebDisplayDataForBrand === 'function' && hasWebDisplayDataForBrand(brand)) {
-    out.webDisplay = ['Web & Digital display impression data on record'];
-  }
-
-  return out;
-}
-
-function _renderReportStep3(body) {
-  const brand  = _reportModal.brand;
-  const season = _reportModal.season;
-  const chs    = DataStore.channelsByBrand[brand] || {};
-
-  // Compute takeaways once; build default selection on first visit
-  const allTakeaways = _computeSectionTakeaways(brand, season);
-
-  if (!_reportModal.selectedSections) {
-    _reportModal.selectedSections  = {};
-    _reportModal.selectedTakeaways = {};
-    REPORT_SECTION_DEFS.forEach(def => {
-      const hasData = allTakeaways[def.key] && allTakeaways[def.key].length > 0;
-      _reportModal.selectedSections[def.key]  = hasData;
-      _reportModal.selectedTakeaways[def.key] = hasData
-        ? new Set(allTakeaways[def.key].map((_, i) => i))  // all checked by default
-        : new Set();
-    });
-  }
-
-  function buildHTML() {
-    const availableDefs = REPORT_SECTION_DEFS.filter(
-      def => allTakeaways[def.key] && allTakeaways[def.key].length > 0
-    );
-    const unavailableDefs = REPORT_SECTION_DEFS.filter(
-      def => !allTakeaways[def.key] || !allTakeaways[def.key].length
-    );
-
-    const sectionItems = availableDefs.map(def => {
-      const isSelected = _reportModal.selectedSections[def.key];
-      const isExpanded = _reportModal._expandedSections.has(def.key);
-      const takeaways  = allTakeaways[def.key] || [];
-      const selCount   = (_reportModal.selectedTakeaways[def.key] || new Set()).size;
-
-      const takeawayRows = takeaways.map((txt, idx) => {
-        const checked = (_reportModal.selectedTakeaways[def.key] || new Set()).has(idx);
-        return `<label class="report-takeaway-item">
-          <input type="checkbox" class="report-takeaway-checkbox"
-            data-section="${def.key}" data-idx="${idx}" ${checked ? 'checked' : ''}/>
-          <span class="report-takeaway-text">${txt}</span>
-        </label>`;
-      }).join('');
-
-      const noteVal = (_reportModal.sectionNotes || {})[def.key] || '';
-      const takeawayPanel = `<div class="report-takeaway-panel" id="tp-${def.key}"
-        style="display:${isExpanded ? 'flex' : 'none'}">${takeawayRows}<div class="report-section-notes-wrap">
-          <label class="report-section-notes-label">Section note (optional — shown below takeaways in PDF)</label>
-          <textarea class="report-section-notes-input" data-section-notes="${def.key}" rows="2"
-            placeholder="E.g., TV Visible Signage uses local broadcast only — national broadcast not included.">${escapeHTML(noteVal)}</textarea>
-        </div></div>`;
-
-      return `<div class="report-section-item ${isSelected ? 'section-selected' : ''}" data-section-key="${def.key}">
-        <div class="report-section-row">
-          <input type="checkbox" class="report-section-checkbox"
-            data-section-toggle="${def.key}" ${isSelected ? 'checked' : ''}/>
-          <span class="report-section-icon">${def.icon}</span>
-          <span class="report-section-label">${def.label}</span>
-          <span class="report-section-badge">${selCount}/${takeaways.length} takeaway${takeaways.length === 1 ? '' : 's'}</span>
-          <button class="report-section-expand-btn ${isExpanded ? 'is-open' : ''}"
-            data-section-expand="${def.key}" title="Show takeaways">▶</button>
+  body.innerHTML = `<div class="rb">
+    <aside class="rb-side">
+      <div class="rb-scroll">
+        <div class="rb-field"><label class="rb-lbl" for="rbPartner">Partner</label>
+          <input id="rbPartner" class="select-control rb-input" list="rbPartnerList" value="${escapeAttr(_rb.brand)}" autocomplete="off" spellcheck="false">
+          <datalist id="rbPartnerList">${opts(current)}${opts(others)}</datalist></div>
+        <div class="rb-field"><label class="rb-lbl" for="rbSeason">Season</label>
+          <select id="rbSeason" class="select-control rb-input">${_rb.seasons.map(s => `<option value="${s}" ${s === _rb.season ? 'selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div class="rb-field"><span class="rb-lbl">Period</span>
+          <div class="rb-seg" role="group" aria-label="Period">
+            <button type="button" data-rb-period="full" class="${P.std ? '' : 'on'}" aria-pressed="${!P.std}">Full season</button>
+            <button type="button" data-rb-period="std" class="${P.std ? 'on' : ''}" aria-pressed="${P.std}" ${P.dates.length ? '' : 'disabled'}>Season to date</button>
+          </div>
+          ${P.std ? `<select id="rbThrough" class="select-control rb-input rb-through" aria-label="Through home game">${gameOpts}</select>
+            <div class="rb-hint">Through home game ${P.throughGame} of ${P.total}${P.local ? ` local broadcasts (${P.national} national)` : ''}</div>` : ''}
         </div>
-        ${takeawayPanel}
-      </div>`;
-    }).join('');
-
-    const unavailableNote = unavailableDefs.length
-      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">
-          ${unavailableDefs.map(d => `${d.icon} ${d.label}`).join(' · ')} — no data loaded
-        </div>`
-      : '';
-
-    const selectedCount = Object.values(_reportModal.selectedSections).filter(Boolean).length;
-
-    return `
-      <button class="report-back-btn" id="reportBackBtn2">← Back</button>
-      <div class="report-step-label">Step 3 of 4 — Customize report</div>
-      <div class="report-customize-header">
-        <div style="font-size:12px;color:var(--text-dim);">${brand} · ${season}</div>
-        <div class="report-customize-actions">
-          <button class="report-customize-action-btn" id="reportSelectAll">Select all</button>
-          <button class="report-customize-action-btn" id="reportDeselectAll">Deselect all</button>
-        </div>
+        <div class="rb-group-h"><span class="rb-lbl">Sections</span>
+          <span><button type="button" class="rb-link" data-rb-all="1">All</button> · <button type="button" class="rb-link" data-rb-all="0">None</button></span></div>
+        <div class="rb-secs">${secRows}</div>
+        <div class="rb-group-h"><span class="rb-lbl">Options</span></div>
+        <label class="rb-check rb-opt"><input type="checkbox" id="rbCompare" ${_rb.compare ? 'checked' : ''}><span>Compare with ${escapeHTML(prior || 'last season')}</span></label>
+        <label class="rb-check rb-opt"><input type="checkbox" id="rbMethod" ${_rb.methodology ? 'checked' : ''}><span>Methodology page</span></label>
+        ${P.std ? `<label class="rb-check rb-opt${paceNote ? ' dis' : ''}"><input type="checkbox" id="rbPace" ${_rb.pace && !paceNote ? 'checked' : ''} ${paceNote ? 'disabled' : ''}><span>Season pace (estimate)</span></label>
+          ${paceNote ? `<div class="rb-hint rb-hint-in">${escapeHTML(paceNote)}</div>` : ''}
+          ${_rb.pace && !paceNote ? `<div class="rb-local">
+            <label for="rbLocal">Local home broadcasts this season</label>
+            <input id="rbLocal" type="number" class="select-control" min="${P.measured}" max="${P.usual}" step="1" value="${P.local || P.usual}">
+            <div class="rb-hint">Lower it when home games are national-only (no local TV). Saved with the data.</div>
+          </div>` : ''}` : ''}
+        <div class="rb-field rb-rank"><label class="rb-lbl" for="rbRank">Rankings</label>
+          <select id="rbRank" class="select-control rb-input">
+            <option value="off" ${_rb.rank === 'off' ? 'selected' : ''}>Off</option>
+            <option value="overall" ${_rb.rank === 'overall' ? 'selected' : ''}>Overall (among current partners)</option>
+            <option value="category" ${_rb.rank === 'category' ? 'selected' : ''} ${hasCategory ? '' : 'disabled'}>Category${hasCategory ? ` (${escapeHTML(rptCategoryFamily(_rb.brand))})` : ' (no roster category)'}</option>
+          </select>
+          <div class="rb-hint">Shown only where the partner is in the top ${RPT_RANK_SHOW_MAX}.</div></div>
       </div>
-      <div class="report-section-picker" id="reportSectionPicker">${sectionItems}</div>
-      ${unavailableNote}
-      <button class="report-generate-btn" id="reportToStep4" ${selectedCount === 0 ? 'disabled' : ''}>
-        Preview &amp; Generate →
-      </button>
-    `;
-  }
-
-  body.innerHTML = buildHTML();
-
-  function wireStep3() {
-    document.getElementById('reportBackBtn2').addEventListener('click', () => {
-      _reportModal.step = 2; _renderReportModalStep();
-    });
-
-    // Section checkboxes
-    document.querySelectorAll('[data-section-toggle]').forEach(chk => {
-      chk.addEventListener('change', () => {
-        const key = chk.dataset.sectionToggle;
-        _reportModal.selectedSections[key] = chk.checked;
-        body.innerHTML = buildHTML();
-        wireStep3();
-      });
-    });
-
-    // Expand/collapse takeaway panel
-    document.querySelectorAll('[data-section-expand]').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        const key = btn.dataset.sectionExpand;
-        if (_reportModal._expandedSections.has(key)) {
-          _reportModal._expandedSections.delete(key);
-        } else {
-          _reportModal._expandedSections.add(key);
-        }
-        body.innerHTML = buildHTML();
-        wireStep3();
-      });
-    });
-
-    // Clicking section row (not checkbox, not expand) toggles expand
-    document.querySelectorAll('.report-section-row').forEach(row => {
-      row.addEventListener('click', e => {
-        if (e.target.classList.contains('report-section-checkbox')) return;
-        if (e.target.closest('[data-section-expand]')) return;
-        const key = row.closest('[data-section-key]').dataset.sectionKey;
-        if (_reportModal._expandedSections.has(key)) {
-          _reportModal._expandedSections.delete(key);
-        } else {
-          _reportModal._expandedSections.add(key);
-        }
-        body.innerHTML = buildHTML();
-        wireStep3();
-      });
-    });
-
-    // Individual takeaway checkboxes
-    document.querySelectorAll('[data-section][data-idx]').forEach(chk => {
-      chk.addEventListener('change', () => {
-        const key = chk.dataset.section;
-        const idx = parseInt(chk.dataset.idx, 10);
-        const s   = _reportModal.selectedTakeaways[key] || new Set();
-        chk.checked ? s.add(idx) : s.delete(idx);
-        _reportModal.selectedTakeaways[key] = s;
-        // Update badge count without full re-render
-        const item = document.querySelector(`[data-section-key="${key}"]`);
-        if (item) {
-          const badge = item.querySelector('.report-section-badge');
-          const total = (allTakeaways[key] || []).length;
-          if (badge) badge.textContent = `${s.size}/${total} takeaway${total === 1 ? '' : 's'}`;
-        }
-      });
-    });
-
-    // Section notes textareas
-    document.querySelectorAll('[data-section-notes]').forEach(ta => {
-      ta.addEventListener('input', () => {
-        if (!_reportModal.sectionNotes) _reportModal.sectionNotes = {};
-        _reportModal.sectionNotes[ta.dataset.sectionNotes] = ta.value;
-      });
-    });
-
-    // Select all / Deselect all
-    const selectAllBtn  = document.getElementById('reportSelectAll');
-    const deselectAllBtn = document.getElementById('reportDeselectAll');
-    if (selectAllBtn) selectAllBtn.addEventListener('click', () => {
-      REPORT_SECTION_DEFS.forEach(def => {
-        if (allTakeaways[def.key] && allTakeaways[def.key].length) {
-          _reportModal.selectedSections[def.key]  = true;
-          _reportModal.selectedTakeaways[def.key] = new Set(allTakeaways[def.key].map((_, i) => i));
-        }
-      });
-      body.innerHTML = buildHTML(); wireStep3();
-    });
-    if (deselectAllBtn) deselectAllBtn.addEventListener('click', () => {
-      REPORT_SECTION_DEFS.forEach(def => {
-        _reportModal.selectedSections[def.key]  = false;
-        _reportModal.selectedTakeaways[def.key] = new Set();
-      });
-      body.innerHTML = buildHTML(); wireStep3();
-    });
-
-    // Continue to Step 4
-    const toStep4Btn = document.getElementById('reportToStep4');
-    if (toStep4Btn) toStep4Btn.addEventListener('click', () => {
-      _reportModal.step = 4; _renderReportModalStep();
-    });
-  }
-
-  wireStep3();
+      <div class="rb-foot">
+        <div class="rb-status" id="rbStatus">Building preview…</div>
+        <button type="button" class="btn btn-primary rb-print" id="rbPrint">Save as PDF</button>
+      </div>
+    </aside>
+    <div class="rb-preview"><iframe id="rbFrame" title="Report preview"></iframe></div>
+  </div>`;
+  rbWire(body);
 }
 
-// ── Step 4: Confirm & generate ──────────────────────────────
-function _renderReportStep4(body) {
-  const brand   = _reportModal.brand;
-  const season  = _reportModal.season;
-  const selSecs = _reportModal.selectedSections || {};
-
-  const enabledDefs  = REPORT_SECTION_DEFS.filter(d => selSecs[d.key]);
-  const disabledDefs = REPORT_SECTION_DEFS.filter(d => !selSecs[d.key]);
-
-  const enabledTags  = enabledDefs.map(d =>
-    `<div class="report-channel-tag has">${d.icon} ${d.label}</div>`).join('');
-  const disabledTags = disabledDefs.map(d =>
-    `<div class="report-channel-tag missing">${d.icon} ${d.label}</div>`).join('');
-
-  body.innerHTML = `
-    <button class="report-back-btn" id="reportBackBtn3">← Back</button>
-    <div class="report-step-label">Step 4 of 4 — Confirm &amp; generate</div>
-    <div class="report-preview-card">
-      <div class="report-preview-partner">Partnership Report</div>
-      <div class="report-preview-name">${brand}</div>
-      <div class="report-preview-season">${season}</div>
-      <div class="report-channel-tags" style="margin-top:10px;">${enabledTags}</div>
-      ${disabledTags ? `<div class="report-channel-tags" style="margin-top:6px;">${disabledTags}</div>` : ''}
-    </div>
-    <div style="font-size:12px;color:var(--text-muted);margin-bottom:18px;">
-      ${enabledDefs.length} section${enabledDefs.length === 1 ? '' : 's'} selected · report will open in a new tab
-    </div>
-    <button class="report-generate-btn" id="reportGenerateBtn">
-      ⬇ Generate Report
-    </button>
-  `;
-
-  document.getElementById('reportBackBtn3').addEventListener('click', () => {
-    _reportModal.step = 3; _renderReportModalStep();
+function rbWire(body) {
+  if (body._rbWired) return;
+  body._rbWired = true;
+  body.addEventListener('change', e => {
+    const t = e.target;
+    if (t.id === 'rbPartner') {
+      if (DataStore.getBrandList().includes(t.value)) { rbSetBrand(t.value); rbRenderPanel(); rbRefreshPreview(true); }
+      else t.value = _rb.brand;
+    } else if (t.id === 'rbSeason') {
+      _rb.season = t.value; _rb.throughGame = null; rbLoadModel(); rbRenderPanel(); rbRefreshPreview(true);
+    } else if (t.dataset.rbSec) {
+      _rb.sections[t.dataset.rbSec] = t.checked; rbRefreshPreview();
+    } else if (t.dataset.rbIns) {
+      const k = t.dataset.rbIns;
+      _rb.insights[k] = [...body.querySelectorAll(`[data-rb-ins="${k}"]:checked`)].map(x => Number(x.value));
+      rbRefreshPreview();
+    } else if (t.id === 'rbThrough') {
+      _rb.throughGame = Number(t.value); rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true);
+    } else if (t.id === 'rbPace') { _rb.pace = t.checked; rbRenderPanel(); rbRefreshPreview(); }
+    else if (t.id === 'rbLocal') {
+      const P = _rb.model.period;
+      const v = Math.min(P.usual, Math.max(P.measured, Math.round(Number(t.value)) || P.usual));
+      setLocalHomeBroadcasts(_rb.season, v === P.usual ? null : v);
+      // A number box fires "change" on blur: redraw after the blur finishes, or
+      // the panel is replaced while the browser is still moving focus.
+      setTimeout(() => { rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true); }, 0);
+    }
+    else if (t.id === 'rbRank') { _rb.rank = t.value; rbRefreshPreview(); }
+    else if (t.id === 'rbCompare') { _rb.compare = t.checked; rbRefreshPreview(); }
+    else if (t.id === 'rbMethod') { _rb.methodology = t.checked; rbRefreshPreview(); }
   });
-  document.getElementById('reportGenerateBtn').addEventListener('click', () => {
-    const options = {
-      sections:   { ..._reportModal.selectedSections },
-      takeaways:  Object.fromEntries(
-        Object.entries(_reportModal.selectedTakeaways || {}).map(([k, s]) => [k, [...s]])
-      ),
-      notes: { ...(_reportModal.sectionNotes || {}) },
+  body.addEventListener('input', e => {
+    if (e.target.dataset.rbNote) { _rb.notes[e.target.dataset.rbNote] = e.target.value; rbRefreshPreview(); }
+  });
+  body.addEventListener('click', e => {
+    const per = e.target.closest('[data-rb-period]');
+    if (per && !per.disabled) {
+      if (per.dataset.rbPeriod !== _rb.period) { _rb.period = per.dataset.rbPeriod; rbLoadModel(true); rbRenderPanel(); rbRefreshPreview(true); }
+      return;
+    }
+    const open = e.target.closest('[data-rb-open]');
+    if (open) { const k = open.dataset.rbOpen; _rb.open[k] = !_rb.open[k]; rbRenderPanel(); return; }
+    const all = e.target.closest('[data-rb-all]');
+    if (all) {
+      REPORT_SECTION_DEFS.forEach(d => { if (_rb.model.sections[d.key].available) _rb.sections[d.key] = all.dataset.rbAll === '1'; });
+      rbRenderPanel(); rbRefreshPreview(); return;
+    }
+    if (e.target.closest('#rbPrint')) rbPrint();
+  });
+}
+
+function rbOptions() {
+  return { sections: _rb.sections, insights: _rb.insights, notes: _rb.notes, compare: _rb.compare,
+           methodology: _rb.methodology, pace: _rb.pace, rank: _rb.rank };
+}
+
+// Rebuilds the preview. Typing and ticking are debounced; brand/season changes
+// render at once. The scroll position survives a rebuild.
+function rbRefreshPreview(immediate) {
+  clearTimeout(_rb.timer);
+  const run = () => {
+    const frame = document.getElementById('rbFrame');
+    if (!frame) return;
+    const id = ++_rb.renderId;
+    let y = 0;
+    try { y = frame.contentWindow ? frame.contentWindow.scrollY : 0; } catch (e) {}
+    const status = document.getElementById('rbStatus');
+    if (status) status.textContent = 'Building preview…';
+    frame.onload = () => {
+      const w = frame.contentWindow;
+      if (!w || !w.reportReady) return;
+      // Keys pressed while the preview has focus land in its document: pass
+      // Escape through so the builder still closes.
+      w.document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closeReportModal(); });
+      w.reportReady.then(n => {
+        if (id !== _rb.renderId) return;
+        try { w.scrollTo(0, y); } catch (e) {}
+        const st = document.getElementById('rbStatus');
+        if (st) st.textContent = `${n} page${n === 1 ? '' : 's'} · US Letter`;
+      });
     };
-    closeReportModal();
-    setTimeout(() => openPartnerReport(brand, options), 100);
+    frame.srcdoc = renderReportDocument(_rb.model, rbOptions());
+  };
+  if (immediate) run(); else _rb.timer = setTimeout(run, 220);
+}
+
+// Prints the preview itself, so there's no pop-up window to block. The page
+// title is borrowed for the moment of printing because browsers use it as the
+// suggested PDF file name.
+function rbPrint() {
+  const frame = document.getElementById('rbFrame');
+  const w = frame && frame.contentWindow;
+  if (!w || !w.reportReady) return;
+  w.reportReady.then(() => {
+    const prev = document.title;
+    document.title = w.document.title;
+    w.focus();
+    w.print();
+    setTimeout(() => { document.title = prev; window.focus(); }, 500);
   });
 }

@@ -33,7 +33,7 @@ function normalizeSurveyRow(row) {
     // Local HQ column sometimes has a trailing space in headers
     LocalHQRecall:     parseSurveyInt(row['Local HQ Recall'] ?? row['Local HQ Recall '] ?? null),
     LocalHQRecallRank: parseSurveyInt(row['Local HQ Recall Rank'] ?? row['Local HQ Recall Rank '] ?? null),
-    Date:   String(row.Date || '').trim(),
+    Date:   String(fixSpreadsheetDateString(row.Date) || '').trim(),
     Survey: surveyRaw,
     Season: season,
     Phase:  phase,
@@ -400,7 +400,7 @@ function normalizeGeneralSurveyRow(row) {
     Season:         season,
     Phase:          phase,
     Sheet:          String(row.Sheet || '').trim(),
-    Date:           String(row.Date || '').trim(),
+    Date:           String(fixSpreadsheetDateString(row.Date) || '').trim(),
     TotalResponses: parseSurveyInt(row['Responses '] ?? row['Responses'] ?? null),
     _partner:       null, // populated by applyGeneralSurveyAssignmentRules()
   };
@@ -557,7 +557,7 @@ function normalizePartnerSurveyRow(row) {
     Survey:         surveyRaw,
     Season:         season,
     Phase:          phase,
-    Date:           String(row.Date || '').trim(),
+    Date:           String(fixSpreadsheetDateString(row.Date) || '').trim(),
     TotalResponses: parseSurveyInt(row.Responses ?? null),
     Partner:        partner,
     IsTopBox:       isTopBox,
@@ -635,7 +635,7 @@ function normalizeProgramSurveyRow(row) {
     Survey:           surveyRaw,
     Season:           season,
     Phase:            phase,
-    Date:             String(row.Date || '').trim(),
+    Date:             String(fixSpreadsheetDateString(row.Date) || '').trim(),
     Sheet:            String(row.sheet || row.Sheet || '').trim(),
     TotalResponses:   parseSurveyInt(row.Responses ?? null),
   };

@@ -142,8 +142,8 @@ function renderPortfolioHome(main) {
     </div>
 
     <div class="data-status">
-      <div><span class="data-status-dot"></span> Latest update · <strong>${DASHBOARD_META.latestUpdateLabel}</strong>${DASHBOARD_META.latestUpdateDate ? ` · ${DASHBOARD_META.latestUpdateDate}` : ''}</div>
-      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em;">${DASHBOARD_META.preparedBy || 'PartnerIQ'}</div>
+      <div><span class="data-status-dot"></span> Latest update · ${getLatestUpdateStampHTML()}</div>
+      <div style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); letter-spacing: 0.04em;">${escapeHTML(DASHBOARD_META.preparedBy || 'PartnerIQ')}</div>
     </div>
 
     <div class="takeaways">
@@ -208,11 +208,6 @@ function renderPortfolioHome(main) {
           <div class="home-action-title">🔍 Partner Deep-Dive</div>
           <div class="home-action-copy">Browse all partners, filter to current ones, and open any partner's full performance dashboard.</div>
         </div>
-        <div class="home-action disabled">
-          <div class="home-action-kicker">Coming soon</div>
-          <div class="home-action-title">⚖️ Partner Comparison</div>
-          <div class="home-action-copy">Compare two to four partners side by side using consistent channel-specific metrics.</div>
-        </div>
         <div class="home-action" data-report-brand="">
           <div class="home-action-kicker">PDF export</div>
           <div class="home-action-title">📄 Partner Report Export</div>
@@ -231,16 +226,6 @@ function renderPortfolioHome(main) {
           <div class="home-action-kicker">Methodology</div>
           <div class="home-action-title">📘 Glossary</div>
           <div class="home-action-copy">Shared definitions for QIMV, QI Score, SoV, paid media metrics, and survey recall.</div>
-        </div>
-        <div class="home-action disabled">
-          <div class="home-action-kicker">Future channel</div>
-          <div class="home-action-title">🏟️ Attendance</div>
-          <div class="home-action-copy">Attendance trends, capacity utilization, gate volume, and game-by-game context.</div>
-        </div>
-        <div class="home-action" onclick="openTVRatingsPage();">
-          <div class="home-action-kicker">Nielsen data</div>
-          <div class="home-action-title">📡 TV Ratings Dashboard</div>
-          <div class="home-action-copy">Nielsen game ratings and impressions — season trend, opponent breakdown, pre/game/post comparison, and key advertiser demos.</div>
         </div>
       </div>
     </section>

@@ -94,13 +94,16 @@ function getPortfolioYoYRowSets(period) {
   let basis = `Full ${period} vs full ${prev}`;
   let matched = false;
 
-  if (comparisonMode === 'auto-match' && currMatchdates.length && priorMatchdates.length && currMatchdates.length < priorMatchdates.length) {
-    const limitedDates = new Set(priorMatchdates.slice(0, currMatchdates.length));
-    priorRows = priorRowsFull.filter(r => r.Matchdate && limitedDates.has(String(r.Matchdate)));
-    basis = `Through ${currMatchdates.length} game${currMatchdates.length === 1 ? '' : 's'} · vs first ${currMatchdates.length} of ${prev}`;
-    matched = true;
-  } else if (comparisonMode === 'auto-match') {
-    basis = `${currMatchdates.length} games vs full ${prev} (${priorMatchdates.length} games)`;
+  if (comparisonMode === 'auto-match') {
+    const win = getPortfolioPriorWindow(period, prev);
+    const windowed = priorRowsFull.filter(r => r.Matchdate && win.dates.has(String(r.Matchdate)));
+    if (windowed.length && windowed.length < priorRowsFull.length) {
+      priorRows = windowed;
+      basis = `Through ${currMatchdates.length} game${currMatchdates.length === 1 ? '' : 's'} · vs ${describePriorWindow(win, prev)}`;
+      matched = true;
+    } else {
+      basis = `${currMatchdates.length} games vs full ${prev} (${priorMatchdates.length} games)`;
+    }
   }
 
   return { currRows, priorRows, currSeason: period, priorSeason: prev, basis, matched, currMatchdates: currMatchdates.length, priorMatchdatesTotal: priorMatchdates.length };
@@ -471,13 +474,35 @@ function wireLimitControls() {
   });
 }
 
+// Excel stores dates as a day count from 1899-12-30. A CSV exported from a
+// sheet whose date column wasn't formatted carries that raw number (46113 is
+// Apr 1, 2026), which `new Date('46113')` reads as the year 46113. Accepts
+// counts in 1954–2119 so ordinary small numbers are never mistaken for dates.
+function spreadsheetSerialToDate(value) {
+  const str = String(value === undefined || value === null ? '' : value).trim();
+  if (!/^\d{5}(\.\d+)?$/.test(str)) return null;
+  const n = Math.floor(Number(str));
+  if (n < 20000 || n > 80000) return null;
+  const utc = new Date(Date.UTC(1899, 11, 30) + n * 86400000);
+  return new Date(utc.getUTCFullYear(), utc.getUTCMonth(), utc.getUTCDate());
+}
+
+// Rewrites a raw spreadsheet serial as M/D/YYYY, the form the survey files use
+// everywhere else; any other value comes back unchanged.
+function fixSpreadsheetDateString(value) {
+  const d = spreadsheetSerialToDate(value);
+  return d ? `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}` : value;
+}
+
 function parseDateLoose(value) {
   if (!value && value !== 0) return null;
   if (value instanceof Date && !isNaN(value)) return value;
   const str = String(value).trim();
   if (!str) return null;
+  const serial = spreadsheetSerialToDate(str);
+  if (serial) return serial;
   const direct = new Date(str);
-  if (!isNaN(direct)) return direct;
+  if (!isNaN(direct) && direct.getFullYear() >= 1990 && direct.getFullYear() <= 2100) return direct;
   const m = str.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);
   if (m) {
     const year = m[3] ? Number(m[3].length === 2 ? '20' + m[3] : m[3]) : new Date().getFullYear();
@@ -545,7 +570,9 @@ const CHANNEL_REGISTRY = [
   {
     key: 'Paid',
     label: 'Paid Social',
-    dateFields: ['Ends', 'EndDate', 'Reporting ends', 'Reporting Ends', 'Starts', 'StartDate'],
+    // Delivery dates, not flight dates: a campaign's planned Ends can be months
+    // in the future (or "Ongoing"), which made coverage run past the export.
+    dateFields: ['DailyDate', 'Day', 'Reporting starts', 'Reporting ends'],
     rows: brand => brand
       ? getBrandPaidData(brand, 'all')
       : getAllPaidRows().filter(r => r.Brand !== UNASSIGNED_PAID_KEY),
@@ -621,20 +648,10 @@ const CHANNEL_REGISTRY = [
       return brand ? all.filter(r => r.Brand === brand) : all;
     },
   },
-  {
-    key: 'TV Ratings',
-    label: 'Nielsen broadcast viewership',
-    dateFields: ['date'],
-    // Viewership data carries no partner association, so it only ever appears
-    // in the portfolio-level view, never on a partner page.
-    partnerScoped: false,
-    rows: brand => brand ? [] : (DataStore.tvRatings || []),
-  },
 ];
 
 function getChannelFreshnessSummary(brand = null) {
   return CHANNEL_REGISTRY
-    .filter(ch => !brand || ch.partnerScoped !== false)
     .map(ch => {
       let rows = [];
       try { rows = ch.rows(brand) || []; }
@@ -659,6 +676,19 @@ function getLatestDataDate() {
     .filter(c => c.range && c.range.max)
     .map(c => c.range.max.getTime());
   return maxes.length ? new Date(Math.max(...maxes)) : null;
+}
+
+// The "Latest update" stamp on Home and the portfolio pages. Uses the label and
+// date set at export time; while the label is still the placeholder, falls back
+// to the newest date in the data so a viewer never sees "not set".
+function getLatestUpdateStampHTML() {
+  const meta = typeof DASHBOARD_META !== 'undefined' ? DASHBOARD_META : {};
+  const label = meta.latestUpdateLabel && meta.latestUpdateLabel !== DEFAULT_UPDATE_LABEL ? String(meta.latestUpdateLabel) : '';
+  const date = meta.latestUpdateDate ? String(meta.latestUpdateDate) : '';
+  if (label) return `<strong>${escapeHTML(label)}</strong>${date ? ` · ${escapeHTML(date)}` : ''}`;
+  if (date) return `<strong>${escapeHTML(date)}</strong>`;
+  const latest = getLatestDataDate();
+  return latest ? `Data through <strong>${escapeHTML(formatShortDate(latest))}</strong>` : '<strong>Not recorded</strong>';
 }
 
 // Label for the "LAST UPDATE" stamp. Prefers what was set at export time, then
