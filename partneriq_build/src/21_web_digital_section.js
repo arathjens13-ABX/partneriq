@@ -1,5 +1,5 @@
 // ============================================================
-// WEB & DIGITAL — Blazers.com Display, RoseQuarter.com Display, Pre-Roll Video
+// WEB & DIGITAL — TrailBlazers.com Display, RoseQuarter.com Display, Pre-Roll Video
 // ============================================================
 // Three source file types:
 //   blazersWebDisplay  — Delivery_Report_Blazers_*.csv
@@ -156,7 +156,7 @@ function aggregateWebBannerRows(rows) {
 // INGEST — called from ingestFile() in 14_organic_section.js
 // ============================================================
 
-// Blazers.com delivery report.
+// TrailBlazers.com delivery report.
 // CSV layout: row 1 = "Date range | <date>" (skipped), row 2 = actual column headers
 // ("Order | Line item | Total impressions | …"), rows 3+ = data.
 async function ingestBlazersBannersFile(file, ext, fileId) {
@@ -181,7 +181,7 @@ async function ingestBlazersBannersFile(file, ext, fileId) {
     ['Total impressions', 'Impressions'],
   ]);
   if (headerIndex < 0) {
-    return { success: false, error: 'Could not find the Blazers.com delivery-report header row', filename: file.name };
+    return { success: false, error: 'Could not find the TrailBlazers.com delivery-report header row', filename: file.name };
   }
 
   const headerRow = csvMatrix[headerIndex];
@@ -405,7 +405,7 @@ function _monthLabel(key) {
 }
 
 // ============================================================
-// SUB-SECTION: Blazers.com
+// SUB-SECTION: TrailBlazers.com
 // ============================================================
 
 function renderBlazersBannersSubsection(brand, rows) {
@@ -435,7 +435,7 @@ function renderBlazersBannersSubsection(brand, rows) {
       <div class="kpi">
         <span class="kpi-label">Total clicks</span>
         <span class="kpi-value">${_fmtWebImpr(partnerTotal.clicks)}</span>
-        <span class="kpi-change neutral">Blazers.com</span>
+        <span class="kpi-change neutral">TrailBlazers.com</span>
       </div>
       <div class="kpi">
         <span class="kpi-label">Click-through rate</span>
@@ -566,7 +566,7 @@ function renderBlazersBannersSubsection(brand, rows) {
     <div style="margin-bottom:24px;">
       <div style="font-family:var(--font-mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
         color:var(--text-muted);padding:10px 0 8px;border-bottom:1px solid var(--border-soft);margin-bottom:16px;">
-        Blazers.com · ROS Banners &amp; Pushdowns
+        TrailBlazers.com · ROS Banners &amp; Pushdowns
       </div>
       ${kpiHTML}
       ${comparisonHTML}
@@ -854,7 +854,7 @@ function renderWebDigitalSection(brand) {
   preRollRows.forEach(r => { if (r.Plays !== null) totalPlays = (totalPlays || 0) + r.Plays; });
 
   const channelParts = [];
-  if (hasBlazer)  channelParts.push('Blazers.com');
+  if (hasBlazer)  channelParts.push('TrailBlazers.com');
   if (hasRQ)      channelParts.push('RoseQuarter.com');
   if (hasPreRoll) channelParts.push('Pre-Roll');
 

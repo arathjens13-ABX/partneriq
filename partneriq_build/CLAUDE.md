@@ -57,7 +57,7 @@ The codebase is a set of numbered `.js` and `.css` files that are concatenated i
 | `18_affidavits_section.js` | TV/Radio Affidavits section |
 | `19_anc_led_section.js` | ANC LED section |
 | `20_virtual_signage_section.js` | On-Court Virtual Signage — schedule ingest, home/away estimation engine (`computeVSLocationMeans`), portfolio and partner-page renderers |
-| `21_web_digital_section.js` | Web & Digital — Blazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
+| `21_web_digital_section.js` | Web & Digital — TrailBlazers.com banner ingest, RoseQuarter.com banner ingest, pre-roll video ingest, partner-page renderer; three `DataStore` keys: `webBlazersBanners`, `webRQBanners`, `webPreRoll` |
 | `24_report_brand_assets.js` | **Generated** by `brand/make_assets.py` from `brand/` — the design system's fonts (WOFF2) and logos as `REPORT_BRAND_ASSETS`. Never edit by hand |
 | `23_intro_section.js` | How-to-use intro overlay — a 5-step animated onboarding walkthrough shown on open in **viewer mode only** (gated on `VIEWER_MODE`), replacing the old import-modal flash. Self-contained: builds into `#introRoot`, `.pqi-*` styles live in `01_styles.css`; a `?` relaunch button reopens it |
 | `shell.html` | Static HTML shell — `<header>` (incl. the "Partners only" search toggle), `<main id="main">`, all modal backdrops (import/export, paid assignment review, general survey review, brand alias manager, report modal), the intro mount (`#introRoot`) + relaunch button, footer; concatenated with the JS/CSS files at export time |
@@ -549,24 +549,33 @@ Three layers. The report is styled with the **Trail Blazers Dashboards design sy
 
 | Function | What it does |
 |----------|-------------|
-| `REPORT_SECTION_DEFS` | Report sections in print order (`key`, `label`) |
-| `buildReportModel(brand, season, period)` | `period = { mode: 'full' }` (default) or `{ mode: 'std', throughGame: N }` for **season to date**. Every figure for one partner and one season: `{ sections: { key: { available, count, kpis, chart?, bars?, table?, banner?, insights, source, totals } } }`. Unavailable sections are `{ available: false }` so the builder greys them out instead of printing zeros |
+| `REPORT_SECTION_DEFS` | Report sections in print order (`key`, `label`). In-arena LED is last and never feeds the executive summary |
+| `buildReportModel(brand, season, period)` | `period = { mode: 'full' }` (default) or `{ mode: 'std', throughGame: N }` for **season to date**. Every figure for one partner and one season: `{ sections: { key: { available, count, kpis, chart?, bars?, table?, banner?, insights, source, totals } } }`. `bars.first` prints the breakdown above the chart (TV "Top signage locations"); a bar item's `delta` is its change (`'new'` / `null` for no comparison). Survey carries `kpisNoRank`, the tiles used when recall ranks are off. Unavailable sections are `{ available: false }` so the builder greys them out instead of printing zeros |
 | `rptBuildTV` / `rptBuildVS` / `rptBuildOrganic` / `rptBuildSurvey` / `rptBuildPaid` / `rptBuildANC` / `rptBuildAffidavit` / `rptBuildWeb` | Per-section builders; each returns `null` when there's nothing to show. They call the same accessors as the dashboard pages (e.g. `computeYoYForMetric`, `getVirtualSignagePartnerStats`) so report and screen always agree |
 | `getReportSeasonsForBrand(brand)` | Seasons with anything reportable, newest first |
 | `getLocalHomeBroadcasts(season)` / `setLocalHomeBroadcasts(season, n)` | The per-season "Local home broadcasts" setting (`DataStore.seasonSettings[season].localHomeBroadcasts`), for seasons where national-only home games carry no local TV measurement. Set in the builder next to Season pace; exported with the data |
 | `getReportPeriodInfo(season)` / `rptContext(season, period)` | Home broadcast dates, the season's normal length (median of earlier full seasons), whether it's over; `ctx.inWindow(date)` cuts every source to "through home game N". Affidavits, ANC LED and web banners carry season totals only, so they're unavailable in season-to-date mode |
 | `rptSeasonPace(brand, ctx)` | TV season pace. `rptProject()` values the remaining home games at the **lower** of the pace so far and what earlier seasons delivered after the same point (`rptSeasonShapes`), so a historical back-half fade lowers it and a stronger finish is never assumed. `rptPaceRange()` gives the likely range from backtested misses (20th–80th percentile across partners in earlier seasons). **Product rules:** off by default (`opts.pace`), offered only when the report runs through home game `RPT_PACE_MIN_GAMES`–`RPT_PACE_MAX_GAMES` (14–20), and always shown as a range — no range, no projection |
-| `rptRank(brand, valuesByBrand)` / `rptShownRank(sec, opts)` / `rptCategoryFamily(brand)` | Rankings: overall among current partners, or category among current partners in the same category family (roster category before " - ", 3+ partners). **Off by default**; printed only for a top-3 position (`RPT_RANK_SHOW_MAX`) |
+| `rptRank(brand, valuesByBrand)` / `rptShownRank(sec, opts)` / `rptCategoryFamily(brand)` | Rankings for TV and organic: overall among current partners, or category among current partners in the same category family (roster category before " - ", 3+ partners). **Off by default**; printed only for a top-3 position (`RPT_RANK_SHOW_MAX`). Survey recall ranks are separate: straight from the survey file, **on by default** (`opts.surveyRanks`), any position |
 | `rptCurrentSeason()` | The season single-season exports (affidavits, ANC LED, RoseQuarter.com, VS schedule) belong to: the newest TV season |
 | `rptSeasonOfMonth(ym)` / `rptSurveyPct(pct, rank)` | Month → July–June season; a 0% survey score with no rank reads as "not asked" (`null`) |
-| `renderReportDocument(model, opts)` | Self-contained HTML document; `opts = { sections, insights: {key:[idx]}, notes: {key:text}, compare, methodology, pace, rank: 'off'|'overall'|'category' }` |
+| `renderReportDocument(model, opts)` | Self-contained HTML document; `opts = { sections, insights: {key:[idx]}, notes: {key:text}, compare, methodology, pace, rank: 'off'|'overall'|'category', surveyRanks, parts: {key:{chart,bars,table}} }`. `parts` are the builder's per-section Show switches |
+| `RPT_METHODOLOGY` | Methodology entries per section: a list of `[term, definition]`, or a function `(sec, opts)` when the wording depends on what the section shows (survey ranks, web pre-roll) |
+| `rptDeltaHTML(change, unit)` | Delta badge; `unit` falsy = %, `true` = points, `'places'` = rank places gained |
 | `rptSvgPace(chart)` | Season-to-date pacing chart: cumulative QI media value by home game, this season vs last, dashed pace estimate with its range |
 | `rptSectionBlocks` / `rptSummaryBlocks` | Build the blocks for one section / the executive summary (only when 3+ sections are selected) |
-| `rptSvgColumns` / `rptSvgLine` / `rptBarListHTML` / `rptTableHTML` / `rptKpiHTML` | Design-system charts and tiles, drawn at printed size (12px floor, one highlighted mark, direct labels) |
+| `rptSvgColumns` / `rptSvgLine` / `rptBarListHTML(items, format, withDelta)` / `rptTableHTML` / `rptKpiHTML` | Design-system charts and tiles, drawn at printed size (12px floor, one highlighted mark, direct labels). `withDelta` adds a change column; a KPI's `suffix` prints small after the value ("#1 of 69") |
 | `RPT_PAGINATE_JS` | In-document paginator: loads the fonts, then moves blocks onto 816×1056 Letter pages. Blocks never split; `data-keep="next"` glues a heading to what follows; a section's takeaways never open a page alone (widow rule); a page may tighten its spacing to absorb a small overflow; pages opening mid-section say "Section (continued)". Resolves `window.reportReady` with the page count |
 | `openReportModal(brand)` / `closeReportModal()` | The one-screen builder: partner, season, sections (takeaways + note per section), options, live preview |
 | `rbRenderPanel()` / `rbRefreshPreview(immediate)` / `rbPrint()` | Builder panel, debounced preview rebuild (keeps scroll), and Save as PDF — prints the preview iframe, no pop-up |
 | `renderPartnerLogo(brand, size)` / `lookupPartnerLogo(brand)` | Partner logos (also used by partner pages and browse) |
+
+**Partner-facing copy (house style):** everything the report prints is read by partners, so it must not read as machine-written.
+- No em dashes (—). A missing value is "n/a" (`rptNA()` converts the dashboard helpers' "—" in tiles, bars and tables). Use a comma, a full stop or "to" instead
+- No "X, not Y" / "rather than" contrasts, no colon reveals ("A metric: the value of…"), no semicolon chains. Short declarative sentences
+- Takeaways are sentences ("Oct was the peak month at $34.5K."), not "Label: value"
+- Middots (·) only in header/meta lines, never in sentences or tile captions
+- Ranges in sentences use "to"; the en dash is only for compact values ("$4.0M–$4.3M")
 
 **Checking layout after a change:** `node report_layout_check.js <preloaded-dashboard.html>` (optional, needs Playwright) renders every current partner across many section combinations and fails on any page overflow, empty page or text under 12px.
 
@@ -654,22 +663,22 @@ Three layers. The report is styled with the **Trail Blazers Dashboards design sy
 
 ---
 
-### `21_web_digital_section.js` — Web & Digital (Blazers.com, RoseQuarter.com, Pre-Roll)
+### `21_web_digital_section.js` — Web & Digital (TrailBlazers.com, RoseQuarter.com, Pre-Roll)
 
 | Function | What it does |
 |----------|-------------|
-| `ingestBlazersBannersFile(file, ext, fileId)` | Parses Blazers.com delivery report CSV into `DataStore.webBlazersBanners`; tags rows with the file id |
+| `ingestBlazersBannersFile(file, ext, fileId)` | Parses TrailBlazers.com delivery report CSV into `DataStore.webBlazersBanners`; tags rows with the file id |
 | `ingestRQBannersFile(file, ext, fileId)` | Parses RoseQuarter.com delivery report CSV into `DataStore.webRQBanners`; tags rows with the file id |
 | `ingestPreRollFile(file, ext, fileId)` | Parses pre-roll video report CSV into `DataStore.webPreRoll`; tags rows with the file id |
 | `extractBlazersOrderPartner(orderStr)` | Extracts brand name and season from an Order column string like `"Fred Meyer 2025-2026 > Trailblazers"` |
 | `getWebAdType(lineItemStr)` | Classifies a line item as `'banner'` or `'pushdown'` |
 | `isWebDNU(lineItemStr)` | Returns `true` for DNU (do not use / deprecated) line items |
 | `aggregateWebBannerRows(rows)` | Sums impressions, clicks, and computes weighted CTR across banner rows |
-| `getBlazersBannersForBrand(brand)` | Returns Blazers.com banner rows for a brand |
+| `getBlazersBannersForBrand(brand)` | Returns TrailBlazers.com banner rows for a brand |
 | `getRQBannersForBrand(brand)` | Returns RoseQuarter.com banner rows for a brand |
 | `getPreRollForBrand(brand)` | Returns pre-roll rows for a brand |
 | `renderWebDigitalSection(brand)` | Partner-page Web & Digital collapsible section into `#web-digital-slot`; delegates to the three subsection renderers |
-| `renderBlazersBannersSubsection(brand, rows)` | Blazers.com display-ad breakdown: KPIs, by-type table |
+| `renderBlazersBannersSubsection(brand, rows)` | TrailBlazers.com display-ad breakdown: KPIs, by-type table |
 | `renderRQBannersSubsection(brand, rows)` | RoseQuarter.com display-ad breakdown |
 | `renderPreRollSubsection(brand, rows)` | Pre-roll video breakdown: KPIs, monthly bar chart, game-by-game table |
 | `renderPreRollMonthlyChart(rows)` | SVG monthly bar chart of pre-roll play volume |

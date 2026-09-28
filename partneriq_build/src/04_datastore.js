@@ -472,7 +472,7 @@ const DataStore = {
   affidavits: [],                   // TV & Radio Affidavit spot delivery counts
   ancLED: [],                       // ANC LED Report — per-asset in-arena exposure time
   virtualSignageSchedule: [],       // On-court virtual signage schedule (center + 3-point line)
-  webBlazersBanners: [],            // Blazers.com display banner delivery rows
+  webBlazersBanners: [],            // TrailBlazers.com display banner delivery rows
   webRQBanners: [],                 // RoseQuarter.com display banner delivery rows
   webPreRoll: [],                   // Pre-Roll video delivery rows
   loadedFiles: [],                  // Per-file ingest registry { fileId, filename, type, rows, loadedAt, ... } — backs Remove/Replace in the file log

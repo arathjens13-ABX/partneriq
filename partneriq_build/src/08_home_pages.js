@@ -309,7 +309,7 @@ function renderLinksPage(main) {
         {
           title: 'Blazers Web Page Report',
           source: 'Looker Studio',
-          desc: 'Website traffic and page performance metrics for Blazers.com.',
+          desc: 'Website traffic and page performance metrics for TrailBlazers.com.',
           url: 'https://lookerstudio.google.com/u/0/reporting/04b4a1b3-5a5a-40ae-acdc-c3a889697349/page/p_vttsy1digd'
         },
       ]
