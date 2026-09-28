@@ -14150,7 +14150,7 @@ function rptBuildOrganic(brand, season, ctx) {
       : null,
     chart: monthly.length > 1 ? { kind: 'column', title: 'Brand value by month · peak highlighted', data: monthly, format: formatCurrency } : null,
     insights,
-    source: `Zoomph monthly reports on Trail Blazers-owned social channels, summed across ${range} (seasons run July–June).`,
+    source: `Zoomph monthly reports on Trail Blazers organic social posts (not paid or earned), summed across ${range} (seasons run July–June).`,
     totals: { views, value },
   };
 }
@@ -14666,7 +14666,7 @@ const RPT_METHODOLOGY = {
        ['QI impressions', 'A Nielsen-defined metric: gross impressions adjusted by the same quality score.'],
        ['Season comparisons', 'Compare the same broadcasts in both seasons: the first N home broadcasts of the prior season against this season\'s N. Seasons that also measured away broadcasts are not compared on full-season totals.']],
   virtualSignage: [['Away game valuation', 'Virtual signage runs on home and away broadcasts, but Nielsen measures home broadcasts only. Home games with a Nielsen measurement use it. Away games, and home games without a measurement, are valued at the season average for the same on-court position (center court or 3-point line): the mean QI media value per game across every measured home game this season. Figures that include an estimate are marked Est.']],
-  organic: [['Organic social (via Zoomph)', 'Measured by Zoomph, a third-party provider, across Trail Blazers-owned social channels.'],
+  organic: [['Organic social (via Zoomph)', 'Measured by Zoomph, a third-party provider. Covers organic content only: unpaid posts on the Trail Blazers\' own social accounts. Paid promotion (see Paid social) and earned media (other accounts posting about the partner) are not included.'],
             ['Brand value', 'Zoomph\'s estimate of the value of the partner\'s logo and mentions in that content.'],
             ['Monthly reports', 'Zoomph reports are monthly, not running totals; a season figure is the sum of its months. Seasons run July to June.']],
   survey: (sec, opts) => [

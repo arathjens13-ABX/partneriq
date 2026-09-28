@@ -20,7 +20,7 @@ Changes from an internal review of the partner report, read as a partner would.
 ### Wording and definitions
 
 - QI media value and QI impressions are named as Nielsen-defined metrics
-- Organic social is "via Zoomph" and says it covers Trail Blazers-owned channels
+- Organic social is "via Zoomph" and says it covers organic posts only: not paid promotion, not earned media
 - The brand awareness definition is rewritten: Trail Blazers-run Partnership Survey via Qualtrics, Early (Oct–Nov) and Late (March) waves, aided and unaided defined, and why a 0% aided wave shows "—"
 - Blazers.com is now TrailBlazers.com across the report and the dashboard (the `webBlazersBanners` data key is unchanged)
 - "Broadcasts" is now "Local broadcasts"; the summary's QI media value tile reads "TV signage $X + virtual on-court $Y"
