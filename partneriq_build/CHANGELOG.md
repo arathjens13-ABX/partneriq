@@ -34,6 +34,12 @@ Changes from an internal review of the partner report, read as a partner would.
 - **In-arena LED** — moves to the end of the report and out of the executive summary. "LED assets" / "Creative variants" become "Board locations" / "Ad versions", both defined in the methodology
 - **Web & digital** — "Display" is now "Banner ads"; pre-roll wording appears only when the partner has pre-roll plays
 
+### Writing style
+
+- No em dashes anywhere in the report. Missing values read "n/a", including placeholders that come from shared dashboard helpers (`rptNA`), and the PDF title is "Partner Partnership Report 2025-26"
+- Copy rewritten to read less machine-written: no "X, not Y" contrasts, no colon reveals ("A Nielsen-defined metric: …"), no semicolon chains, no "Label: value" takeaways, and middots only in headers
+- Ranges in sentences read "Jul to Apr" and "$X to $Y"; compact tiles and chart labels keep the en dash ("$4.0M–$4.3M")
+
 ### Report builder
 
 - New **Survey recall ranks** option, on by default. The Rankings option now covers TV and organic social only

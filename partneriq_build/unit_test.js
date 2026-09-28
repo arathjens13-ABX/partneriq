@@ -259,11 +259,11 @@ const rm = JSON.parse(evalIn(ctx, `JSON.stringify((() => { const m = buildReport
 t.eq('organic sums the season\'s monthly reports (Jul–Jun)', rm.organic.views, 245);
 t.eq('June belongs to the previous season',                 rm.orgCount, '2 reports');
 t.eq('sections without data are unavailable, not zero',     rm.tv, false);
-t.eq('0% with no rank reads as "not asked"',                rm.survey[1], '—');
+t.eq('0% with no rank reads as "not asked"',                rm.survey[1], 'n/a');
 const docHtml = evalIn(ctx, `renderReportDocument(buildReportModel('Nike', '2025-26'), {})`);
 t.check('document embeds the design-system fonts',          docHtml.includes('font-family:"League Gothic"') && docHtml.includes('data:font/woff2;base64,'));
 t.check('document is light only (no dark theme)',           !/prefers-color-scheme|data-theme="dark"/.test(docHtml));
-t.check('document names the partner and season',            docHtml.includes('<title>Nike — Partnership report 2025-26</title>'));
+t.check('document names the partner and season',            docHtml.includes('<title>Nike Partnership Report 2025-26</title>'));
 t.check('dashboard source never closes its own <script>',   !evalIn(ctx, `RPT_PAGINATE_JS`).includes('</script'));
 
 t.group('partner report — partner feedback round');
@@ -311,11 +311,12 @@ t.check('survey ranks can be switched off',             !fbDoc({ surveyRanks: fa
 t.check('location changes print with Compare on',       fbDoc({}).includes('class="bl wd"'));
 t.check('and not with Compare off',                     !fbDoc({ compare: false }).includes('class="bl wd"'));
 t.check('a section\'s chart can be hidden',              !fbDoc({ parts: { survey: { chart: false } } }).includes('Recall by survey wave'));
-t.check('methodology names Nielsen and Qualtrics',      /Nielsen-defined/.test(fbDoc({})) && /Qualtrics/.test(fbDoc({})));
+t.check('methodology names Nielsen and Qualtrics',      /Defined by Nielsen/.test(fbDoc({})) && /Qualtrics/.test(fbDoc({})));
 evalIn(ctx, `(() => { DataStore.reset(); DataStore.webBlazersBanners = [{ Brand: 'Nike', Season: '2025-26', LineItem: 'ROS Banner', Impressions: 5000, Clicks: 10 }]; canonicalizeAllBrandData(true); })()`);
 const web = JSON.parse(evalIn(ctx, `JSON.stringify((() => { const m = buildReportModel('Nike', '2025-26'); return { sec: m.sections.webDisplay, doc: renderReportDocument(m, {}) }; })())`));
 t.eq('web uses "Banner ad impressions"',                 web.sec.kpis[0].label, 'Banner ad impressions');
 t.check('no pre-roll wording without pre-roll plays',   web.sec && !/pre-roll/i.test(web.doc));
+t.check('no em dashes in the report text',         !fbDoc({}).replace(/<script[\s\S]*?<\/script>/g, '').includes('\u2014'));
 t.check('TrailBlazers.com, not Blazers.com',            web.doc.includes('TrailBlazers.com') && !/[^l]Blazers\.com/.test(web.doc));
 
 t.group('season pace — conservative projection');

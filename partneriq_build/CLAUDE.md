@@ -570,6 +570,13 @@ Three layers. The report is styled with the **Trail Blazers Dashboards design sy
 | `rbRenderPanel()` / `rbRefreshPreview(immediate)` / `rbPrint()` | Builder panel, debounced preview rebuild (keeps scroll), and Save as PDF — prints the preview iframe, no pop-up |
 | `renderPartnerLogo(brand, size)` / `lookupPartnerLogo(brand)` | Partner logos (also used by partner pages and browse) |
 
+**Partner-facing copy (house style):** everything the report prints is read by partners, so it must not read as machine-written.
+- No em dashes (—). A missing value is "n/a" (`rptNA()` converts the dashboard helpers' "—" in tiles, bars and tables). Use a comma, a full stop or "to" instead
+- No "X, not Y" / "rather than" contrasts, no colon reveals ("A metric: the value of…"), no semicolon chains. Short declarative sentences
+- Takeaways are sentences ("Oct was the peak month at $34.5K."), not "Label: value"
+- Middots (·) only in header/meta lines, never in sentences or tile captions
+- Ranges in sentences use "to"; the en dash is only for compact values ("$4.0M–$4.3M")
+
 **Checking layout after a change:** `node report_layout_check.js <preloaded-dashboard.html>` (optional, needs Playwright) renders every current partner across many section combinations and fails on any page overflow, empty page or text under 12px.
 
 ----------|-------------|

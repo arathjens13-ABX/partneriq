@@ -13691,7 +13691,11 @@ function rptSurveyPct(pct, rank) {
   return pct;
 }
 
-function rptFmtPct0(p) { return p === null || p === undefined ? '—' : `${Math.round(p * 100)}%`; }
+// Shared dashboard helpers print "—" for a missing value; the report says
+// "n/a" instead (house style: no em dashes in partner-facing text).
+function rptNA(v) { return v === '—' ? 'n/a' : v; }
+
+function rptFmtPct0(p) { return p === null || p === undefined ? 'n/a' : `${Math.round(p * 100)}%`; }
 function rptShortSeason(s) { return String(s || '').replace(/^20(\d{2})-(\d{2})$/, '$1-$2'); }
 function rptMonthLabel(ym) {
   const [y, m] = String(ym).split('-').map(Number);
@@ -14029,13 +14033,13 @@ function rptBuildTV(brand, season, ctx) {
   // ticks, so it lives outside the tickable list (which keeps the same order in
   // both periods).
   const paceInsight = pace && !pace.unavailable
-    ? { html: `On pace for <b>${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}</b> over ${pace.G} ${ctx.info.local ? 'local home broadcasts' : 'home games'}.`, estimated: true }
+    ? { html: `On pace for <b>${formatCurrency(pace.lo)}</b> to <b>${formatCurrency(pace.hi)}</b> over ${pace.G} ${ctx.info.local ? 'local home broadcasts' : 'home games'}.`, estimated: true }
     : null;
   if (top && qimv > 0) insights.push({ html: `<b>${escapeHTML(top.label)}</b> delivered <b>${formatCurrency(top.value)}</b>, ${Math.round(top.value / qimv * 100)}% of the total.` });
   if (imp > 0) insights.push({ html: `<b>${formatNum(imp)}</b> quality-adjusted impressions over <b>${formatDurationFromMinutes(mins)}</b> on screen.`, delta: di !== null && di !== undefined && basis && { change: di, basis } });
   if (mins > 0) insights.push({ html: `<b>${formatCurrency(qimv / mins)}</b> of QI media value per on-screen minute.` });
 
-  const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : '—', meta: 'QI media value per on-screen minute' };
+  const perMinute = { label: 'Per minute', value: mins > 0 ? formatCurrency(qimv / mins) : 'n/a', meta: 'QI media value per on-screen minute' };
   const fourth = pace && !pace.unavailable
     ? { label: 'Season pace', value: `${formatCurrency(pace.lo)}–${formatCurrency(pace.hi)}`, meta: `likely range over ${pace.G} ${ctx.info.local ? 'local broadcasts' : 'home games'}`, estimated: true, small: true }
     : perMinute;
@@ -14052,7 +14056,7 @@ function rptBuildTV(brand, season, ctx) {
     pace, perMinute, paceInsight,
     chart,
     bars: { title: `Top signage locations · ${season}${ctx.std ? ' to date' : ''}`, items: locs, format: formatCurrency,
-            first: true, deltaBasis: priorLoc && basis ? `QI media value · change vs ${basis}` : 'QI media value' },
+            first: true, deltaBasis: priorLoc && basis ? `Change vs ${basis}` : '' },
     insights,
     source: `TV visible signage (QI media value).${basis ? ` Changes compare this season with the ${basis}.` : ''}`,
     totals: { qimv, imp, games, portfolioGames, delta: dq, cmp: ctx.std ? 'vs same point last season' : vsPrior },
@@ -14078,11 +14082,11 @@ function rptBuildVS(brand, season, ctx) {
     kpis: [
       { label: 'QI media value', value: formatCurrency(group.qimv), estimated: est },
       { label: 'QI impressions', value: formatNum(group.qiImp), estimated: est },
-      { label: 'Games', value: String(group.totalGames), meta: `${group.homeGames} home · ${group.awayGames} away` },
+      { label: 'Games', value: String(group.totalGames), meta: `${group.homeGames} home, ${group.awayGames} away` },
       { label: 'Per game', value: formatCurrency(group.qimv / group.totalGames), meta: 'QI media value per game', estimated: est },
     ],
     insights,
-    source: 'Virtual signage schedule. Home games are valued from Nielsen TV measurement; away games, and home games without a measurement, are estimated (see Methodology).',
+    source: 'Virtual signage schedule. Home games use Nielsen TV measurement. Away games and unmeasured home games are estimated, as described in the methodology.',
     totals: { qimv: group.qimv, estimated: est },
   };
 }
@@ -14123,15 +14127,15 @@ function rptBuildOrganic(brand, season, ctx) {
   };
   const topSeries = topOf(getBrandZoomphSeries(brand));
   const topAsset  = topOf(getBrandZoomphAssets(brand));
-  const range = `${rptMonthLabel(months[0])} – ${rptMonthLabel(months[months.length - 1])}`;
+  const range = months.length > 1 ? `${rptMonthLabel(months[0])} to ${rptMonthLabel(months[months.length - 1])}` : rptMonthLabel(months[0]);
 
   const insights = [
     { html: `<b>${formatCurrency(value)}</b> in brand value from <b>${formatNum(posts)}</b> posts across ${months.length} monthly report${months.length === 1 ? '' : 's'} (${range}).`, delta: d('BrandValue') !== null && { change: d('BrandValue'), basis: 'same months last season' } },
     { html: `<b>${formatNum(views)}</b> views and impressions and <b>${formatNum(eng)}</b> engagements (${formatPct(views ? eng / views : 0, 2)} engagement rate).` },
   ];
-  if (monthly.length > 1 && monthly[peakIdx].value > 0) insights.push({ html: `Peak month: <b>${monthly[peakIdx].label}</b> at ${formatCurrency(monthly[peakIdx].value)}.` });
-  if (topSeries && topSeries[1] > 0) insights.push({ html: `Top content series: <b>${escapeHTML(topSeries[0])}</b> (${formatCurrency(topSeries[1])}).` });
-  if (topAsset && topAsset[1] > 0) insights.push({ html: `Top branded asset: <b>${escapeHTML(topAsset[0])}</b> (${formatCurrency(topAsset[1])}).` });
+  if (monthly.length > 1 && monthly[peakIdx].value > 0) insights.push({ html: `<b>${monthly[peakIdx].label}</b> was the peak month at ${formatCurrency(monthly[peakIdx].value)}.` });
+  if (topSeries && topSeries[1] > 0) insights.push({ html: `<b>${escapeHTML(topSeries[0])}</b> was the top content series at ${formatCurrency(topSeries[1])}.` });
+  if (topAsset && topAsset[1] > 0) insights.push({ html: `<b>${escapeHTML(topAsset[0])}</b> was the top branded asset at ${formatCurrency(topAsset[1])}.` });
 
   const valueByBrand = {};
   (DataStore.zoomphBrandPerf || []).filter(inSeason).forEach(r => { valueByBrand[r.Brand] = (valueByBrand[r.Brand] || 0) + (Number(r.BrandValue) || 0); });
@@ -14146,11 +14150,11 @@ function rptBuildOrganic(brand, season, ctx) {
       { label: 'Organic posts', value: formatNum(posts), meta: `${formatNum(logo)} logo impressions` },
     ],
     banner: value === 0 && logo === 0
-      ? { tone: 'info', title: 'Not measured.', text: 'Zoomph reports no logo impressions or brand value for this partner in any report, which usually means the logo isn\'t tracked rather than that it had no exposure.' }
+      ? { tone: 'info', title: 'Not measured.', text: 'Zoomph reports no logo impressions or brand value for this partner. This usually means Zoomph is not tracking the logo yet.' }
       : null,
-    chart: monthly.length > 1 ? { kind: 'column', title: 'Brand value by month · peak highlighted', data: monthly, format: formatCurrency } : null,
+    chart: monthly.length > 1 ? { kind: 'column', title: 'Brand value by month', data: monthly, format: formatCurrency } : null,
     insights,
-    source: `Zoomph monthly reports on Trail Blazers organic social posts (not paid or earned), summed across ${range} (seasons run July–June).`,
+    source: `Zoomph monthly reports on Trail Blazers organic social posts, ${range}. Paid and earned media are not included.`,
     totals: { views, value },
   };
 }
@@ -14178,7 +14182,7 @@ function rptBuildSurvey(brand, season, ctx) {
   const waveRows = (DataStore.surveys || []).filter(r => r.Survey === latest.Survey);
   const rankTile = (label, rankKey) => {
     const r = Number(latest[rankKey]);
-    if (!(r > 0)) return { label, value: '—', meta: 'not ranked this wave' };
+    if (!(r > 0)) return { label, value: 'n/a', meta: 'not ranked this wave' };
     const of = waveRows.filter(x => Number(x[rankKey]) > 0).length;
     const pr = prior ? Number(prior[rankKey]) : 0;
     return { label, value: `#${r}`, suffix: `of ${of}`, meta: `among brands in the ${wave} wave`,
@@ -14233,7 +14237,7 @@ function rptBuildSurvey(brand, season, ctx) {
       rows: chartWaves.slice().reverse().map(w => [`${w.Season} ${w.Phase}`, rptFmtPct0(w.u), rptFmtPct0(w.a), rptFmtPct0(w.h)]),
     },
     insights,
-    source: `Trail Blazers Partnership Survey (Qualtrics), ${wave} wave. "—" means the brand wasn't on the list that wave. Changes are percentage points vs the same wave last season.`,
+    source: `Trail Blazers Partnership Survey (Qualtrics), ${wave} wave. "n/a" means the brand was not on the list that wave. Changes are percentage points vs the same wave last season.`,
     totals: { unaided: latest.u, rank: latest.UnaidedRecallRank, wave },
   };
 }
@@ -14277,7 +14281,7 @@ function rptBuildPaid(brand, season, ctx) {
       rows: tableRows,
     },
     insights,
-    source: 'Meta Ads Manager export; season from the campaign name. Campaigns not yet assigned to a partner are not included. Reach isn\'t shown because it double-counts people across campaigns.',
+    source: 'Meta Ads Manager export, with the season taken from the campaign name. Campaigns not yet assigned to a partner are not included. Reach is not shown because it counts the same people more than once across campaigns.',
     totals: { impressions: agg.impressions },
   };
 }
@@ -14332,7 +14336,7 @@ function rptBuildAffidavit(brand, season, ctx) {
       { label: 'Total spots', value: formatNum(a.totalSpots) },
       { label: 'TV spots', value: formatNum(a.tvTotal), meta: `${formatNum(a.tvContracted)} contracted` },
       { label: 'Radio spots', value: formatNum(a.radioTotal), meta: `${formatNum(a.radioContracted)} contracted` },
-      { label: 'Bonus rate', value: a.bonusRate === null ? '—' : formatPct(a.bonusRate, 0), meta: 'bonus vs contracted spots' },
+      { label: 'Bonus rate', value: a.bonusRate === null ? 'n/a' : formatPct(a.bonusRate, 0), meta: 'bonus vs contracted spots' },
     ],
     table: {
       title: 'Spots by daypart',
@@ -14343,7 +14347,7 @@ function rptBuildAffidavit(brand, season, ctx) {
       { html: `<b>${formatNum(a.totalSpots)}</b> broadcast spots: <b>${formatNum(a.tvTotal)}</b> on TV and <b>${formatNum(a.radioTotal)}</b> on radio.` },
       ...(a.totalBonused ? [{ html: `<b>${formatNum(a.totalBonused)}</b> bonus spots on top of ${formatNum(a.totalContracted)} contracted (${formatPct(a.bonusRate || 0, 0)}).` }] : []),
     ],
-    source: `TV and radio affidavits. Affidavits give season totals, not air dates${pre ? `; includes ${formatNum(pre)} preseason spots` : ''}.`,
+    source: `TV and radio affidavits, which report season totals without air dates.${pre ? ` Includes ${formatNum(pre)} preseason spots.` : ''}`,
     totals: { spots: a.totalSpots },
   };
 }
@@ -14369,7 +14373,7 @@ function rptBuildWeb(brand, season, ctx) {
     kpis: [
       { label: 'Banner ad impressions', value: formatNum(bi + qi) },
       { label: 'Clicks', value: formatNum(clicks) },
-      { label: 'Click-through', value: bi + qi ? formatPct(clicks / (bi + qi), 2) : '—' },
+      { label: 'Click-through', value: bi + qi ? formatPct(clicks / (bi + qi), 2) : 'n/a' },
       // Pre-roll only when the partner ran it.
       plays ? { label: 'Pre-roll plays', value: formatNum(plays) }
             : { label: 'TrailBlazers.com', value: formatNum(bi), meta: 'banner ad impressions' },
@@ -14379,7 +14383,7 @@ function rptBuildWeb(brand, season, ctx) {
       ...(bi + qi ? [{ html: `<b>${formatNum(bi + qi)}</b> banner ad impressions and <b>${formatNum(clicks)}</b> clicks${sites ? ` on ${sites}` : ''}.` }] : []),
       ...(plays ? [{ html: `<b>${formatNum(plays)}</b> pre-roll video plays.` }] : []),
     ],
-    source: [sites && `${sites} ad server delivery`, plays && `${sites ? 'pre-roll' : 'Pre-roll'} plays from the video platform`].filter(Boolean).join('; ') + '.',
+    source: [sites && `${sites} ad server delivery.`, plays && 'Pre-roll plays from the video platform.'].filter(Boolean).join(' '),
     totals: { impressions: bi + qi, plays, sites },
   };
 }
@@ -14447,7 +14451,7 @@ function rptKpiHTML(k, opts, hero) {
   const sub = delta ? `${delta}${k.cmp ? ` ${escapeHTML(k.cmp)}` : ''}` : (k.meta ? escapeHTML(k.meta) : '&nbsp;');
   return `<div class="kpi${hero ? ' hero' : ''}${k.estimated ? ' est' : ''}">
     <div class="kpi-l">${escapeHTML(k.label)}${k.estimated ? '<span class="estflag">Est.</span>' : ''}</div>
-    <div class="kpi-v${k.small ? ' sm' : ''}">${escapeHTML(k.value)}${k.suffix ? ` <span class="of">${escapeHTML(k.suffix)}</span>` : ''}</div>
+    <div class="kpi-v${k.small ? ' sm' : ''}">${escapeHTML(rptNA(k.value))}${k.suffix ? ` <span class="of">${escapeHTML(k.suffix)}</span>` : ''}</div>
     <div class="kpi-d">${sub}</div>
   </div>`;
 }
@@ -14558,11 +14562,11 @@ function rptSvgPace(c, W = RPT_CARD_W, H = 224) {
 // when there's nothing to compare with).
 function rptBarListHTML(items, format, withDelta) {
   const max = Math.max(...items.map(i => i.value), 0) || 1;
-  const d = i => i.delta === 'new' ? '<span class="dl flat">New</span>' : rptDeltaHTML(i.delta) || '<span class="dl flat">—</span>';
+  const d = i => i.delta === 'new' ? '<span class="dl flat">New</span>' : rptDeltaHTML(i.delta) || '<span class="dl flat">n/a</span>';
   return `<div class="bl${withDelta ? ' wd' : ''}">${items.map(i => `<div class="bl-r">
       <div class="bl-l">${escapeHTML(i.label)}</div>
       <div class="bl-t"><div class="bl-b${i.highlight ? ' hl' : ''}" style="width:${Math.max(0.5, i.value / max * 100).toFixed(1)}%"></div></div>
-      <div class="bl-v">${escapeHTML(format(i.value))}</div>${withDelta ? `
+      <div class="bl-v">${escapeHTML(rptNA(format(i.value)))}</div>${withDelta ? `
       <div class="bl-d">${d(i)}</div>` : ''}
     </div>`).join('')}</div>`;
 }
@@ -14570,7 +14574,7 @@ function rptBarListHTML(items, format, withDelta) {
 function rptTableHTML(t) {
   const last = t.rows.length - 1;
   return `<table class="dt"><thead><tr>${t.columns.map(c => `<th class="${c.num ? 'n' : ''}">${escapeHTML(c.label)}</th>`).join('')}</tr></thead>
-    <tbody>${t.rows.map((r, ri) => `<tr class="${t.totalRow && ri === last ? 'tot' : ''}">${r.map((v, i) => `<td class="${t.columns[i].num ? 'n' : ''}">${escapeHTML(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    <tbody>${t.rows.map((r, ri) => `<tr class="${t.totalRow && ri === last ? 'tot' : ''}">${r.map((v, i) => `<td class="${t.columns[i].num ? 'n' : ''}">${escapeHTML(rptNA(v))}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
 function rptCard(title, sub, inner, extraClass = '') {
@@ -14662,25 +14666,25 @@ function rptSectionBlocks(sec, opts) {
 // Each entry is a list of [term, definition], or a function (sec, opts) that
 // returns one when the wording depends on what the section shows.
 const RPT_METHODOLOGY = {
-  tv: [['QI media value', 'A Nielsen-defined metric: the dollar value of on-screen exposure during broadcasts, discounted for logo clarity, size, position and duration.'],
-       ['QI impressions', 'A Nielsen-defined metric: gross impressions adjusted by the same quality score.'],
-       ['Season comparisons', 'Compare the same broadcasts in both seasons: the first N home broadcasts of the prior season against this season\'s N. Seasons that also measured away broadcasts are not compared on full-season totals.']],
-  virtualSignage: [['Away game valuation', 'Virtual signage runs on home and away broadcasts, but Nielsen measures home broadcasts only. Home games with a Nielsen measurement use it. Away games, and home games without a measurement, are valued at the season average for the same on-court position (center court or 3-point line): the mean QI media value per game across every measured home game this season. Figures that include an estimate are marked Est.']],
-  organic: [['Organic social (via Zoomph)', 'Measured by Zoomph, a third-party provider. Covers organic content only: unpaid posts on the Trail Blazers\' own social accounts. Paid promotion (see Paid social) and earned media (other accounts posting about the partner) are not included.'],
+  tv: [['QI media value', 'Defined by Nielsen. The dollar value of on-screen exposure during broadcasts, discounted for logo clarity, size, position and duration.'],
+       ['QI impressions', 'Defined by Nielsen. Gross impressions adjusted by the same quality score.'],
+       ['Season comparisons', 'Changes compare the same number of home broadcasts in each season. If this season has 38 home broadcasts, they are compared with the first 38 of last season. Seasons that also measured away broadcasts are not compared on full-season totals.']],
+  virtualSignage: [['Away game valuation', 'Virtual signage runs on home and away broadcasts, and Nielsen measures home broadcasts only. Home games with a Nielsen measurement use that value. Away games and unmeasured home games are valued at the season average for the same on-court position (center court or 3-point line), which is the average QI media value per game across all measured home games this season. Figures that include an estimate are marked Est.']],
+  organic: [['Organic social (via Zoomph)', 'Measured by Zoomph, a third-party provider. Includes organic posts on the Trail Blazers\' own social accounts. Paid promotion and earned media, such as other accounts posting about the partner, are not included.'],
             ['Brand value', 'Zoomph\'s estimate of the value of the partner\'s logo and mentions in that content.'],
-            ['Monthly reports', 'Zoomph reports are monthly, not running totals; a season figure is the sum of its months. Seasons run July to June.']],
+            ['Monthly reports', 'Zoomph reports each month separately, and a season figure adds up its months. Seasons run July to June.']],
   survey: (sec, opts) => [
-    ['Brand awareness survey', 'A Trail Blazers-run Partnership Survey conducted through Qualtrics, in two waves each season: Early (October–November) and Late (March).'],
+    ['Brand awareness survey', 'A Trail Blazers-run Partnership Survey conducted through Qualtrics in two waves each season, Early (October and November) and Late (March).'],
     ['Aided recall', 'Share of respondents who recognize the partner from a provided list.'],
     ['Unaided recall', 'Share of respondents who name the partner without prompting.'],
-    ['Not on the list', 'A wave where the brand scores 0% aided indicates it was not on the aided list that wave, so the wave is left out ("—") rather than shown as zero.'],
-    ...(opts.surveyRanks === false ? [] : [['Recall rank', 'The partner\'s position among all brands measured in the same wave (#1 = highest recall). Rank changes compare with the same wave last season.']]),
+    ['Not on the list', 'A 0% aided score means the brand was not on the aided list that wave. Those waves show "n/a" instead of zero.'],
+    ...(opts.surveyRanks === false ? [] : [['Recall rank', 'The partner\'s position among all brands measured in the same wave, where #1 is the highest recall. Rank changes compare with the same wave last season.']]),
   ],
   paid: [['Paid social', 'Meta campaigns linked to the partner. Click-through is link clicks divided by impressions. Unassigned campaigns are excluded.']],
   ancLED: [['Board locations', 'The Moda Center LED boards (for example stanchions or the 360 ring) the partner\'s creative ran on, from the ANC sponsor reports.'],
            ['Ad versions', 'The number of different creatives rotated across those boards.'],
-           ['LED exposure', 'Time the creative was on screen: the total across the period and the average per event.']],
-  affidavit: [['Contracted vs bonus', 'Contracted spots are in the agreement; bonus spots ran on top at no charge.']],
+           ['LED exposure', 'Time the creative was on screen, shown as a total for the period and as an average per event.']],
+  affidavit: [['Contracted vs bonus', 'Contracted spots are in the agreement. Bonus spots ran in addition at no charge.']],
   webDisplay: sec => [
     ['Banner ads', `Banner ad impressions served on ${sec.totals.sites || 'TrailBlazers.com and RoseQuarter.com'}. Click-through is clicks divided by impressions.`],
     ...(sec.totals.plays ? [['Pre-roll plays', 'Video ad starts.']] : []),
@@ -14923,7 +14927,7 @@ function renderReportDocument(model, opts) {
   const L = REPORT_BRAND_ASSETS.logos;
   const P = model.period;
   const throughTxt = P.std ? `Through home game ${P.throughGame} of ${P.total}${P.local ? ' local broadcasts' : ''} (${formatShortDate(parseDateLoose(P.throughDate))})` : '';
-  const title = `${brand} — Partnership report ${model.season}${P.std ? ` through game ${P.throughGame}` : ''}`;
+  const title = `${brand} Partnership Report ${model.season}${P.std ? ` through game ${P.throughGame}` : ''}`;
 
   const blocks = [];
   blocks.push(rptBlock(`<div class="cover">
@@ -14951,9 +14955,9 @@ function renderReportDocument(model, opts) {
         return typeof m === 'function' ? m(model.sections[k], opts) : m || [];
       });
       if (P.std && P.local) defs.unshift(['Local home broadcasts', `This season has ${P.local} local home broadcasts${P.national ? ` (${P.national} home game${P.national === 1 ? ' is' : 's are'} national-only, with no local TV measurement)` : ''}. Game counts and the season pace use ${P.local}.`]);
-      if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season; organic with the same completed months; the survey with the same wave. Sources that only report season totals are left out.`]);
+      if (P.std) defs.unshift(['Season to date', `Every section runs through home game ${P.throughGame} (${formatShortDate(parseDateLoose(P.throughDate))}). TV compares with the same number of home broadcasts last season, organic social with the same completed months, and the survey with the same wave. Sources that only report season totals are not included.`]);
       if (P.std && keys.includes('tv') && model.sections.tv.pace && !model.sections.tv.pace.unavailable && !!opts.pace) {
-        defs.push(['Season pace (estimate)', `Projects the remaining home games at the lower of the pace so far and the share of value earlier seasons delivered after the same point, so a historical back-half fade lowers the estimate and the estimate never assumes a stronger finish. It is shown only as a range — how far this method missed for partners in earlier seasons at the same point (20th–80th percentile) — and only between home games ${RPT_PACE_MIN_GAMES} and ${RPT_PACE_MAX_GAMES}. It is an estimate, not a forecast of any game.`]);
+        defs.push(['Season pace (estimate)', `Values the remaining home games at the lower of two rates: the pace so far, or the share of value earlier seasons delivered after the same point. A season that usually slows down late lowers the estimate, and a stronger finish is never assumed. The range shows how far this method missed for partners in earlier seasons at the same point (20th to 80th percentile). It is offered only between home games ${RPT_PACE_MIN_GAMES} and ${RPT_PACE_MAX_GAMES}.`]);
       }
       const shownRanks = keys.map(k => rptShownRank(model.sections[k], opts)).filter(Boolean);
       if (shownRanks.length) defs.push(['Rankings', opts.rank === 'category' ? 'Among current partners in the same category family, shown only for a top-three position.' : 'Among current partners, shown only for a top-three position.']);
